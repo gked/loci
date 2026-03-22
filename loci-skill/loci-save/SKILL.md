@@ -35,22 +35,8 @@ Do not proceed until the vault is reachable.
 
 ### Step 1 — Classify the content
 
-Call `loci__read_meta(file="type-dictionary")` for any custom types the user
-has added. Fall back to the canonical vocabulary:
-
-```
-note         — freeform thought or observation
-article      — external content consumed and captured in full (URL required)
-bookmark     — saved URL with light metadata only; default when user shares a URL
-conversation — saved LLM or human conversation
-project      — ongoing work with goals and milestones
-task         — discrete actionable item with due date and status
-event        — point-in-time or period occurrence
-entity       — real-world actor: person, company, org, institution
-procedure    — repeatable process with ordered steps and expected outcome
-topic        — organizing hub for a subject area
-reference    — pointer to external content (hybrid ownership model)
-```
+Call `loci__read_meta(file="type-dictionary")` to get the current type vocabulary.
+The file is the source of truth — fall back to asking the user only if the file is unreachable.
 
 **URL detection rule:** if the user shares a bare URL (with or without commentary)
 and does not explicitly ask to extract or read the content, default to `bookmark`.
@@ -79,28 +65,9 @@ Call `loci__read_meta(file="tag-dictionary")` and prefer existing tags over
 synonyms. If a new tag is likely to recur, add it via `loci__write_meta`
 before writing the item.
 
-**Base schema (all types):**
-```yaml
-uid: <from loci__generate_uid>
-type: <type>
-title: <concise, descriptive title>
-author: self                            # "self" for user content; entity name/UID for external
-created_at: <ISO 8601, e.g. 2026-03-21T14:32:00Z>
-updated_at: <same as created_at on first save>
-archived_at: null
-tags: []                                # 3-6 freeform lowercase hyphenated tags
-domains: []                             # one or more from fixed taxonomy below
-summary: <one paragraph — what this is, why it matters, key insight>
-relations: []
-references: []
-```
-
-**Domain taxonomy (fixed — pick one or more):**
-```
-technology-engineering, science-research, business-strategy,
-finance-economics, health-biology, philosophy-ethics, creativity-design,
-personal-development, current-events-society
-```
+Call `loci__read_meta(file="field-dictionary")` to get the current field
+definitions for all types. Use this as the authoritative source for which
+fields to include, their types, valid enum values, and whether they are required.
 
 **Relations format:**
 ```yaml
@@ -116,20 +83,6 @@ references:
     title: The Article Title
     source_type: article
 ```
-
-**Type-specific fields** — merge into `extra_fields` when calling `loci__write_vault`:
-
-- **bookmark:** `source_url` (required), `site_name` (from fetch)
-- **note:** `status: draft | evergreen | archived`
-- **article:** `source_url`, `author`, `published_at`, `format: article|book|paper|video`, `highlights: []`
-- **conversation:** `participants: []`, `model`, `turns`, `platform: claude|chatgpt|human|other`
-- **project:** `status: active|paused|completed|abandoned`, `goals: []`, `milestones: []`, `due_date`
-- **task:** `status: todo|in-progress|done|cancelled`, `due_date`, `priority: high|medium|low`, `assignee`
-- **event:** `start_at`, `end_at`, `location`, `participants: []`
-- **entity:** `subtype: person|company|organization|institution`, `website`, `role`, `organization`, `industry`, `founded_at`
-- **procedure:** `subtype: recipe|workout|protocol|playbook|tutorial`, `steps: []`, `expected_outcome`, `inputs: []`, `duration_minutes`
-- **topic:** `status: active|archived`, `parent_topic`
-- **reference:** `source_url`, `source_type`, `external_id`, `metadata: {}`
 
 ---
 
@@ -225,6 +178,26 @@ existing relations: [{uid: "a1b2c3d4", type: "belongs-to"}]
 user wants to add:  {uid: "f9e8d7c6", type: "influences"}
 new relations list: [{uid: "a1b2c3d4", type: "belongs-to"}, {uid: "f9e8d7c6", type: "influences"}]
 ```
+
+**Temporal fields (entity type only):**
+
+Some fields represent current state that changes over time. When updating these,
+always archive the old value before setting the new one.
+
+- **`organization`** — archive to `affiliations`:
+  - Append `{organization: <old value>, roles: <current roles>, from: <estimated or null>, to: <today>}` to the `affiliations` array
+  - Update `organization` to the new value
+  - If the roles are also changing with the org, update `roles` too
+
+- **Any other temporal field** (`location`, `website`, etc.) — archive to `history`:
+  - Append `{field: <field name>, value: <old value>, from: <estimated or null>, to: <today>}` to the `history` array
+  - Update the field to the new value
+
+- **Body annotation** — always append a line to a `## History` section at the bottom of the body:
+  ```
+  - 2026-03-22: organization changed from University of Sussex to University of Manchester
+  ```
+  Create the `## History` section if it doesn't exist. This is where context and reasons can be added.
 
 ### U3 — Confirm with the user
 

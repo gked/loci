@@ -42,25 +42,24 @@ pip install -r requirements.txt
 ### 3. Initialize the vault
 
 ```bash
-python tools/vault_init.py
+python setup.py
 ```
 
 This will:
 - Ask where your Nextcloud folder is on this machine
 - Ask what to call the vault folder (default: `loci`)
 - Create the full folder structure inside Nextcloud
-- Save your config to `~/.loci/config.yml`
-- Seed the vault with `meta/type-dictionary.md` and `meta/foreign-definitions.md`
+- Save your config to `config.yml` in the project root
+- Seed the vault with all meta dictionaries
+- Register the MCP server with Claude Desktop
 
 ### 4. Install the Loci skill in Claude Code
 
 Copy or symlink the skill into your Claude Code skills directory:
 
 ```bash
-cp -r skill/ ~/.claude/skills/loci-save/
+cp -r loci-skill/loci-save/ ~/.claude/skills/loci-save/
 ```
-
-Or install the `.skill` file if packaged.
 
 ### 5. Test it
 
@@ -81,20 +80,22 @@ Claude should create a file at:
 
 ```
 loci/
-  skill/
-    SKILL.md                    ← Claude's instructions for saving content
+  loci-skill/
+    loci-save/
+      SKILL.md                  ← Claude's instructions for saving content
     references/
-      type-fields.md            ← type-specific frontmatter fields
+      type-fields.md            ← legacy type fields reference (superseded by field-dictionary)
+  loci_mcp/
+    server.py                   ← MCP server (Claude Desktop, stdio transport)
   tools/
     uid_generator.py            ← generates stable 8-char hex UIDs
     slug.py                     ← converts titles to filename slugs
     vault_init.py               ← first-run setup and vault scaffolding
     write_file.py               ← writes vault items to the filesystem
-  loci_mcp/
-    server.py                   ← MCP server (Claude Desktop, stdio transport)
-    tools/
-      write_vault.py            ← WebDAV write tool (placeholder — TBD)
-      read_vault.py             ← WebDAV read tool (placeholder — TBD)
+  api.py                        ← core vault API (read, write, patch, delete, list, duplicate check)
+  setup.py                      ← interactive setup: config, vault init, MCP registration
+  run_server.sh                 ← starts the MCP server
+  config.yml                    ← local config (not committed — see config.sample.yml)
   requirements.txt
   README.md
 ```
@@ -107,6 +108,7 @@ loci/
 ~/Nextcloud/loci/
   /notes/
   /articles/
+  /bookmarks/
   /conversations/
   /projects/
   /tasks/
@@ -116,16 +118,17 @@ loci/
   /topics/
   /references/
   /meta/
-    config.yml                  ← vault config (path, webdav url)
     type-dictionary.md          ← canonical type vocabulary
-    foreign-definitions.md      ← external source schemas
+    tag-dictionary.md           ← freeform tag vocabulary
+    field-dictionary.md         ← field definitions per type (authoritative schema)
+    foreign-definitions.md      ← external source schemas (Jira, calendar, etc.)
 ```
 
 ---
 
 ## Configuration
 
-Config lives at `~/.loci/config.yml` — separate from the repo so it is never committed to git.
+Config lives at `config.yml` in the project root — gitignored, never committed. See `config.sample.yml` for the template.
 
 ```yaml
 vault_root: ~/Nextcloud/loci
@@ -137,7 +140,7 @@ version: 1
 To reconfigure (e.g. on a new machine):
 
 ```bash
-python tools/vault_init.py --force
+python setup.py
 ```
 
 ---
@@ -169,18 +172,36 @@ Same natural language — but requires the MCP layer to be set up first (see `lo
 
 ## Roadmap
 
+### Done
 - [x] Core vault structure and schema
-- [x] Claude Code save skill
+- [x] Claude Code save skill (loci-save)
 - [x] vault_init, uid_generator, slug, write_file tools
-- [ ] SQLite graph indexer
-- [ ] Vector DB integration (ChromaDB or LanceDB)
-- [ ] Claude.ai MCP server (WebDAV)
-- [ ] Telegram bot (bidirectional ambient interface)
+- [x] MCP server — local stdio transport, Claude Desktop integration
+- [x] patch and delete operations
+- [x] Field dictionary — authoritative schema in vault meta, skill reads at runtime
+
+### Next
+- [ ] Graph layer — NetworkX in-memory for bootstrap phase; migrate to Kuzu once vault reaches meaningful size or traversal performance matters. SQLite considered and rejected: relational model creates unnecessary friction for multi-hop graph queries
+- [ ] Loci query skill — retrieve, relate, summarize across vault nodes
+- [ ] Testing suite — vault_init correctness, schema validation, graph indexing, skill classification and duplicate detection, ingestion edge cases
+
+### Later
+- [ ] Vector DB — deferred; at personal vault scale, pass summaries to the LLM for semantic retrieval. No embeddings needed until summaries exceed context window. Revisit ChromaDB / LanceDB / Qdrant at that point
+- [ ] Claude.ai MCP server (WebDAV transport)
 - [ ] Browser extension / bookmarklet
-- [ ] Loci query skill (retrieve, relate, summarize)
+- [ ] Mobile capture — iOS Share Sheet
+- [ ] Telegram bot — bidirectional ambient interface (inbound save + outbound reminders and suggestions)
+
+### Open questions
+- Relationship inference: at what vault size does automatic inference become useful vs. noisy?
+- Decay heuristics: what signals indicate a note is going stale?
+- Journal privacy: separate encryption layer for private entries?
+- Content editing model: edit in place, or new node linked via `supersedes` / `revisits`?
+- History tracking: implicit (git log) or explicit (encoded in graph)?
+- `reference` type placement: currently Structural, may belong under Content — revisit
 
 ---
 
 ## Design Decisions
 
-Key decisions are documented in `loci-requirements.md`. If you are contributing or extending Loci, read that first.
+Key decisions are documented in the Loci vault at `notes/2026-03-21-locus-requirements.md`. If you are contributing or extending Loci, read that first.
