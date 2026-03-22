@@ -12,6 +12,7 @@ Handles:
 import sys
 import yaml
 from datetime import datetime, timezone
+from typing import Optional
 from pathlib import Path
 
 # Import sibling tools
@@ -24,6 +25,7 @@ from vault_init import load_config
 TYPE_FOLDERS = {
     "note": "notes",
     "article": "articles",
+    "bookmark": "bookmarks",
     "conversation": "conversations",
     "project": "projects",
     "task": "tasks",
@@ -50,7 +52,7 @@ def resolve_vault_root() -> Path:
     return Path(config["vault_root"])
 
 
-def check_duplicate(vault_root: Path, type_folder: str, title: str, url: str = None) -> Path | None:
+def check_duplicate(vault_root: Path, type_folder: str, title: str, url: str = None) -> Optional[Path]:
     """
     Check for likely duplicate items in the type folder.
     Returns the path of a likely duplicate, or None.

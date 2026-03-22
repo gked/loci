@@ -90,8 +90,8 @@ loci/
     slug.py                     ← converts titles to filename slugs
     vault_init.py               ← first-run setup and vault scaffolding
     write_file.py               ← writes vault items to the filesystem
-  mcp/
-    server.py                   ← MCP server (placeholder — TBD)
+  loci_mcp/
+    server.py                   ← MCP server (Claude Desktop, stdio transport)
     tools/
       write_vault.py            ← WebDAV write tool (placeholder — TBD)
       read_vault.py             ← WebDAV read tool (placeholder — TBD)
@@ -163,7 +163,7 @@ Claude will:
 
 ### Saving content via Claude.ai
 
-Same natural language — but requires the MCP layer to be set up first (see `mcp/` folder). Until then, use Claude Code.
+Same natural language — but requires the MCP layer to be set up first (see `loci_mcp/` folder). Until then, use Claude Code.
 
 ---
 

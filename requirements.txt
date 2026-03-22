@@ -3,6 +3,8 @@
 # Core
 pyyaml>=6.0
 
-# MCP server (needed when mcp/server.py is implemented)
-# mcp>=1.0
-# httpx>=0.27
+# MCP server
+mcp[cli]>=1.0
+
+# URL metadata fetching (bookmarks)
+httpx>=0.27

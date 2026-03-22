@@ -12,6 +12,14 @@ status: draft | evergreen | archived
 
 ---
 
+## bookmark
+```yaml
+source_url: <URL>                        # required
+site_name: <from og:site_name or domain> # parsed from page
+```
+
+---
+
 ## article
 ```yaml
 source_url: <URL>

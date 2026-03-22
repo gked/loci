@@ -19,6 +19,7 @@ CONFIG_PATH = Path(__file__).parent.parent / "config.yml"
 VAULT_FOLDERS = [
     "notes",
     "articles",
+    "bookmarks",
     "conversations",
     "projects",
     "tasks",
@@ -36,7 +37,8 @@ TYPE_DICTIONARY = """\
 # The save skill reads this file at runtime.
 
 note         — freeform thought or observation
-article      — external content consumed (format carried by tag: #book, #article, #paper, #video)
+article      — external content consumed and captured (format carried by tag: #book, #article, #paper, #video)
+bookmark     — saved URL with light metadata only; use article when capturing full content
 conversation — saved LLM or human conversation (has turns, participants, model/person)
 project      — ongoing work with goals and milestones
 task         — discrete actionable item with due date and status
