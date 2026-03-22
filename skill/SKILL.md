@@ -67,7 +67,7 @@ Before doing anything else, check for config and tools. Follow this decision tre
 **Check 1: Is config present?**
 
 ```
-Look for: ~/.loci/config.yml
+Look for: <project_root>/config.yml
 ```
 
 If found → load it, extract `vault_root`, proceed to Check 2.
@@ -143,15 +143,15 @@ python tools/vault_init.py
 ```
 The script will prompt for the same values — pass the answers from C and D.
 
-Alternatively, write config directly:
-```bash
-mkdir -p ~/.loci
-cat > ~/.loci/config.yml << EOF
+Alternatively, write config directly to <project_root>/config.yml:
+```yaml
 vault_root: <nextcloud_root>/<vault_name>
 webdav_url: null
-created_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+created_at: <ISO timestamp>
 version: 1
-EOF
+```
+Then run:
+```bash
 python tools/vault_init.py
 ```
 
