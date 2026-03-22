@@ -52,7 +52,7 @@ folder placement and frontmatter fields.
 
 **Subtype tags to apply automatically:**
 - `article` → add format tag: #book, #paper, #video, or #article
-- `entity` → add subtype tag: #person, #company, #organization, #institution
+- `entity` → set `subtype` field to person | company | organization | institution — do NOT add as a tag
 - `procedure` → add domain tag: #recipe, #workout, #protocol, #playbook, #tutorial
 
 ---
