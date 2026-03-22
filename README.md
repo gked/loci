@@ -18,7 +18,8 @@ Every piece of content you save becomes a structured node with:
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.13+
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
 - Nextcloud (self-hosted or cloud) with the desktop client syncing to a local folder
 - Claude Code (for local use) or Claude.ai with the Loci skill installed
 
@@ -36,7 +37,7 @@ cd loci
 ### 2. Install dependencies
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ### 3. Initialize the vault
@@ -96,7 +97,8 @@ loci/
   setup.py                      ← interactive setup: config, vault init, MCP registration
   run_server.sh                 ← starts the MCP server
   config.yml                    ← local config (not committed — see config.sample.yml)
-  requirements.txt
+  pyproject.toml                ← project metadata and dependencies
+  uv.lock                       ← locked dependency versions
   README.md
 ```
 

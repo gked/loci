@@ -46,8 +46,8 @@ def register_mcp(config_path: Path, label: str) -> None:
 
     config.setdefault("mcpServers", {})
     config["mcpServers"]["loci"] = {
-        "command": sys.executable,
-        "args": [str(MCP_SERVER)],
+        "command": "uv",
+        "args": ["--directory", str(PROJECT_ROOT), "run", "python", str(MCP_SERVER)],
     }
 
     config_path.parent.mkdir(parents=True, exist_ok=True)

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Loci MCP server launcher — uses the project venv.
-# Run `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` to set up.
+# Loci MCP server launcher — uses uv to manage the project venv.
+# Run `uv sync` to set up dependencies.
 cd "$(dirname "$0")"
-exec .venv/bin/python3 loci_mcp/server.py
+exec uv run python loci_mcp/server.py
