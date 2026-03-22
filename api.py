@@ -58,7 +58,6 @@ def save(
     relations: list = None,
     references: list = None,
     extra_fields: dict = None,
-    date: str = None,
 ) -> dict:
     """
     Write a new item to the vault. Returns {uid, path, type, title}.
@@ -80,7 +79,6 @@ def save(
             relations=relations,
             references=references,
             extra_fields=extra_fields,
-            date=date,
             skip_duplicate_check=True,
         )
 
@@ -163,6 +161,7 @@ def read_meta(file: str) -> str:
     file_map = {
         "type-dictionary":    vault_root / "meta" / "type-dictionary.md",
         "tag-dictionary":     vault_root / "meta" / "tag-dictionary.md",
+        "field-dictionary":   vault_root / "meta" / "field-dictionary.md",
         "foreign-definitions": vault_root / "meta" / "foreign-definitions.md",
         "config":             vault_root / "meta" / "config.yml",
     }

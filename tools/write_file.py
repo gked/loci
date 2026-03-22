@@ -88,7 +88,6 @@ def write_item(
     relations: list = None,
     references: list = None,
     extra_fields: dict = None,
-    date: str = None,
     skip_duplicate_check: bool = False,
 ) -> dict:
     """
@@ -105,7 +104,6 @@ def write_item(
         relations: List of {uid, type} dicts
         references: List of {url, title, source_type} dicts
         extra_fields: Type-specific frontmatter fields
-        date: Override date string YYYY-MM-DD (default: today)
         skip_duplicate_check: Skip duplicate detection
 
     Returns:
@@ -118,10 +116,6 @@ def write_item(
     type_folder = TYPE_FOLDERS[type]
     folder_path = vault_root / type_folder
     folder_path.mkdir(parents=True, exist_ok=True)
-
-    # Date
-    if not date:
-        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # Duplicate check
     if not skip_duplicate_check:
@@ -139,7 +133,7 @@ def write_item(
 
     # Generate UID and filename
     uid = generate_uid()
-    fname = make_filename(title, date)
+    fname = make_filename(title)
     file_path = folder_path / fname
 
     # Build frontmatter

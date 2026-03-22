@@ -59,7 +59,6 @@ def write_vault(
     relations: list[dict] = None,
     references: list[dict] = None,
     extra_fields: dict = None,
-    date: str = None,
 ) -> dict:
     """
     Write a new item to the Loci vault. Returns {uid, path, type, title}.
@@ -79,12 +78,11 @@ def write_vault(
         relations: List of {uid: str, type: str} dicts
         references: List of {url: str, title: str, source_type: str} dicts
         extra_fields: Type-specific frontmatter fields
-        date: Override date YYYY-MM-DD (default: today)
     """
     return loci.save(
         type=type, title=title, body=body, tags=tags, domains=domains,
         summary=summary, author=author, relations=relations,
-        references=references, extra_fields=extra_fields, date=date,
+        references=references, extra_fields=extra_fields,
     )
 
 
@@ -94,7 +92,7 @@ def delete_vault(path: str) -> dict:
     Delete a vault item permanently.
 
     Args:
-        path: Absolute path or path relative to vault_root (e.g. "notes/2026-03-21-foo.md")
+        path: Absolute path or path relative to vault_root (e.g. "notes/my-note.md")
 
     Always confirm with the user before calling this. Deletion is irreversible.
     """
@@ -119,7 +117,7 @@ def patch_vault(path: str, updates: dict, body: str = None) -> dict:
       3. Call patch_vault(path, updates={...}) with only the fields that changed.
 
     Args:
-        path: Absolute path or path relative to vault_root (e.g. "notes/2026-03-21-foo.md")
+        path: Absolute path or path relative to vault_root (e.g. "notes/my-note.md")
         updates: Dict of frontmatter fields to overwrite. Pass complete new values.
                  Common uses:
                    relations: [{uid: "a1b2c3d4", type: "belongs-to"}, ...]
@@ -138,7 +136,7 @@ def patch_vault(path: str, updates: dict, body: str = None) -> dict:
 def read_vault(path: str) -> str:
     """
     Read a vault file. Accepts an absolute path or a path relative to vault_root.
-    Examples: "notes/2026-03-21-my-note.md"  or  "/Users/me/Nextcloud/loci/notes/..."
+    Examples: "notes/my-note.md"  or  "/Users/me/Nextcloud/loci/notes/..."
     """
     try:
         return loci.get(path)
@@ -159,7 +157,7 @@ def list_vault(type: str = None) -> dict:
 def read_meta(file: str) -> str:
     """
     Read a vault meta file.
-    file: type-dictionary | tag-dictionary | foreign-definitions | config
+    file: type-dictionary | tag-dictionary | field-dictionary | foreign-definitions | config
     """
     try:
         return loci.read_meta(file)

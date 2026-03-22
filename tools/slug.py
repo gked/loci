@@ -52,27 +52,25 @@ def slugify(title: str, max_length: int = 60) -> str:
     return slug
 
 
-def filename(title: str, date: str) -> str:
+def filename(title: str) -> str:
     """
-    Generate a full Loci filename from title and date.
+    Generate a full Loci filename from title.
 
     Args:
         title: The item title
-        date: Date string in YYYY-MM-DD format
 
     Returns:
-        e.g. "2026-03-21-why-i-left-twitter.md"
+        e.g. "why-i-left-twitter.md"
     """
-    return f"{date}-{slugify(title)}.md"
+    return f"{slugify(title)}.md"
 
 
 if __name__ == "__main__":
-    # Usage: python slug.py "Why I Left Twitter" 2026-03-21
-    # Output: 2026-03-21-why-i-left-twitter.md
-    if len(sys.argv) < 3:
-        print("Usage: python slug.py <title> <YYYY-MM-DD>")
+    # Usage: python slug.py "Why I Left Twitter"
+    # Output: why-i-left-twitter.md
+    if len(sys.argv) < 2:
+        print("Usage: python slug.py <title>")
         sys.exit(1)
 
     title = sys.argv[1]
-    date = sys.argv[2]
-    print(filename(title, date))
+    print(filename(title))

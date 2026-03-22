@@ -71,7 +71,7 @@ Save this as a note: Loci is now set up and working.
 
 Claude should create a file at:
 ```
-~/Nextcloud/loci/notes/YYYY-MM-DD-loci-is-now-set-up-and-working.md
+~/Nextcloud/loci/notes/loci-is-now-set-up-and-working.md
 ```
 
 ---
