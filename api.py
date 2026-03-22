@@ -21,6 +21,7 @@ from uid_generator import generate_uid as _generate_uid
 from vault_init import load_config
 from write_file import (
     write_item as _write_item,
+    patch_item as _patch_item,
     check_duplicate as _check_duplicate,
     TYPE_FOLDERS,
 )
@@ -82,6 +83,34 @@ def save(
             date=date,
             skip_duplicate_check=True,
         )
+
+
+def delete(path: str) -> dict:
+    """
+    Delete a vault item. Accepts an absolute path or a path relative to vault_root.
+    Returns {deleted: True, path: str} or raises FileNotFoundError.
+    """
+    p = Path(path)
+    if not p.is_absolute():
+        p = _vault_root() / path
+    if not p.exists():
+        raise FileNotFoundError(f"Vault file not found: {p}")
+    p.unlink()
+    return {"deleted": True, "path": str(p)}
+
+
+def patch(path: str, updates: dict, body: str = None) -> dict:
+    """
+    Patch frontmatter fields in an existing vault item.
+    `updates` is merged into the existing frontmatter; `updated_at` is always bumped.
+    If `body` is provided, it replaces the existing body.
+    Accepts an absolute path or a path relative to vault_root.
+    Returns {uid, path, type, title}.
+    """
+    p = Path(path)
+    if not p.is_absolute():
+        p = _vault_root() / path
+    return _patch_item(str(p), updates, body)
 
 
 def check_duplicate(type: str, title: str, url: str = None) -> dict:

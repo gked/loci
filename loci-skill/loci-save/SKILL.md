@@ -197,7 +197,61 @@ and no schema exists yet for that source:
 
 ---
 
+---
+
+## Update Workflow
+
+Use this workflow when the user wants to correct or extend an **existing** vault item
+rather than create a new one.
+
+**Triggers:** "update X", "add a link to Y", "fix the relations on Z", "mark that task
+done", "tag that note with X", or when Step 4 (duplicate check) surfaces an existing
+item and the user chooses to update it.
+
+### U1 — Identify the target file
+
+Call `loci__list_vault(type=<type>)` to find candidates, then
+`loci__read_vault(path=<path>)` to read the file and inspect its current frontmatter.
+
+### U2 — Determine what changes
+
+Parse the existing frontmatter values for every field the user wants to change.
+Construct the **complete new value** for each field — patch replaces the whole
+field, it does not append.
+
+Example — adding a relation:
+```
+existing relations: [{uid: "a1b2c3d4", type: "belongs-to"}]
+user wants to add:  {uid: "f9e8d7c6", type: "influences"}
+new relations list: [{uid: "a1b2c3d4", type: "belongs-to"}, {uid: "f9e8d7c6", type: "influences"}]
+```
+
+### U3 — Confirm with the user
+
+Show a brief summary of what will change before patching:
+```
+Updating: notes/2026-03-21-my-note.md
+  relations: adding link to [Project X] (f9e8d7c6)
+Proceed? [yes / no]
+```
+
+### U4 — Patch the file
+
+Call `loci__patch_vault(path=<path>, updates={<only changed fields>})`.
+
+Confirm to the user:
+```
+Updated: <path>
+Changed: <list of field names>
+```
+
+---
+
 ## Edge Cases
+
+**Deleting an item:** call `loci__list_vault` to identify the file, read it back to confirm
+it's the right one, then ask the user explicitly before calling `loci__delete_vault`.
+Deletion is permanent — there is no undo.
 
 **No clear title:** generate from first sentence or ask. Never leave blank.
 

@@ -89,6 +89,52 @@ def write_vault(
 
 
 @mcp.tool()
+def delete_vault(path: str) -> dict:
+    """
+    Delete a vault item permanently.
+
+    Args:
+        path: Absolute path or path relative to vault_root (e.g. "notes/2026-03-21-foo.md")
+
+    Always confirm with the user before calling this. Deletion is irreversible.
+    """
+    try:
+        return loci.delete(path)
+    except FileNotFoundError as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def patch_vault(path: str, updates: dict, body: str = None) -> dict:
+    """
+    Patch frontmatter fields on an existing vault item. updated_at is always bumped.
+
+    Use this to correct or extend an existing item — e.g. add/remove relations,
+    update tags, change status — without rewriting the whole file.
+
+    Workflow:
+      1. Call read_vault(path) to get the current content.
+      2. Parse the fields you want to change and construct their new values in full
+         (e.g. the complete new relations list, not just the items to add).
+      3. Call patch_vault(path, updates={...}) with only the fields that changed.
+
+    Args:
+        path: Absolute path or path relative to vault_root (e.g. "notes/2026-03-21-foo.md")
+        updates: Dict of frontmatter fields to overwrite. Pass complete new values.
+                 Common uses:
+                   relations: [{uid: "a1b2c3d4", type: "belongs-to"}, ...]
+                   tags: ["tag-a", "tag-b"]
+                   status: "done"
+                   summary: "Updated summary."
+        body: If provided, replaces the full body text.
+    """
+    try:
+        return loci.patch(path, updates, body)
+    except (FileNotFoundError, ValueError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
 def read_vault(path: str) -> str:
     """
     Read a vault file. Accepts an absolute path or a path relative to vault_root.

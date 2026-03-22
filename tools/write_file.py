@@ -183,6 +183,55 @@ def write_item(
     return result
 
 
+def patch_item(path: str, updates: dict, body: str = None) -> dict:
+    """
+    Patch frontmatter fields in an existing vault item.
+
+    Args:
+        path: Absolute path to the vault file.
+        updates: Frontmatter fields to merge into the existing frontmatter.
+                 Pass the complete new value for any field you want to change
+                 (e.g. the full new relations list, not just the delta).
+        body: If provided, replaces the existing body text.
+
+    Returns:
+        Dict with {uid, path, type, title}.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Vault file not found: {p}")
+
+    raw = p.read_text(encoding="utf-8")
+
+    # Split frontmatter from body
+    if raw.startswith("---"):
+        parts = raw.split("---", 2)
+        if len(parts) >= 3:
+            fm = yaml.safe_load(parts[1]) or {}
+            existing_body = parts[2].lstrip("\n")
+        else:
+            fm = {}
+            existing_body = raw
+    else:
+        fm = {}
+        existing_body = raw
+
+    # Merge updates
+    fm.update(updates)
+    fm["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    final_body = body if body is not None else existing_body
+    content = serialize_frontmatter(fm) + "\n" + final_body
+    p.write_text(content, encoding="utf-8")
+
+    return {
+        "uid": fm.get("uid"),
+        "path": str(p),
+        "type": fm.get("type"),
+        "title": fm.get("title"),
+    }
+
+
 if __name__ == "__main__":
     # Quick smoke test
     result = write_item(
