@@ -1,6 +1,6 @@
 """
 mcp/server.py
-Locus MCP server — exposes vault tools to Claude.ai via the MCP protocol.
+Loci MCP server — exposes vault tools to Claude.ai via the MCP protocol.
 
 Status: Placeholder — implement when WebDAV credentials and MCP setup are ready.
 
@@ -16,7 +16,7 @@ Dependencies:
 - pyyaml
 
 Configuration:
-- Reads vault_root and webdav_url from ~/.locus/config.yml
+- Reads vault_root and webdav_url from ~/.loci/config.yml
 """
 
 # TODO: implement when MCP layer is ready

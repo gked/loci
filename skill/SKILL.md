@@ -1,8 +1,8 @@
 ---
-name: locus-save
+name: loci-save
 description: >
   Save any piece of content — a note, article, conversation, task, project,
-  event, entity, procedure, topic, or reference — into the Locus personal
+  event, entity, procedure, topic, or reference — into the Loci personal
   knowledge vault. Use this skill whenever the user says "save this", "add
   this to my vault", "capture this", "remember this", "log this", "store
   this", or any similar phrasing. Also use when the user shares a URL, a
@@ -10,9 +10,9 @@ description: >
   Triggers for both new content and updates to existing vault items.
 ---
 
-# Locus Save Skill
+# Loci Save Skill
 
-Saves content to the Locus vault as a structured Markdown file with YAML
+Saves content to the Loci vault as a structured Markdown file with YAML
 frontmatter. Works in both Claude.ai (via write abstraction layer) and
 Claude Code (direct filesystem write to Nextcloud sync folder).
 
@@ -24,13 +24,13 @@ Two distinct file locations are used by this skill. Do not confuse them.
 
 **Skill bundle** (read-only, ships with the skill):
 ```
-locus-save-skill/
+loci-save-skill/
   SKILL.md
   references/
     type-fields.md       <- type-specific frontmatter fields (Claude's instructions)
 ```
 
-**Locus vault** (read/write, lives in Nextcloud):
+**Loci vault** (read/write, lives in Nextcloud):
 ```
 <vault_root>/
   /notes/
@@ -67,7 +67,7 @@ Before doing anything else, check for config and tools. Follow this decision tre
 **Check 1: Is config present?**
 
 ```
-Look for: ~/.locus/config.yml
+Look for: ~/.loci/config.yml
 ```
 
 If found → load it, extract `vault_root`, proceed to Check 2.
@@ -94,7 +94,7 @@ Then proceed to Step 1.
 
 Tell the user:
 ```
-Locus is not set up yet. I'll walk you through it now.
+Loci is not set up yet. I'll walk you through it now.
 This will take about a minute.
 ```
 
@@ -106,10 +106,10 @@ ls tools/vault_init.py
 ```
 If file not found:
 ```
-I can't find the Locus tools. Please clone the repo first:
+I can't find the Loci tools. Please clone the repo first:
 
-  git clone https://github.com/gked/locus.git
-  cd locus
+  git clone https://github.com/gked/loci.git
+  cd loci
 
 Then try again.
 ```
@@ -133,9 +133,9 @@ Wait for response. Use their answer as `nextcloud_root`.
 Ask the user:
 ```
 What should the vault folder be called inside Nextcloud?
-Press Enter to use the default: locus
+Press Enter to use the default: loci
 ```
-Wait for response. Default to `locus` if empty.
+Wait for response. Default to `loci` if empty.
 
 **E. Write config and initialize vault**
 ```bash
@@ -145,8 +145,8 @@ The script will prompt for the same values — pass the answers from C and D.
 
 Alternatively, write config directly:
 ```bash
-mkdir -p ~/.locus
-cat > ~/.locus/config.yml << EOF
+mkdir -p ~/.loci
+cat > ~/.loci/config.yml << EOF
 vault_root: <nextcloud_root>/<vault_name>
 webdav_url: null
 created_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -157,11 +157,11 @@ python tools/vault_init.py
 
 **F. Confirm setup complete**
 ```
-Locus is ready.
+Loci is ready.
 Vault created at: <vault_root>
 
 You can now save content. Try:
-  "Save this as a note: Locus is set up and working."
+  "Save this as a note: Loci is set up and working."
 ```
 
 ---
@@ -199,7 +199,7 @@ folder placement and frontmatter fields.
 
 Generate a complete YAML frontmatter block using the base schema below.
 For type-specific fields, read from the skill bundle at:
-`locus-save-skill/references/type-fields.md`
+`loci-save-skill/references/type-fields.md`
 
 **Base schema (all types):**
 ```yaml
@@ -265,7 +265,7 @@ filename: YYYY-MM-DD-slugified-title.md
   - example: 2026-03-21-why-i-left-twitter.md
 
 full path: <vault_root>/<type-folder>/<filename>
-  - example: ~/Nextcloud/locus/notes/2026-03-21-why-i-left-twitter.md
+  - example: ~/Nextcloud/loci/notes/2026-03-21-why-i-left-twitter.md
 ```
 
 ---
@@ -281,7 +281,7 @@ tags that should be added. Handle each category below.
 #### 4a — Projects
 
 Scan for named projects in the content or user's framing (e.g. "this is for the
-locus project", "part of X initiative").
+loci project", "part of X initiative").
 
 1. Check if a matching project node exists in `<vault_root>/projects/`
 2. Present suggestion:
@@ -405,7 +405,7 @@ folder placement and fields.
 ## Reference Files
 
 **Skill bundle (read-only, always available):**
-- `locus-save-skill/references/type-fields.md` — type-specific frontmatter fields
+- `loci-save-skill/references/type-fields.md` — type-specific frontmatter fields
 
 **Vault meta (read/write at runtime):**
 - `<vault_root>/meta/config.yml` — vault path and connection config

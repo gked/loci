@@ -1,6 +1,6 @@
 """
 write_file.py
-Writes a Locus vault item to the filesystem.
+Writes a Loci vault item to the filesystem.
 
 Handles:
 - Frontmatter serialization
@@ -45,7 +45,7 @@ def resolve_vault_root() -> Path:
     config = load_config()
     if not config:
         raise RuntimeError(
-            "Locus is not configured. Run: python tools/vault_init.py"
+            "Loci is not configured. Run: python tools/vault_init.py"
         )
     return Path(config["vault_root"])
 
@@ -90,10 +90,10 @@ def write_item(
     skip_duplicate_check: bool = False,
 ) -> dict:
     """
-    Write a Locus vault item to the filesystem.
+    Write a Loci vault item to the filesystem.
 
     Args:
-        type: One of the canonical Locus types
+        type: One of the canonical Loci types
         title: Item title
         body: Main content body (markdown)
         tags: List of freeform tags

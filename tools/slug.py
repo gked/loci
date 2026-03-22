@@ -1,6 +1,6 @@
 """
 slug.py
-Converts a title string into a filesystem-safe slug for Locus filenames.
+Converts a title string into a filesystem-safe slug for Loci filenames.
 
 Rules:
 - Lowercase
@@ -54,7 +54,7 @@ def slugify(title: str, max_length: int = 60) -> str:
 
 def filename(title: str, date: str) -> str:
     """
-    Generate a full Locus filename from title and date.
+    Generate a full Loci filename from title and date.
 
     Args:
         title: The item title

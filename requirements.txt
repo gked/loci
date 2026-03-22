@@ -1,4 +1,4 @@
-# Locus dependencies
+# Loci dependencies
 
 # Core
 pyyaml>=6.0

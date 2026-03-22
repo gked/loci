@@ -1,9 +1,9 @@
 """
 vault_init.py
-Initializes the Locus vault folder structure and config file.
+Initializes the Loci vault folder structure and config file.
 
 Run this once on first setup, or to repair a missing vault structure.
-Config is stored at ~/.locus/config.yml
+Config is stored at <project_root>/config.yml
 """
 
 import os
@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 
-CONFIG_PATH = Path.home() / ".locus" / "config.yml"
+CONFIG_PATH = Path(__file__).parent.parent / "config.yml"
 
 VAULT_FOLDERS = [
     "notes",
@@ -31,7 +31,7 @@ VAULT_FOLDERS = [
 ]
 
 TYPE_DICTIONARY = """\
-# Locus Type Dictionary
+# Loci Type Dictionary
 # Canonical type vocabulary — edit with care.
 # The save skill reads this file at runtime.
 
@@ -48,7 +48,7 @@ reference    — pointer to external content (hybrid ownership model)
 """
 
 TAG_DICTIONARY = """\
-# Locus Tag Dictionary
+# Loci Tag Dictionary
 # Freeform tag vocabulary — consulted by the save skill at ingestion.
 # Purpose: keep tags consistent across items saved over time.
 # When tagging, prefer an existing tag over a synonym.
@@ -59,7 +59,7 @@ TAG_DICTIONARY = """\
 
 ## Tags
 
-locus
+loci
 requirements
 design
 pkm
@@ -68,7 +68,7 @@ architecture
 """
 
 FOREIGN_DEFINITIONS = """\
-# Locus Foreign Definitions
+# Loci Foreign Definitions
 # Metadata schemas for external content sources.
 # Added automatically by the save skill on first encounter with a new source.
 
@@ -94,8 +94,7 @@ def load_config() -> Optional[dict]:
 
 
 def save_config(config: dict) -> None:
-    """Save config to ~/.locus/config.yml"""
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    """Save config to <project_root>/config.yml"""
     with open(CONFIG_PATH, "w") as f:
         yaml.dump(config, f, default_flow_style=False)
     print(f"Config saved to {CONFIG_PATH}")
@@ -129,7 +128,7 @@ def create_vault_structure(vault_root: Path) -> None:
 
 def setup_interactive() -> dict:
     """Interactive first-run setup flow."""
-    print("\nLocus is not configured yet. Let's set it up.\n")
+    print("\nLoci is not configured yet. Let's set it up.\n")
 
     # Nextcloud location
     default_nc = Path.home() / "Nextcloud"
@@ -141,9 +140,9 @@ def setup_interactive() -> dict:
         nextcloud_root.mkdir(parents=True)
 
     # Vault folder name
-    vault_name = input("Vault folder name inside Nextcloud (default: locus): ").strip()
+    vault_name = input("Vault folder name inside Nextcloud (default: loci): ").strip()
     if not vault_name:
-        vault_name = "locus"
+        vault_name = "loci"
 
     vault_root = nextcloud_root / vault_name
 
@@ -159,7 +158,7 @@ def setup_interactive() -> dict:
 
 def init(force: bool = False) -> dict:
     """
-    Initialize Locus. Returns the active config.
+    Initialize Loci. Returns the active config.
 
     Args:
         force: If True, re-run setup even if config exists.
@@ -167,7 +166,7 @@ def init(force: bool = False) -> dict:
     existing = load_config()
 
     if existing and not force:
-        print(f"Locus already configured. Vault root: {existing['vault_root']}")
+        print(f"Loci already configured. Vault root: {existing['vault_root']}")
         vault_root = Path(existing["vault_root"])
         print("Ensuring vault structure is complete...")
         create_vault_structure(vault_root)
@@ -181,7 +180,7 @@ def init(force: bool = False) -> dict:
     print(f"\nCreating vault structure at {vault_root}...")
     create_vault_structure(vault_root)
 
-    print(f"\nLocus is ready. Vault at: {vault_root}\n")
+    print(f"\nLoci is ready. Vault at: {vault_root}\n")
     return config
 
 

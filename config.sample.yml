@@ -1,8 +1,8 @@
-# Locus Configuration Sample
-# Copy this file to ~/.locus/config.yml and update the values.
+# Loci Configuration Sample
+# Copy this file to ~/.loci/config.yml and update the values.
 # Do NOT commit config.yml to git — it contains machine-specific paths.
 
-vault_root: ~/Nextcloud/locus    # absolute path to your vault root
+vault_root: ~/Nextcloud/loci    # absolute path to your vault root
 webdav_url: null                 # WebDAV endpoint — TBD when Claude.ai MCP is built
 created_at: 2026-03-21T14:32:00Z
 version: 1

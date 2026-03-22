@@ -1,7 +1,7 @@
 """
 uid_generator.py
 Generates a stable 8-character hex UID using UUID4.
-Used by the Locus save skill to assign a unique identifier to each vault item.
+Used by the Loci save skill to assign a unique identifier to each vault item.
 """
 
 import uuid
