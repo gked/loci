@@ -20,6 +20,7 @@ Registration (~/Library/Application Support/Claude/claude_desktop_config.json):
 Restart Claude Desktop after editing the config.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -210,4 +211,5 @@ def write_meta(file: str, content: str) -> str:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    transport = os.environ.get("LOCI_TRANSPORT", "stdio")
+    mcp.run(transport=transport)

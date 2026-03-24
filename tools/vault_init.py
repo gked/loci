@@ -88,7 +88,10 @@ FOREIGN_DEFINITIONS = """\
 
 
 def load_config() -> Optional[dict]:
-    """Load existing config if present."""
+    """Load existing config if present. LOCI_VAULT_ROOT env var takes precedence."""
+    vault_root_env = os.environ.get("LOCI_VAULT_ROOT")
+    if vault_root_env:
+        return {"vault_root": vault_root_env}
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH) as f:
             return yaml.safe_load(f)
@@ -132,25 +135,20 @@ def setup_interactive() -> dict:
     """Interactive first-run setup flow."""
     print("\nLoci is not configured yet. Let's set it up.\n")
 
-    # Nextcloud location
-    default_nc = Path.home() / "Nextcloud"
-    nc_input = input(f"Where is your Nextcloud folder? (default: {default_nc}): ").strip()
-    nextcloud_root = Path(nc_input) if nc_input else default_nc
+    default_vault = Path(__file__).parent.parent / "vault"
+    vault_input = input(f"Where should the vault live? (default: {default_vault}): ").strip()
+    vault_root = Path(vault_input) if vault_input else default_vault
 
-    if not nextcloud_root.exists():
-        print(f"Warning: {nextcloud_root} does not exist. Creating it.")
-        nextcloud_root.mkdir(parents=True)
-
-    # Vault folder name
-    vault_name = input("Vault folder name inside Nextcloud (default: loci): ").strip()
-    if not vault_name:
-        vault_name = "loci"
-
-    vault_root = nextcloud_root / vault_name
+    default_remote = ""
+    remote = input("rclone remote name for sync (e.g. nextcloud, dropbox — leave blank to skip): ").strip()
+    remote_path = ""
+    if remote:
+        remote_path = input("Path on the remote (default: loci): ").strip() or "loci"
 
     config = {
         "vault_root": str(vault_root),
-        "webdav_url": None,  # TBD when MCP layer is built
+        "sync_remote": remote or None,
+        "sync_remote_path": remote_path or "loci",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "version": 1,
     }

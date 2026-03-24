@@ -3,10 +3,11 @@ setup.py
 One-time setup for Loci. Safe to re-run — all steps are idempotent.
 
 What this does:
-  1. Initializes the vault structure
-  2. Registers the Loci MCP server in Claude Code  (~/.claude/settings.json)
-  3. Registers the Loci MCP server in Claude Desktop (~/Library/Application Support/Claude/claude_desktop_config.json)
-  4. Creates symlink ~/.claude/skills/loci-save/ → skill/
+  1. Installs dependencies via uv
+  2. Initializes the vault structure
+  3. Registers the Loci MCP server in Claude Code  (~/.claude/settings.json)
+  4. Registers the Loci MCP server in Claude Desktop (~/Library/Application Support/Claude/claude_desktop_config.json)
+  5. Creates symlink ~/.claude/skills/loci-save/ → skill/
 
 Usage:
   python setup.py
@@ -14,15 +15,19 @@ Usage:
 
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
+
+# Install dependencies before any local imports that require them
+subprocess.run(["uv", "sync"], cwd=Path(__file__).parent, check=True)
 
 # Add tools/ to path
 sys.path.insert(0, str(Path(__file__).parent / "tools"))
 from vault_init import init as vault_init
 
 PROJECT_ROOT  = Path(__file__).parent.resolve()
-MCP_SERVER    = PROJECT_ROOT / "mcp" / "server.py"
+MCP_SERVER    = PROJECT_ROOT / "loci_mcp" / "server.py"
 SKILL_DIR     = PROJECT_ROOT / "loci-skill" / "loci-save"
 
 CLAUDE_CODE_SETTINGS   = Path.home() / ".claude" / "settings.json"
@@ -44,10 +49,11 @@ def register_mcp(config_path: Path, label: str) -> None:
             print(f"  Warning: {config_path} is not valid JSON — skipping {label}.")
             return
 
+    uv = shutil.which("uv") or str(Path.home() / ".local" / "bin" / "uv")
     config.setdefault("mcpServers", {})
     config["mcpServers"]["loci"] = {
-        "command": "uv",
-        "args": ["--directory", str(PROJECT_ROOT), "run", "python", str(MCP_SERVER)],
+        "command": uv,
+        "args": ["run", "--directory", str(PROJECT_ROOT), "python", "loci_mcp/server.py"],
     }
 
     config_path.parent.mkdir(parents=True, exist_ok=True)

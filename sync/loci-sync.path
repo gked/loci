@@ -1,0 +1,13 @@
+# systemd path unit — watches vault/ for changes and triggers loci-sync.service.
+# Install: copy to /etc/systemd/system/, then:
+#   systemctl enable --now loci-sync.path
+
+[Unit]
+Description=Watch Loci vault for changes
+
+[Path]
+PathChanged=/path/to/loci/vault
+Unit=loci-sync.service
+
+[Install]
+WantedBy=multi-user.target

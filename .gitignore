@@ -1,4 +1,5 @@
 config.yml
+vault/
 __pycache__/
 *.pyc
 .DS_Store

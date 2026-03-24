@@ -1,0 +1,13 @@
+services:
+  loci:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ${VAULT_PATH:-../vault}:/vault
+    environment:
+      - LOCI_TRANSPORT=sse
+      - LOCI_VAULT_ROOT=/vault
+    restart: unless-stopped

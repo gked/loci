@@ -1,0 +1,15 @@
+[Unit]
+Description=Loci MCP Server (SSE)
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/path/to/loci
+Environment=LOCI_TRANSPORT=sse
+ExecStart=/path/to/loci/.venv/bin/python loci_mcp/server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

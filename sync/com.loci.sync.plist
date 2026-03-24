@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- launchd plist for macOS — watches vault/ and runs rclone push on changes.
+     Install: cp com.loci.sync.plist ~/Library/LaunchAgents/
+              launchctl load ~/Library/LaunchAgents/com.loci.sync.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.loci.sync</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/loci/sync/sync.sh</string>
+        <string>push</string>
+    </array>
+    <key>WatchPaths</key>
+    <array>
+        <string>/path/to/loci/vault</string>
+    </array>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/tmp/loci-sync.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/loci-sync.log</string>
+</dict>
+</plist>
