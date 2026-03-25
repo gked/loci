@@ -212,4 +212,8 @@ def write_meta(file: str, content: str) -> str:
 
 if __name__ == "__main__":
     transport = os.environ.get("LOCI_TRANSPORT", "stdio")
-    mcp.run(transport=transport)
+    if transport == "sse":
+        import uvicorn
+        uvicorn.run(mcp.sse_app(), host="0.0.0.0", port=8000)
+    else:
+        mcp.run(transport=transport)

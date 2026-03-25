@@ -16,16 +16,9 @@ Every piece of content you save becomes a structured node with:
 
 ---
 
-## Requirements
+## Setup — Docker (recommended)
 
-- Python 3.13+
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
-- [rclone](https://rclone.org/) (for vault sync)
-- Claude Code (for local use) or Claude.ai (remote, requires deployment)
-
----
-
-## Installation
+The easiest way to run Loci. Docker handles dependencies and sync inside the container.
 
 ### 1. Clone the repo
 
@@ -34,45 +27,102 @@ git clone https://github.com/you/loci.git
 cd loci
 ```
 
-### 2. Install dependencies
+### 2. Run the setup script
 
 ```bash
-uv sync
+python setup_docker.py
 ```
 
-### 3. Initialize the vault
+The script will:
+- Check for Docker or OrbStack — and offer to install one via Homebrew if neither is found
+- Ask where the vault should live
+- Optionally configure rclone sync (Nextcloud, Dropbox, Google Drive, S3, and more)
+- Build the image and start the container
+- Verify the server is responding
+
+### 3. Restart Claude Code
+
+The setup script installs the skill automatically. Restart Claude Code to pick it up.
+
+### 4. Test it
+
+Open Claude Code and say:
+
+```
+Save this as a note: Loci is now set up and working.
+```
+
+### How Docker and the vault interact
+
+The vault is **not inside the container**. Docker runs the MCP server process and the rclone sync loop — your vault data lives on the host filesystem and is mounted into the container at `/vault` at runtime. This means:
+
+- Vault data persists across container restarts and rebuilds
+- You can stop, update, or replace the container without touching your notes
+- The same vault can be used by the local stdio server (Claude Code / Claude Desktop) and the Docker SSE server simultaneously
+
+Your rclone config is mounted in read-only from the host — credentials are never baked into the image.
+
+### Managing the container
+
+**Terminal:**
+
+```bash
+# Restart (no rebuild)
+docker compose -f deploy/docker-compose.yml restart
+
+# Rebuild after code changes
+VAULT_PATH=/absolute/path/to/vault docker compose -f deploy/docker-compose.yml up -d --build
+
+# Stop
+docker compose -f deploy/docker-compose.yml down
+
+# View logs
+docker compose -f deploy/docker-compose.yml logs -f
+```
+
+**OrbStack:**
+
+Open the OrbStack app — the `loci` container will appear in the sidebar. From there you can restart, stop, or view logs with a single click without needing the terminal.
+
+---
+
+## Setup — Local (Python)
+
+Run the MCP server directly on your machine without Docker. Use this if you want to run Loci locally with Claude Code or Claude Desktop only.
+
+**Requires:** Python 3.13+, [uv](https://docs.astral.sh/uv/), [rclone](https://rclone.org/)
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/you/loci.git
+cd loci
+```
+
+### 2. Initialize
 
 ```bash
 python setup.py
 ```
 
 This will:
+- Install dependencies via uv
 - Ask where the vault should live (default: `vault/` inside the project)
 - Ask which rclone remote to use for sync
-- Create the full folder structure
-- Save your config to `config.yml` in the project root
-- Seed the vault with all meta dictionaries
-- Register the MCP server with Claude Desktop
+- Create the vault folder structure and seed meta dictionaries
+- Register the MCP server with Claude Code and Claude Desktop
 
-### 4. Configure sync
-
-Copy and fill in the rclone config template:
+### 3. Configure sync
 
 ```bash
 cp sync/rclone.conf.sample ~/.config/rclone/rclone.conf
 # edit with your credentials
 ```
 
-Pull the vault from the remote (on first setup or new machine):
+Pull the vault from the remote on first setup:
 
 ```bash
 ./sync/sync.sh pull
-```
-
-Push local changes:
-
-```bash
-./sync/sync.sh push
 ```
 
 To sync automatically on vault changes, install the watcher for your platform:
@@ -80,19 +130,48 @@ To sync automatically on vault changes, install the watcher for your platform:
 - **macOS:** `cp sync/com.loci.sync.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.loci.sync.plist`
 - **Linux:** copy `sync/loci-sync.path` and `sync/loci-sync.service` to `/etc/systemd/system/` and run `systemctl enable --now loci-sync.path`
 
-### 5. Install the Loci skill in Claude Code
+### 4. Install the Loci skill in Claude Code
 
 ```bash
 cp -r loci-skill/loci-save/ ~/.claude/skills/loci-save/
 ```
 
-### 6. Test it
+### 5. Test it
 
 Open Claude Code and say:
 
 ```
 Save this as a note: Loci is now set up and working.
 ```
+
+---
+
+## Remote Access (Claude.ai / mobile)
+
+To use Loci from Claude.ai or mobile, the MCP server needs to be reachable via HTTPS.
+
+Put the container behind nginx and Cloudflare Access:
+
+1. Copy and fill in the nginx config: `deploy/nginx.conf.sample` → `/etc/nginx/sites-available/loci`
+2. Set up [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) to protect the endpoint
+3. Add the HTTPS endpoint in Claude.ai → Settings → Integrations
+
+See `deploy/nginx.conf.sample` for the full nginx config.
+
+---
+
+## Usage
+
+Just describe what you want to save:
+
+```
+Save this as a note: ...
+Add this article: https://example.com/article
+Create a task: Review the Loci architecture by Friday
+Save this entity: John Smith, CEO at Acme Corp
+```
+
+Claude will classify the type, generate frontmatter, suggest entity links, and write the file.
 
 ---
 
@@ -118,11 +197,13 @@ loci/
     loci-sync.service             ← systemd sync service (Linux)
     com.loci.sync.plist           ← launchd watcher (macOS)
   deploy/
+    Dockerfile
+    docker-compose.yml
+    entrypoint.sh                 ← pulls vault on startup, runs background sync
     loci-mcp.service              ← systemd service for always-on SSE server
     nginx.conf.sample             ← nginx config for SSE + Cloudflare
   api.py
   setup.py
-  run_server.sh
   config.yml                      ← local config (gitignored — see config.sample.yml)
   pyproject.toml
   uv.lock
@@ -155,77 +236,6 @@ vault/
 
 ---
 
-## Configuration
-
-Config lives at `config.yml` in the project root — gitignored, never committed. See `config.sample.yml` for the template.
-
-```yaml
-vault_root: /path/to/loci/vault   # default: <project_root>/vault
-sync_remote: nextcloud             # rclone remote name
-sync_remote_path: loci             # path on the remote
-```
-
-To reconfigure (e.g. on a new machine):
-
-```bash
-python setup.py
-```
-
----
-
-## Sync
-
-Loci uses [rclone](https://rclone.org/) for vault sync. rclone supports Nextcloud, Dropbox, Google Drive, OneDrive, S3, and ~50 other providers. Swapping providers is a config change — no code changes needed.
-
-The vault is local on every machine that runs the MCP server. Sync keeps all machines in agreement.
-
----
-
-## Remote Deployment (Claude.ai / mobile)
-
-To use Loci from Claude.ai on mobile, deploy the MCP server on a server reachable via HTTPS.
-
-### Option A — Docker (recommended)
-
-```bash
-# Build and start
-VAULT_PATH=/absolute/path/to/vault docker compose -f deploy/docker-compose.yml up -d
-```
-
-The container mounts your vault at `/vault` and runs the MCP server in SSE mode on port 8000. `VAULT_PATH` defaults to `../vault` relative to the project root if not set.
-
-Then put nginx + Cloudflare Access in front (see `deploy/nginx.conf.sample`) and add the endpoint in Claude.ai → Settings → Integrations.
-
-### Option B — systemd
-
-1. Clone the repo and pull the vault on the server
-2. Set `LOCI_TRANSPORT=sse` in the environment (or systemd unit)
-3. Use `deploy/loci-mcp.service` for the systemd service
-4. Use `deploy/nginx.conf.sample` for the nginx config
-5. Put Cloudflare Access in front for auth
-6. Add the endpoint in Claude.ai → Settings → Integrations
-
-See `deploy/` for config templates.
-
----
-
-## Usage
-
-### Saving content
-
-Just describe what you want to save:
-
-```
-Save this as a note: ...
-Add this article: https://example.com/article
-Create a task: Review the Loci architecture by Friday
-Save this entity: John Smith, CEO at Acme Corp
-```
-
-Claude will classify the type, generate frontmatter, suggest entity links, and write the file.
-
----
-
 ## Roadmap
 
 ### Done
@@ -238,6 +248,7 @@ Claude will classify the type, generate frontmatter, suggest entity links, and w
 - [x] rclone sync layer — provider-agnostic vault sync
 - [x] SSE transport — remote MCP server support (Claude.ai / mobile)
 - [x] deploy/ — systemd + nginx templates for server deployment
+- [x] Docker image — containerize MCP server with vault as a mounted volume
 
 ### Next
 - [ ] Graph layer — NetworkX in-memory for bootstrap phase; migrate to Kuzu once vault reaches meaningful size or traversal performance matters
@@ -246,7 +257,6 @@ Claude will classify the type, generate frontmatter, suggest entity links, and w
 - [ ] Cloudflare Access setup guide
 
 ### Later
-- [x] Docker image — containerize MCP server with vault as a mounted volume; simplifies lab server deployment and distribution
 - [ ] Vector DB — deferred until summaries exceed context window. Revisit ChromaDB / LanceDB / Qdrant at that point
 - [ ] Browser extension / bookmarklet
 - [ ] Native mobile / desktop apps (local-first, SQLite backend — see planning doc)
@@ -264,3 +274,9 @@ Claude will classify the type, generate frontmatter, suggest entity links, and w
 ## Design Decisions
 
 Key decisions are documented in the Loci vault at `notes/2026-03-21-locus-requirements.md`. If you are contributing or extending Loci, read that first.
+
+---
+
+## Contributing
+
+Coming soon.

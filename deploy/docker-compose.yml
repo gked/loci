@@ -7,7 +7,11 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - ${VAULT_PATH:-../vault}:/vault
+      - ${RCLONE_CONFIG:-~/.config/rclone/rclone.conf}:/root/.config/rclone/rclone.conf:ro
     environment:
       - LOCI_TRANSPORT=sse
       - LOCI_VAULT_ROOT=/vault
+      - SYNC_REMOTE=${SYNC_REMOTE:-}
+      - SYNC_REMOTE_PATH=${SYNC_REMOTE_PATH:-loci}
+      - SYNC_INTERVAL=${SYNC_INTERVAL:-300}
     restart: unless-stopped

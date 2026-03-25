@@ -1,7 +1,8 @@
 FROM python:3.13-slim
 
-# Copy uv from the official image
+# Copy uv and rclone from their official images
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=rclone/rclone:latest /usr/local/bin/rclone /usr/local/bin/rclone
 
 WORKDIR /app
 
@@ -14,10 +15,11 @@ COPY api.py ./
 COPY loci_mcp/ ./loci_mcp/
 COPY tools/ ./tools/
 COPY loci-skill/ ./loci-skill/
+COPY deploy/entrypoint.sh ./entrypoint.sh
 
 ENV LOCI_TRANSPORT=sse
 ENV LOCI_VAULT_ROOT=/vault
 
 EXPOSE 8000
 
-CMD ["uv", "run", "python", "loci_mcp/server.py"]
+ENTRYPOINT ["sh", "entrypoint.sh"]
