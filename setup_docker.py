@@ -8,6 +8,8 @@ Walks through:
   3. rclone sync config (optional)
   4. Building and starting the container
   5. Verifying the server is up
+  6. Installing the Loci skill in Claude Code
+  7. Registering the local stdio MCP server with Claude Code and Claude Desktop
 """
 
 import shutil
@@ -247,12 +249,73 @@ def install_skill() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Step 7 — Next steps
+# Step 7 — MCP registration
+# ---------------------------------------------------------------------------
+
+def register_mcp_claude_code() -> None:
+    """Register loci stdio MCP server with Claude Code (user scope via `claude mcp add`)."""
+    import json
+
+    uv = shutil.which("uv") or str(Path.home() / ".local" / "bin" / "uv")
+    claude = shutil.which("claude")
+    if not claude:
+        print("  Warning: `claude` CLI not found — skipping Claude Code registration.")
+        print("  Run manually: claude mcp add --scope user loci <uv-path> -- run --directory <project> python loci_mcp/server.py")
+        return
+
+    result = subprocess.run(
+        [
+            claude, "mcp", "add", "--scope", "user",
+            "loci", uv,
+            "--", "run", "--directory", str(PROJECT_ROOT), "python", "loci_mcp/server.py",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        print("  Registered via `claude mcp add --scope user` (~/.claude.json)")
+    else:
+        print(f"  Warning: registration failed — {result.stderr.strip()}")
+
+
+def register_mcp_desktop() -> None:
+    """Add or update the loci MCP server entry in claude_desktop_config.json."""
+    config_path = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+    import json
+
+    config = {}
+    if config_path.exists():
+        try:
+            config = json.loads(config_path.read_text())
+        except json.JSONDecodeError:
+            print(f"  Warning: {config_path} is not valid JSON — skipping Claude Desktop.")
+            return
+
+    uv = shutil.which("uv") or str(Path.home() / ".local" / "bin" / "uv")
+    config.setdefault("mcpServers", {})
+    config["mcpServers"]["loci"] = {
+        "command": uv,
+        "args": ["run", "--directory", str(PROJECT_ROOT), "python", "loci_mcp/server.py"],
+    }
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(config, indent=2))
+    print(f"  Registered: {config_path}")
+
+
+def register_mcp() -> None:
+    print("\nStep 7 — MCP registration")
+    register_mcp_claude_code()
+    register_mcp_desktop()
+
+
+# ---------------------------------------------------------------------------
+# Step 8 — Next steps
 # ---------------------------------------------------------------------------
 
 def print_next_steps() -> None:
     print("\nDone. Next steps:\n")
-    print("  1. Restart Claude Code to load the skill.")
+    print("  1. Restart Claude Code to load the skill and MCP server.")
     print()
     print("  2. Open Claude Code and say:")
     print("       Save this as a note: Loci is now set up and working.")
@@ -288,6 +351,7 @@ def main() -> None:
     start_container(vault_path, sync_env)
     verify()
     install_skill()
+    register_mcp()
     print_next_steps()
 
 
