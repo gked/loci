@@ -291,11 +291,9 @@ def register_mcp_desktop() -> None:
             print(f"  Warning: {config_path} is not valid JSON — skipping Claude Desktop.")
             return
 
-    uv = shutil.which("uv") or str(Path.home() / ".local" / "bin" / "uv")
     config.setdefault("mcpServers", {})
     config["mcpServers"]["loci"] = {
-        "command": uv,
-        "args": ["run", "--directory", str(PROJECT_ROOT), "python", "loci_mcp/server.py"],
+        "url": "http://localhost:8000/sse",
     }
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
