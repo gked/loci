@@ -25,6 +25,7 @@ from write_file import (
     check_duplicate as _check_duplicate,
     TYPE_FOLDERS,
 )
+import nx_graph as graph
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +69,7 @@ def save(
     # Redirect stdout to prevent write_item's print() calls from corrupting
     # the MCP stdio protocol (or cluttering non-interactive use)
     with contextlib.redirect_stdout(io.StringIO()):
-        return _write_item(
+        result = _write_item(
             type=type,
             title=title,
             body=body,
@@ -81,6 +82,18 @@ def save(
             extra_fields=extra_fields,
             skip_duplicate_check=True,
         )
+    if result:
+        graph.index_node(
+            result["uid"],
+            type=type,
+            title=title,
+            tags=tags or [],
+            domains=domains or [],
+            summary=summary or "",
+            path=result["path"],
+        )
+        graph.index_edges(result["uid"], relations or [])
+    return result
 
 
 def delete(path: str) -> dict:
@@ -93,7 +106,18 @@ def delete(path: str) -> dict:
         p = _vault_root() / path
     if not p.exists():
         raise FileNotFoundError(f"Vault file not found: {p}")
+    # Read uid before deleting so we can drop the node from the graph
+    import yaml as _yaml
+    uid = None
+    raw = p.read_text(encoding="utf-8")
+    if raw.startswith("---"):
+        parts = raw.split("---", 2)
+        if len(parts) >= 3:
+            fm = _yaml.safe_load(parts[1]) or {}
+            uid = fm.get("uid")
     p.unlink()
+    if uid:
+        graph.drop_node(uid)
     return {"deleted": True, "path": str(p)}
 
 
@@ -108,7 +132,19 @@ def patch(path: str, updates: dict, body: str = None) -> dict:
     p = Path(path)
     if not p.is_absolute():
         p = _vault_root() / path
-    return _patch_item(str(p), updates, body)
+    result = _patch_item(str(p), updates, body)
+    if result.get("uid"):
+        graph.index_node(
+            result["uid"],
+            type=result.get("type", ""),
+            title=result.get("title", ""),
+            tags=result.get("tags", []),
+            domains=result.get("domains", []),
+            summary=result.get("summary", ""),
+            path=str(p),
+        )
+        graph.index_edges(result["uid"], result.get("relations", []))
+    return result
 
 
 def check_duplicate(type: str, title: str, url: str = None) -> dict:

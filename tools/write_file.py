@@ -223,6 +223,10 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
         "path": str(p),
         "type": fm.get("type"),
         "title": fm.get("title"),
+        "relations": fm.get("relations") or [],
+        "tags": fm.get("tags") or [],
+        "domains": fm.get("domains") or [],
+        "summary": fm.get("summary", ""),
     }
 
 

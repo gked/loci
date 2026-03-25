@@ -27,6 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import api as loci
+import nx_graph as graph
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("loci")
@@ -208,6 +209,39 @@ def write_meta(file: str, content: str) -> str:
         return loci.write_meta(file, content)
     except ValueError as e:
         return str(e)
+
+
+@mcp.tool()
+def query_related(uid: str, depth: int = 2) -> list[dict]:
+    """
+    Return all vault nodes within `depth` hops of the given uid.
+    Results include distance from the origin node, sorted nearest-first.
+    Each entry: {uid, title, type, distance}.
+    """
+    graph.get(loci._vault_root())
+    return graph.related(uid, depth)
+
+
+@mcp.tool()
+def query_path(uid_from: str, uid_to: str) -> list[dict]:
+    """
+    Return the shortest path between two vault nodes as an ordered list.
+    Each entry: {uid, title, type}.
+    Returns an empty list if no path exists.
+    """
+    graph.get(loci._vault_root())
+    return graph.path(uid_from, uid_to)
+
+
+@mcp.tool()
+def find_nodes(type: str = None, tag: str = None) -> list[dict]:
+    """
+    Find vault nodes by type and/or tag.
+    At least one filter should be provided.
+    Each entry: {uid, title, type, path}.
+    """
+    graph.get(loci._vault_root())
+    return graph.find(type=type, tag=tag)
 
 
 if __name__ == "__main__":
