@@ -244,6 +244,17 @@ def find_nodes(type: str = None, tag: str = None) -> list[dict]:
     return graph.find(type=type, tag=tag)
 
 
+@mcp.tool()
+def search_vault(query: str) -> list[dict]:
+    """
+    Search vault nodes by title and summary text (case-insensitive substring match).
+    Use this to find a node when you know a keyword but not the exact title or uid.
+    Each entry: {uid, title, type, path, summary}.
+    """
+    graph.get(loci._vault_root())
+    return graph.search(query)
+
+
 if __name__ == "__main__":
     transport = os.environ.get("LOCI_TRANSPORT", "stdio")
     if transport == "sse":

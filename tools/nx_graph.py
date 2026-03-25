@@ -237,3 +237,28 @@ def find(type: str = None, tag: str = None) -> list[dict]:
             "path": attrs.get("path", ""),
         })
     return sorted(result, key=lambda x: x["title"])
+
+
+def search(query: str) -> list[dict]:
+    """
+    Case-insensitive substring search across node titles and summaries.
+    Returns list of {uid, title, type, path, summary}.
+    """
+    g = _graph
+    if g is None:
+        return []
+
+    q = query.lower()
+    result = []
+    for uid, attrs in g.nodes(data=True):
+        title = attrs.get("title", "")
+        summary = attrs.get("summary", "") or ""
+        if q in title.lower() or q in summary.lower():
+            result.append({
+                "uid": uid,
+                "title": title,
+                "type": attrs.get("type", ""),
+                "path": attrs.get("path", ""),
+                "summary": summary,
+            })
+    return sorted(result, key=lambda x: x["title"])
