@@ -20,6 +20,6 @@ COPY deploy/entrypoint.sh ./entrypoint.sh
 ENV LOCI_TRANSPORT=sse
 ENV LOCI_VAULT_ROOT=/vault
 
-EXPOSE 8000
+EXPOSE 4444
 
 ENTRYPOINT ["sh", "entrypoint.sh"]

@@ -259,6 +259,7 @@ if __name__ == "__main__":
     transport = os.environ.get("LOCI_TRANSPORT", "stdio")
     if transport == "sse":
         import uvicorn
-        uvicorn.run(mcp.sse_app(), host="0.0.0.0", port=8000)
+        port = int(os.environ.get("LOCI_PORT", 8000))
+        uvicorn.run(mcp.sse_app(), host="0.0.0.0", port=port)
     else:
         mcp.run(transport=transport)

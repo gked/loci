@@ -148,15 +148,20 @@ Save this as a note: Loci is now set up and working.
 
 ## Remote Access (Claude.ai / mobile)
 
-To use Loci from Claude.ai or mobile, the MCP server needs to be reachable via HTTPS.
+To use Loci from Claude.ai, Claude Desktop, or mobile, run the MCP server on a Linux home lab server and expose it via Cloudflare Tunnel — no open ports, no domain required.
 
-Put the container behind nginx and Cloudflare Access:
+```bash
+bash deploy/setup-homelab.sh
+```
 
-1. Copy and fill in the nginx config: `deploy/nginx.conf.sample` → `/etc/nginx/sites-available/loci`
-2. Set up [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) to protect the endpoint
-3. Add the HTTPS endpoint in Claude.ai → Settings → Integrations
+The script installs Docker, rclone, and cloudflared; creates a named tunnel; and starts the container. Once running:
 
-See `deploy/nginx.conf.sample` for the full nginx config.
+- **Claude Desktop / Claude Code:** `claude mcp add --transport sse loci <tunnel-url>/sse --scope user`
+- **Claude.ai / mobile:** Settings → Connectors → Add custom connector → `<tunnel-url>/sse`
+
+The vault lives on the server and is the single source of truth. All clients connect to the same endpoint. Nextcloud backup runs daily if `BACKUP_REMOTE` is configured in `deploy/.env`.
+
+**Authentication:** after setup, protect the tunnel with [Cloudflare Zero Trust Access](https://one.dash.cloudflare.com) — Access → Applications → Add Self-hosted app → policy: your email. Without this the endpoint is open.
 
 ---
 
@@ -199,7 +204,8 @@ loci/
   deploy/
     Dockerfile
     docker-compose.yml
-    entrypoint.sh                 ← pulls vault on startup, runs background sync
+    entrypoint.sh                 ← starts MCP server; optional daily backup to Nextcloud
+    setup-homelab.sh              ← one-shot setup script for Linux home lab server
     loci-mcp.service              ← systemd service for always-on SSE server
     nginx.conf.sample             ← nginx config for SSE + Cloudflare
   api.py
@@ -254,7 +260,7 @@ vault/
 - [ ] Graph layer — NetworkX in-memory for bootstrap phase; migrate to Kuzu once vault reaches meaningful size or traversal performance matters
 - [ ] Loci query skill — retrieve, relate, summarize across vault nodes
 - [ ] Testing suite — vault_init correctness, schema validation, duplicate detection, ingestion edge cases
-- [ ] Cloudflare Access setup guide
+- [ ] Streamable HTTP transport (SSE is deprecated in MCP spec)
 
 ### Later
 - [ ] Vector DB — deferred until summaries exceed context window. Revisit ChromaDB / LanceDB / Qdrant at that point

@@ -1,22 +1,24 @@
 #!/bin/sh
 set -e
 
-SYNC_INTERVAL="${SYNC_INTERVAL:-300}"
+# The vault on this machine is the source of truth.
+# Nextcloud is a daily backup destination only — no sync, no bisync.
 
-if [ -n "$SYNC_REMOTE" ] && [ -n "$SYNC_REMOTE_PATH" ]; then
-    echo "Pulling vault from ${SYNC_REMOTE}:${SYNC_REMOTE_PATH}..."
-    rclone sync "${SYNC_REMOTE}:${SYNC_REMOTE_PATH}" /vault
+BACKUP_INTERVAL="${BACKUP_INTERVAL:-86400}"  # default: once a day
 
-    # Background loop: push local changes back to remote
+if [ -n "$BACKUP_REMOTE" ] && [ -n "$BACKUP_REMOTE_PATH" ]; then
+    echo "Daily backup enabled: vault → ${BACKUP_REMOTE}:${BACKUP_REMOTE_PATH} every ${BACKUP_INTERVAL}s"
     (
         while true; do
-            sleep "$SYNC_INTERVAL"
-            echo "Syncing vault to ${SYNC_REMOTE}:${SYNC_REMOTE_PATH}..."
-            rclone sync /vault "${SYNC_REMOTE}:${SYNC_REMOTE_PATH}"
+            sleep "$BACKUP_INTERVAL"
+            echo "Backing up vault to ${BACKUP_REMOTE}:${BACKUP_REMOTE_PATH}..."
+            rclone sync /vault "${BACKUP_REMOTE}:${BACKUP_REMOTE_PATH}" --progress \
+                && echo "Backup complete." \
+                || echo "Backup failed — will retry next interval."
         done
     ) &
 else
-    echo "SYNC_REMOTE not set — skipping sync."
+    echo "BACKUP_REMOTE not set — skipping scheduled backup."
 fi
 
 exec uv run python loci_mcp/server.py

@@ -4,14 +4,15 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:4444:8000"
     volumes:
       - ${VAULT_PATH:-../vault}:/vault
       - ${RCLONE_CONFIG:-~/.config/rclone/rclone.conf}:/root/.config/rclone/rclone.conf:ro
     environment:
       - LOCI_TRANSPORT=sse
       - LOCI_VAULT_ROOT=/vault
-      - SYNC_REMOTE=${SYNC_REMOTE:-}
-      - SYNC_REMOTE_PATH=${SYNC_REMOTE_PATH:-loci}
-      - SYNC_INTERVAL=${SYNC_INTERVAL:-300}
+      - LOCI_PORT=4444
+      - BACKUP_REMOTE=${BACKUP_REMOTE:-}
+      - BACKUP_REMOTE_PATH=${BACKUP_REMOTE_PATH:-loci}
+      - BACKUP_INTERVAL=${BACKUP_INTERVAL:-86400}
     restart: unless-stopped
