@@ -1,8 +1,8 @@
 ---
 name: loci-save
 description: >
-  Save any piece of content — a document, article, conversation, task, project,
-  event, entity, procedure, topic, or reference — into the Loci personal
+  Save any piece of content — a document, article, bookmark, conversation, task, project,
+  event, entity, procedure, or topic — into the Loci personal
   knowledge vault. Use whenever the user says "save this", "add this to my
   vault", "capture this", "remember this", "log this", "store this", or any
   similar phrasing. Also use when the user shares a URL, text, or a
@@ -40,12 +40,14 @@ The file is the source of truth — fall back to asking the user only if the fil
 
 **URL detection rule:** if the user shares a bare URL (with or without commentary)
 and does not explicitly ask to extract or read the content, default to `bookmark`.
-Only use `article` when the user asks to capture, summarise, or pull the content.
+Only use `article` when the user asks to capture, summarise, or pull the content
+(e.g. "save this article", "read and save this", "summarize this page").
 When in doubt, ask: "Save as a bookmark, or pull the full content as an article?"
 
 If a `bookmark` is chosen, call `loci__fetch_url_metadata(url)` immediately to
-retrieve title, site name, and description. Use these to populate the title and
-summary fields — do not ask the user for them unless the fetch fails.
+retrieve title, site name, and description. Use these to populate the title,
+site_name, and summary fields — do not ask the user for them unless the fetch fails.
+The summary should be a concise high-level description of what the page is about.
 
 If unsure between two other types, ask the user. Do not guess — type affects
 folder placement and frontmatter fields.
@@ -113,7 +115,7 @@ On "create node", save that node first then link back.
 ### Step 4 — Check for duplicates
 
 Call `loci__check_duplicate(type=<type>, title=<title>)`.
-For articles, also pass `url=<url>`.
+For articles and bookmarks, also pass `url=<url>`.
 
 If a duplicate is found:
 ```
@@ -162,7 +164,7 @@ Use this workflow when the user wants to correct or extend an **existing** vault
 rather than create a new one.
 
 **Triggers:** "update X", "add a link to Y", "fix the relations on Z", "mark that task
-done", "tag that note with X", or when Step 4 (duplicate check) surfaces an existing
+done", "tag that document with X", or when Step 4 (duplicate check) surfaces an existing
 item and the user chooses to update it.
 
 ### U1 — Identify the target file
@@ -207,7 +209,7 @@ always archive the old value before setting the new one.
 
 Show a brief summary of what will change before patching:
 ```
-Updating: notes/2026-03-21-my-note.md
+Updating: documents/2026-03-21-my-document.md
   relations: adding link to [Project X] (f9e8d7c6)
 Proceed? [yes / no]
 ```
