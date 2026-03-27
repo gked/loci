@@ -69,7 +69,7 @@ Use when the user wants to explore connections from a node.
    ```
    Direct connections (distance 1):
      [task] Add networkx to pyproject.toml — belongs-to
-     [note] Planning: Claude.ai Remote MCP — belongs-to
+     [document] Planning: Claude.ai Remote MCP — belongs-to
 
    2 hops away (distance 2):
      [project] loci
@@ -101,7 +101,7 @@ Use when the user wants to understand the relationship chain between two nodes.
 2. Call `loci__query_path(uid_from=<uid1>, uid_to=<uid2>)`.
 3. If a path exists, present it as a chain:
    ```
-   [note] Planning doc → belongs-to → [project] loci → parent-of → [task] Add networkx
+   [document] Planning doc → belongs-to → [project] loci → parent-of → [task] Add networkx
    ```
 4. If no path exists, say so clearly. Offer to show the neighborhood of each node instead.
 
@@ -112,4 +112,4 @@ Use when the user wants to understand the relationship chain between two nodes.
 - **Never invent content.** Only report what is in vault files.
 - **UIDs are stable identifiers.** Always pass the uid (not the title) to graph tools.
 - **Read before summarizing.** Do not summarize from the graph node attributes alone — always call `loci__read_vault` for the full content.
-- **Offer next steps.** After any query result, suggest a natural follow-on action (read a node, go deeper, save a new note from the synthesis).
+- **Offer next steps.** After any query result, suggest a natural follow-on action (read a node, go deeper, save a new document from the synthesis).

@@ -17,7 +17,7 @@ from typing import Optional
 CONFIG_PATH = Path(__file__).parent.parent / "config.yml"
 
 VAULT_FOLDERS = [
-    "notes",
+    "documents",
     "articles",
     "bookmarks",
     "conversations",
@@ -36,7 +36,7 @@ TYPE_DICTIONARY = """\
 # Canonical type vocabulary — edit with care.
 # The save skill reads this file at runtime.
 
-note         — freeform thought or observation
+document     — written content that doesn't fit a more specific type: essays, specs, design docs, meeting notes, journal entries, longform notes; the default fallback type
 article      — external content consumed and captured (format carried by tag: #book, #article, #paper, #video)
 bookmark     — saved URL with light metadata only; use article when capturing full content
 conversation — saved LLM or human conversation (has turns, participants, model/person)

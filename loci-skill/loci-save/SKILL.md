@@ -1,7 +1,7 @@
 ---
 name: loci-save
 description: >
-  Save any piece of content — a note, article, conversation, task, project,
+  Save any piece of content — a document, article, conversation, task, project,
   event, entity, procedure, topic, or reference — into the Loci personal
   knowledge vault. Use whenever the user says "save this", "add this to my
   vault", "capture this", "remember this", "log this", "store this", or any
@@ -232,6 +232,6 @@ Deletion is permanent — there is no undo.
 
 **No clear title:** generate from first sentence or ask. Never leave blank.
 
-**Unknown type:** ask rather than defaulting to `note`.
+**Unknown type:** default to `document` if the content is written text with no more specific fit. Ask only when genuinely ambiguous.
 
 **Very long content:** summarize in `summary`, keep full content in body.

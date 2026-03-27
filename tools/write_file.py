@@ -23,7 +23,7 @@ from vault_init import load_config
 
 
 TYPE_FOLDERS = {
-    "note": "notes",
+    "document": "documents",
     "article": "articles",
     "bookmark": "bookmarks",
     "conversation": "conversations",
@@ -233,9 +233,9 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
 if __name__ == "__main__":
     # Quick smoke test
     result = write_item(
-        type="note",
-        title="Test Note from write_file",
-        body="This is a test note written by write_file.py.",
+        type="document",
+        title="Test Document from write_file",
+        body="This is a test document written by write_file.py.",
         tags=["test", "smoke-test"],
         domains=["technology-engineering"],
         summary="A quick smoke test to verify write_file.py works correctly.",

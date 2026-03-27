@@ -68,7 +68,7 @@ def write_vault(
     Run check_duplicate first unless the user has already confirmed they want to save.
 
     Args:
-        type: note | article | conversation | project | task | event | entity | procedure | topic | reference
+        type: document | article | conversation | project | task | event | entity | procedure | topic | reference
         title: Concise descriptive title
         body: Main content body (markdown)
         tags: 3-6 freeform lowercase hyphenated tags
