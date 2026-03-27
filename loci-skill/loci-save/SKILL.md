@@ -51,8 +51,8 @@ If unsure between two other types, ask the user. Do not guess — type affects
 folder placement and frontmatter fields.
 
 **Subtype tags to apply automatically:**
-- `article` → add format tag: #book, #paper, #video, or #article
-- `entity` → set `subtype` field to person | company | organization | institution — do NOT add as a tag
+- `article` → add format tag: #book, #paper, #scholarly, #technical, #blog-post, #news, #video, or #article
+- `entity` → set `subtype` field to person | organization | place — do NOT add as a tag
 - `procedure` → add domain tag: #recipe, #workout, #protocol, #playbook, #tutorial
 
 ---
@@ -68,6 +68,10 @@ before writing the item.
 Call `loci__read_meta(file="field-dictionary")` to get the current field
 definitions for all types. Use this as the authoritative source for which
 fields to include, their types, valid enum values, and whether they are required.
+
+Call `loci__read_meta(file="relation-dictionary")` to get the current relation
+type vocabulary. Use this when choosing the `type` field for any relation — pick
+the most specific type that fits rather than defaulting to `relates-to`.
 
 **Relations format:**
 ```yaml

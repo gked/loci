@@ -159,7 +159,7 @@ def list_vault(type: str = None) -> dict:
 def read_meta(file: str) -> str:
     """
     Read a vault meta file.
-    file: type-dictionary | tag-dictionary | field-dictionary | foreign-definitions | config
+    file: type-dictionary | tag-dictionary | field-dictionary | relation-dictionary | foreign-definitions | config
     """
     try:
         return loci.read_meta(file)

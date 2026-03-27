@@ -195,11 +195,12 @@ def read_meta(file: str) -> str:
     """
     vault_root = _vault_root()
     file_map = {
-        "type-dictionary":    vault_root / "meta" / "type-dictionary.md",
-        "tag-dictionary":     vault_root / "meta" / "tag-dictionary.md",
-        "field-dictionary":   vault_root / "meta" / "field-dictionary.md",
-        "foreign-definitions": vault_root / "meta" / "foreign-definitions.md",
-        "config":             vault_root / "meta" / "config.yml",
+        "type-dictionary":      vault_root / "meta" / "type-dictionary.md",
+        "tag-dictionary":       vault_root / "meta" / "tag-dictionary.md",
+        "field-dictionary":     vault_root / "meta" / "field-dictionary.md",
+        "relation-dictionary":  vault_root / "meta" / "relation-dictionary.md",
+        "foreign-definitions":  vault_root / "meta" / "foreign-definitions.md",
+        "config":               vault_root / "meta" / "config.yml",
     }
     p = file_map.get(file)
     if not p:

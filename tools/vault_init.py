@@ -43,7 +43,7 @@ conversation — saved LLM or human conversation (has turns, participants, model
 project      — ongoing work with goals and milestones
 task         — discrete actionable item with due date and status
 event        — point-in-time or period occurrence
-entity       — real-world actor: person, company, org, institution (subtype by tag: #person, #company, #organization, #institution)
+entity       — real-world actor: person, organization, or place (subtype field: person | organization | place)
 procedure    — repeatable process with ordered steps and expected outcome (subtype by tag: #recipe, #workout, #protocol, #playbook, #tutorial)
 topic        — organizing hub for a subject area
 reference    — pointer to external content (hybrid ownership model)
@@ -67,6 +67,40 @@ design
 pkm
 knowledge-graph
 architecture
+"""
+
+RELATION_DICTIONARY = """\
+# Loci Relation Dictionary
+# Canonical vocabulary for typed edges between vault nodes.
+# The save skill reads this file at runtime when suggesting relation types.
+# Use the most specific type that fits. Fall back to relates-to only when nothing else applies.
+# Format: type — definition
+
+## Structural / Ownership
+
+belongs-to    — this item is owned by or lives inside a larger whole (task→project, note→topic)
+is-part-of    — this item is a structural sub-component of another (chapter inside a book, section inside a document); prefer over belongs-to for content hierarchy
+has-part      — inverse of is-part-of; the current node contains the linked node as a component
+
+## Provenance / Derivation
+
+is-based-on   — this item was derived from or builds directly on another (a note summarising an article; a draft based on a source)
+same-work-as  — both nodes are different manifestations of the same underlying work (preprint + published version, original + translation)
+supersedes    — this item replaces or updates an older node; the older node remains but is deprecated
+version-of    — this item is a revision or variant of another without fully replacing it
+
+## Semantic
+
+about         — this node is primarily about another node (especially: article or note → topic node)
+mentions      — this node references another in passing, without being primarily about it; lighter than about
+influences    — one node shapes, informs, or has affected the direction of another
+supports      — provides evidence, reasoning, or examples for a claim in another node
+contradicts   — challenges, refutes, or conflicts with the content of another node
+inspired-by   — conceptually sparked by another node, but not a direct derivation
+
+## Generic
+
+relates-to    — unspecified bidirectional connection; use only when no other type fits
 """
 
 FOREIGN_DEFINITIONS = """\
@@ -129,6 +163,11 @@ def create_vault_structure(vault_root: Path) -> None:
     if not foreign_defs_path.exists():
         foreign_defs_path.write_text(FOREIGN_DEFINITIONS)
         print(f"  Seeded: {foreign_defs_path}")
+
+    relation_dict_path = vault_root / "meta" / "relation-dictionary.md"
+    if not relation_dict_path.exists():
+        relation_dict_path.write_text(RELATION_DICTIONARY)
+        print(f"  Seeded: {relation_dict_path}")
 
 
 def setup_interactive() -> dict:
