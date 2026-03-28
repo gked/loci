@@ -11,7 +11,7 @@ services:
     environment:
       - LOCI_TRANSPORT=sse
       - LOCI_VAULT_ROOT=/vault
-      - LOCI_PORT=4444
+      - LOCI_PORT=8000
       - BACKUP_REMOTE=${BACKUP_REMOTE:-}
       - BACKUP_REMOTE_PATH=${BACKUP_REMOTE_PATH:-loci}
       - BACKUP_INTERVAL=${BACKUP_INTERVAL:-86400}

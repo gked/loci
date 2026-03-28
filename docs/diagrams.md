@@ -42,10 +42,9 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    subgraph Mac
-        V_MAC["vault/"]
-        W_MAC["launchd watcher\n(com.loci.sync.plist)"]
-        RC_MAC["rclone"]
+    subgraph Docker["Lab Server (Docker)"]
+        V["vault/"]
+        RC["rclone\n(scheduled push)"]
     end
 
     subgraph Remote["Remote Storage"]
@@ -56,26 +55,10 @@ flowchart LR
         S3["S3 / other"]
     end
 
-    subgraph LabServer["Lab Server"]
-        V_SRV["vault/"]
-        W_SRV["systemd path watcher\n(loci-sync.path)"]
-        RC_SRV["rclone"]
-    end
-
-    V_MAC -->|"change detected"| W_MAC
-    W_MAC --> RC_MAC
-    RC_MAC -->|"push"| NC
-    RC_MAC -->|"push"| DB
-    RC_MAC -->|"push"| GD
-    RC_MAC -->|"push"| OD
-    RC_MAC -->|"push"| S3
-
-    NC -->|"pull"| RC_SRV
-    DB -->|"pull"| RC_SRV
-    GD -->|"pull"| RC_SRV
-    OD -->|"pull"| RC_SRV
-    S3 -->|"pull"| RC_SRV
-    RC_SRV --> V_SRV
-    V_SRV -->|"change detected"| W_SRV
-    W_SRV --> RC_SRV
+    V --> RC
+    RC -->|"push (BACKUP_INTERVAL)"| NC
+    RC -->|"push (BACKUP_INTERVAL)"| DB
+    RC -->|"push (BACKUP_INTERVAL)"| GD
+    RC -->|"push (BACKUP_INTERVAL)"| OD
+    RC -->|"push (BACKUP_INTERVAL)"| S3
 ```

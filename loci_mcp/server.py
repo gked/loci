@@ -4,31 +4,32 @@ Loci MCP server for Claude Desktop — stdio transport.
 
 Thin wrapper over api.py. All vault logic lives there.
 
-Requirements:
-  pip install "mcp[cli]" pyyaml
-
 Registration (~/Library/Application Support/Claude/claude_desktop_config.json):
   {
     "mcpServers": {
       "loci": {
-        "command": "python",
-        "args": ["/absolute/path/to/loci/loci_mcp/server.py"]
+        "command": "uv",
+        "args": ["run", "--directory", "/absolute/path/to/loci", "python", "loci_mcp/server.py"]
       }
     }
   }
 
-Restart Claude Desktop after editing the config.
+Run setup.py to register automatically. Restart Claude Desktop after any config change.
 """
 
 import os
 import sys
 from pathlib import Path
+from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import api as loci
 import nx_graph as graph
 from mcp.server.fastmcp import FastMCP
+from vault_init import check_meta_version
+
+check_meta_version()
 
 mcp = FastMCP("loci")
 
@@ -68,7 +69,7 @@ def write_vault(
     Run check_duplicate first unless the user has already confirmed they want to save.
 
     Args:
-        type: document | article | conversation | project | task | event | entity | procedure | topic | reference
+        type: document | article | bookmark | conversation | project | task | event | entity | procedure | topic | reference
         title: Concise descriptive title
         body: Main content body (markdown)
         tags: 3-6 freeform lowercase hyphenated tags
@@ -212,6 +213,17 @@ def write_meta(file: str, content: str) -> str:
 
 
 @mcp.tool()
+def query_neighbors(uid: str) -> list[dict]:
+    """
+    Return the direct neighbors of a vault node — one hop only.
+    Includes both outgoing and incoming edges with their relation type and direction.
+    Each entry: {uid, title, type, rel_type, direction} where direction is 'in' or 'out'.
+    """
+    graph.get(loci._vault_root())
+    return graph.neighbors(uid)
+
+
+@mcp.tool()
 def query_related(uid: str, depth: int = 2) -> list[dict]:
     """
     Return all vault nodes within `depth` hops of the given uid.
@@ -241,7 +253,7 @@ def find_nodes(type: str = None, tag: str = None) -> list[dict]:
     Each entry: {uid, title, type, path}.
     """
     graph.get(loci._vault_root())
-    return graph.find(type=type, tag=tag)
+    return graph.find(node_type=type, tag=tag)
 
 
 @mcp.tool()
@@ -255,11 +267,50 @@ def search_vault(query: str) -> list[dict]:
     return graph.search(query)
 
 
+def _make_auth_app(asgi_app):
+    """
+    Wrap an ASGI app with Bearer token auth when LOCI_TOKEN is set.
+    Clients may pass the token as an Authorization: Bearer <token> header
+    or as a ?token=<token> query parameter (for SSE clients that cannot
+    set custom headers, e.g. Claude.ai connector).
+    """
+    token = os.environ.get("LOCI_TOKEN", "").strip()
+    if not token:
+        return asgi_app
+
+    async def auth_middleware(scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            headers = dict(scope.get("headers", []))
+            auth_header = headers.get(b"authorization", b"").decode()
+            query_string = scope.get("query_string", b"").decode()
+            authorized = (
+                auth_header == f"Bearer {token}"
+                or f"token={token}" in query_string
+            )
+            if authorized:
+                await asgi_app(scope, receive, send)
+            else:
+                await send({
+                    "type": "http.response.start",
+                    "status": 401,
+                    "headers": [(b"content-type", b"text/plain; charset=utf-8")],
+                })
+                await send({"type": "http.response.body", "body": b"Unauthorized"})
+        else:
+            await asgi_app(scope, receive, send)
+
+    return auth_middleware
+
+
 if __name__ == "__main__":
     transport = os.environ.get("LOCI_TRANSPORT", "stdio")
     if transport == "sse":
         import uvicorn
         port = int(os.environ.get("LOCI_PORT", 8000))
-        uvicorn.run(mcp.sse_app(), host="0.0.0.0", port=port)
+        app = _make_auth_app(mcp.sse_app())
+        uvicorn.run(app, host="0.0.0.0", port=port)
+    elif transport == "stdio":
+        mcp.run(transport="stdio")
     else:
-        mcp.run(transport=transport)
+        print(f"Unknown LOCI_TRANSPORT={transport!r}. Expected 'sse' or 'stdio'.", file=sys.stderr)
+        sys.exit(1)

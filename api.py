@@ -14,6 +14,8 @@ import io
 import sys
 from pathlib import Path
 
+import yaml
+
 # Add tools/ to path so we can import the implementation modules
 sys.path.insert(0, str(Path(__file__).parent / "tools"))
 
@@ -107,13 +109,12 @@ def delete(path: str) -> dict:
     if not p.exists():
         raise FileNotFoundError(f"Vault file not found: {p}")
     # Read uid before deleting so we can drop the node from the graph
-    import yaml as _yaml
     uid = None
     raw = p.read_text(encoding="utf-8")
     if raw.startswith("---"):
         parts = raw.split("---", 2)
         if len(parts) >= 3:
-            fm = _yaml.safe_load(parts[1]) or {}
+            fm = yaml.safe_load(parts[1]) or {}
             uid = fm.get("uid")
     p.unlink()
     if uid:

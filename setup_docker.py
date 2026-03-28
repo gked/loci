@@ -210,7 +210,7 @@ def verify() -> None:
         time.sleep(1)
         print(".", end="", flush=True)
         try:
-            urllib.request.urlopen("http://localhost:8000/sse", timeout=2)
+            urllib.request.urlopen("http://localhost:4444/sse", timeout=2)
             print(" up.")
             return
         except Exception:
@@ -227,25 +227,26 @@ def verify() -> None:
 def install_skill() -> None:
     import shutil as sh
 
-    print("\nStep 6 — Loci skill")
+    print("\nStep 6 — Loci skills")
 
-    skill_src = PROJECT_ROOT / "loci-skill" / "loci-save"
-    if not skill_src.exists():
-        print(f"  Skill source not found at {skill_src} — skipping.")
-        return
+    skills_root = Path.home() / ".claude" / "skills"
+    skills_root.mkdir(parents=True, exist_ok=True)
 
-    default_dst = Path.home() / ".claude" / "skills" / "loci-save"
-    raw = ask("  Skill install location", str(default_dst))
-    skill_dst = Path(raw).expanduser().resolve()
+    for skill_name in ("loci-save", "loci-query"):
+        skill_src = PROJECT_ROOT / "loci-skill" / skill_name
+        if not skill_src.exists():
+            print(f"  Skill source not found at {skill_src} — skipping {skill_name}.")
+            continue
 
-    skill_dst.parent.mkdir(parents=True, exist_ok=True)
+        skill_dst = skills_root / skill_name
 
-    if skill_dst.exists() or skill_dst.is_symlink():
-        sh.rmtree(skill_dst) if skill_dst.is_dir() else skill_dst.unlink()
+        if skill_dst.exists() or skill_dst.is_symlink():
+            sh.rmtree(skill_dst) if skill_dst.is_dir() else skill_dst.unlink()
 
-    skill_dst.symlink_to(skill_src)
-    print(f"  Installed: {skill_dst} → {skill_src}")
-    print("  Restart Claude Code to pick it up.")
+        skill_dst.symlink_to(skill_src)
+        print(f"  Installed: {skill_dst} → {skill_src}")
+
+    print("  Restart Claude Code to pick them up.")
 
 
 # ---------------------------------------------------------------------------
@@ -293,7 +294,7 @@ def register_mcp_desktop() -> None:
 
     config.setdefault("mcpServers", {})
     config["mcpServers"]["loci"] = {
-        "url": "http://localhost:8000/sse",
+        "url": "http://localhost:4444/sse",
     }
 
     config_path.parent.mkdir(parents=True, exist_ok=True)

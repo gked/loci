@@ -120,7 +120,7 @@ description: ISO 8601 publication date
 
 field: format
 type: enum
-values: article | book | paper | video
+values: article | blog-post | news | book | paper | scholarly | technical | video
 required: yes
 description: medium of the content
 
@@ -230,9 +230,9 @@ description: names or UIDs of attendees
 ### entity
 field: subtype
 type: enum
-values: person | company | organization | institution
+values: person | organization | place
 required: yes
-description: what kind of real-world actor this is
+description: what kind of real-world actor this is; organization covers companies, NGOs, institutions
 
 field: roles
 type: array

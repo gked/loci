@@ -103,6 +103,28 @@ def setup_interactive() -> dict:
     return config
 
 
+def check_meta_version() -> None:
+    """
+    Warn at startup if the vault's meta_version is older than META_VERSION.
+    Skipped silently when running via LOCI_VAULT_ROOT (Docker), since there
+    is no config.yml to read meta_version from.
+    """
+    if os.environ.get("LOCI_VAULT_ROOT"):
+        return  # Docker / env-var mode: no config.yml to inspect
+    if not CONFIG_PATH.exists():
+        return
+    with open(CONFIG_PATH) as f:
+        config = yaml.safe_load(f) or {}
+    vault_meta_version = config.get("meta_version")
+    if vault_meta_version is not None and vault_meta_version < META_VERSION:
+        print(
+            f"WARNING: vault meta_version={vault_meta_version} is older than "
+            f"server META_VERSION={META_VERSION}. "
+            "Run `python tools/vault_init.py --force` to re-seed meta files.",
+            file=sys.stderr,
+        )
+
+
 def init(force: bool = False) -> dict:
     """
     Initialize Loci. Returns the active config.

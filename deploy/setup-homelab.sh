@@ -22,7 +22,7 @@ LOCI_REPO="https://github.com/gked/loci.git"
 LOCI_DIR="$HOME/loci"
 VAULT_DIR="$HOME/loci-vault"
 TUNNEL_NAME="loci"
-TUNNEL_HOSTNAME="loci.example.com"  # subdomain must be on Cloudflare DNS
+TUNNEL_HOSTNAME="your-subdomain.example.com"  # subdomain must be on Cloudflare DNS
 
 # Optional Nextcloud backup — leave blank to skip
 BACKUP_REMOTE=""          # rclone remote name, e.g. "nextcloud"

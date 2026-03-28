@@ -125,10 +125,6 @@ Pull the vault from the remote on first setup:
 ./sync/sync.sh pull
 ```
 
-To sync automatically on vault changes, install the watcher for your platform:
-
-- **macOS:** `cp sync/com.loci.sync.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.loci.sync.plist`
-- **Linux:** copy `sync/loci-sync.path` and `sync/loci-sync.service` to `/etc/systemd/system/` and run `systemctl enable --now loci-sync.path`
 
 ### 4. Install the Loci skill in Claude Code
 
@@ -199,6 +195,10 @@ loci/
       type-fields.md              ← human-readable field reference by type
   loci_mcp/
     server.py                     ← MCP server (stdio or SSE via LOCI_TRANSPORT)
+                                    env vars: LOCI_TRANSPORT=stdio|sse
+                                              LOCI_VAULT_ROOT=/path/to/vault
+                                              LOCI_PORT=8000 (SSE only, default 8000)
+                                              LOCI_TOKEN=<secret> (SSE only, optional bearer auth)
   tools/
     uid_generator.py
     slug.py
@@ -207,9 +207,7 @@ loci/
   sync/
     rclone.conf.sample            ← rclone remote config template
     sync.sh                       ← push/pull/bisync wrapper
-    loci-sync.path                ← systemd path watcher (Linux)
-    loci-sync.service             ← systemd sync service (Linux)
-    com.loci.sync.plist           ← launchd watcher (macOS)
+
   deploy/
     Dockerfile
     docker-compose.yml
@@ -289,10 +287,10 @@ The vault meta files are user-owned — they accumulate customizations (new tags
 - [x] SSE transport — remote MCP server support (Claude.ai / mobile)
 - [x] deploy/ — systemd + nginx templates for server deployment
 - [x] Docker image — containerize MCP server with vault as a mounted volume
+- [x] Graph layer — NetworkX in-memory index for traversal and relationship queries
+- [x] loci-query skill — retrieve, relate, and summarize knowledge across vault nodes
 
 ### Next
-- [ ] Graph layer — NetworkX in-memory for bootstrap phase; migrate to Kuzu once vault reaches meaningful size or traversal performance matters
-- [ ] Loci query skill — retrieve, relate, summarize across vault nodes
 - [ ] Testing suite — vault_init correctness, schema validation, duplicate detection, ingestion edge cases
 - [ ] Streamable HTTP transport (SSE is deprecated in MCP spec)
 

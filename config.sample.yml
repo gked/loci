@@ -7,3 +7,4 @@ sync_remote: nextcloud                      # rclone remote name (see sync/rclon
 sync_remote_path: loci                      # path on the remote to sync vault/ to/from
 created_at: 2026-03-21T14:32:00Z
 version: 1
+meta_version: 1                             # schema version used to seed vault/meta/ — managed by vault_init.py

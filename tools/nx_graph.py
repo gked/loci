@@ -13,6 +13,7 @@ The vault markdown files are the source of truth.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +22,7 @@ import yaml
 
 _graph: Optional[nx.DiGraph] = None
 _vault_root: Optional[Path] = None
+_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -85,9 +87,10 @@ def _build(vault_root: Path) -> nx.DiGraph:
 def get(vault_root: Path) -> nx.DiGraph:
     """Return the graph, building it lazily on first call."""
     global _graph, _vault_root
-    if _graph is None:
-        _vault_root = vault_root
-        _graph = _build(vault_root)
+    with _lock:
+        if _graph is None:
+            _vault_root = vault_root
+            _graph = _build(vault_root)
     return _graph
 
 
@@ -172,12 +175,13 @@ def related(uid: str, depth: int = 2) -> list[dict]:
         return []
 
     ego = nx.ego_graph(g, uid, radius=depth, undirected=True)
+    g_undirected = g.to_undirected()
     result = []
     for node in ego.nodes:
         if node == uid:
             continue
         try:
-            distance = nx.shortest_path_length(g.to_undirected(), uid, node)
+            distance = nx.shortest_path_length(g_undirected, uid, node)
         except nx.NetworkXNoPath:
             distance = None
         attrs = ego.nodes[node]
@@ -215,7 +219,7 @@ def path(uid_from: str, uid_to: str) -> list[dict]:
     ]
 
 
-def find(type: str = None, tag: str = None) -> list[dict]:
+def find(node_type: str = None, tag: str = None) -> list[dict]:
     """
     Filter nodes by type and/or tag.
     Returns list of {uid, title, type, path}.
@@ -226,7 +230,7 @@ def find(type: str = None, tag: str = None) -> list[dict]:
 
     result = []
     for uid, attrs in g.nodes(data=True):
-        if type and attrs.get("type") != type:
+        if node_type and attrs.get("type") != node_type:
             continue
         if tag and tag not in (attrs.get("tags") or []):
             continue

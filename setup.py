@@ -28,10 +28,9 @@ from vault_init import init as vault_init
 
 PROJECT_ROOT  = Path(__file__).parent.resolve()
 MCP_SERVER    = PROJECT_ROOT / "loci_mcp" / "server.py"
-SKILL_DIR     = PROJECT_ROOT / "loci-skill" / "loci-save"
+SKILLS        = ["loci-save", "loci-query"]
 
 CLAUDE_DESKTOP_CONFIG  = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
-SKILLS_LINK            = Path.home() / ".claude" / "skills" / "loci-save"
 
 
 # ---------------------------------------------------------------------------
@@ -90,30 +89,36 @@ def register_mcp_desktop(config_path: Path) -> None:
 
 
 def install_skill_symlink() -> None:
-    """Create ~/.claude/skills/loci-save/ as a symlink to skill/."""
-    SKILLS_LINK.parent.mkdir(parents=True, exist_ok=True)
+    """Create ~/.claude/skills/<skill>/ symlinks for each skill."""
+    skills_root = Path.home() / ".claude" / "skills"
+    skills_root.mkdir(parents=True, exist_ok=True)
 
-    if SKILLS_LINK.is_symlink():
-        SKILLS_LINK.unlink()
-        print(f"  Replaced existing symlink.")
-    elif SKILLS_LINK.exists():
-        shutil.rmtree(SKILLS_LINK)
-        print(f"  Replaced existing skill copy.")
+    for skill_name in SKILLS:
+        src = PROJECT_ROOT / "loci-skill" / skill_name
+        dst = skills_root / skill_name
 
-    SKILLS_LINK.symlink_to(SKILL_DIR)
-    print(f"  {SKILLS_LINK} → {SKILL_DIR}")
+        if dst.is_symlink():
+            dst.unlink()
+            print(f"  Replaced existing symlink: {skill_name}")
+        elif dst.exists():
+            shutil.rmtree(dst)
+            print(f"  Replaced existing skill copy: {skill_name}")
+
+        dst.symlink_to(src)
+        print(f"  {dst} → {src}")
 
 
 def print_desktop_fallback() -> None:
     """Print skill contents for manual paste into Claude Desktop Project."""
-    skill_md = SKILL_DIR / "SKILL.md"
     print()
     print("=" * 60)
-    print("Claude Desktop — if the skill does not auto-load")
+    print("Claude Desktop — if the skills do not auto-load")
     print("=" * 60)
     print("Paste the following into your Project's custom instructions:")
-    print()
-    print(skill_md.read_text() if skill_md.exists() else f"Skill file not found: {skill_md}")
+    for skill_name in SKILLS:
+        skill_md = PROJECT_ROOT / "loci-skill" / skill_name / "SKILL.md"
+        print(f"\n--- {skill_name} ---\n")
+        print(skill_md.read_text() if skill_md.exists() else f"Skill file not found: {skill_md}")
     print("=" * 60)
 
 

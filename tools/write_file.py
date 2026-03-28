@@ -7,6 +7,13 @@ Handles:
 - File path resolution from config
 - Duplicate detection
 - Directory creation if missing
+
+Concurrency note: write_item and patch_item perform read-modify-write
+operations without file locking. Running both the local stdio MCP server
+and the Docker SSE server against the same vault simultaneously is supported
+for typical personal use, but simultaneous writes to the *same file* from
+two clients can produce a torn write. If you need stricter consistency,
+add your own file locking (e.g. fcntl.flock) around the write path.
 """
 
 import sys
