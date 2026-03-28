@@ -1,0 +1,18 @@
+services:
+  loci:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "127.0.0.1:4444:8000"
+    volumes:
+      - ${VAULT_PATH:-../vault}:/vault
+      - ${RCLONE_CONFIG:-~/.config/rclone/rclone.conf}:/root/.config/rclone/rclone.conf:ro
+    environment:
+      - LOCI_TRANSPORT=sse
+      - LOCI_VAULT_ROOT=/vault
+      - LOCI_PORT=8000
+      - BACKUP_REMOTE=${BACKUP_REMOTE:-}
+      - BACKUP_REMOTE_PATH=${BACKUP_REMOTE_PATH:-loci}
+      - BACKUP_INTERVAL=${BACKUP_INTERVAL:-86400}
+    restart: unless-stopped

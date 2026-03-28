@@ -7,6 +7,13 @@ Handles:
 - File path resolution from config
 - Duplicate detection
 - Directory creation if missing
+
+Concurrency note: write_item and patch_item perform read-modify-write
+operations without file locking. Running both the local stdio MCP server
+and the Docker SSE server against the same vault simultaneously is supported
+for typical personal use, but simultaneous writes to the *same file* from
+two clients can produce a torn write. If you need stricter consistency,
+add your own file locking (e.g. fcntl.flock) around the write path.
 """
 
 import sys
@@ -23,7 +30,7 @@ from vault_init import load_config
 
 
 TYPE_FOLDERS = {
-    "note": "notes",
+    "document": "documents",
     "article": "articles",
     "bookmark": "bookmarks",
     "conversation": "conversations",
@@ -223,15 +230,19 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
         "path": str(p),
         "type": fm.get("type"),
         "title": fm.get("title"),
+        "relations": fm.get("relations") or [],
+        "tags": fm.get("tags") or [],
+        "domains": fm.get("domains") or [],
+        "summary": fm.get("summary", ""),
     }
 
 
 if __name__ == "__main__":
     # Quick smoke test
     result = write_item(
-        type="note",
-        title="Test Note from write_file",
-        body="This is a test note written by write_file.py.",
+        type="document",
+        title="Test Document from write_file",
+        body="This is a test document written by write_file.py.",
         tags=["test", "smoke-test"],
         domains=["technology-engineering"],
         summary="A quick smoke test to verify write_file.py works correctly.",

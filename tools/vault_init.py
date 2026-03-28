@@ -15,9 +15,12 @@ from typing import Optional
 
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.yml"
+REFERENCES_DIR = Path(__file__).parent.parent / "loci-skill" / "references"
+
+META_VERSION = 1
 
 VAULT_FOLDERS = [
-    "notes",
+    "documents",
     "articles",
     "bookmarks",
     "conversations",
@@ -31,64 +34,20 @@ VAULT_FOLDERS = [
     "meta",
 ]
 
-TYPE_DICTIONARY = """\
-# Loci Type Dictionary
-# Canonical type vocabulary — edit with care.
-# The save skill reads this file at runtime.
-
-note         — freeform thought or observation
-article      — external content consumed and captured (format carried by tag: #book, #article, #paper, #video)
-bookmark     — saved URL with light metadata only; use article when capturing full content
-conversation — saved LLM or human conversation (has turns, participants, model/person)
-project      — ongoing work with goals and milestones
-task         — discrete actionable item with due date and status
-event        — point-in-time or period occurrence
-entity       — real-world actor: person, company, org, institution (subtype by tag: #person, #company, #organization, #institution)
-procedure    — repeatable process with ordered steps and expected outcome (subtype by tag: #recipe, #workout, #protocol, #playbook, #tutorial)
-topic        — organizing hub for a subject area
-reference    — pointer to external content (hybrid ownership model)
-"""
-
-TAG_DICTIONARY = """\
-# Loci Tag Dictionary
-# Freeform tag vocabulary — consulted by the save skill at ingestion.
-# Purpose: keep tags consistent across items saved over time.
-# When tagging, prefer an existing tag over a synonym.
-# Add new tags here when a concept recurs and deserves a stable label.
-#
-# Format: one tag per line, lowercase, hyphenated.
-# Note: type subtypes (book, person, recipe, etc.) live in type-dictionary.md — not here.
-
-## Tags
-
-loci
-requirements
-design
-pkm
-knowledge-graph
-architecture
-"""
-
-FOREIGN_DEFINITIONS = """\
-# Loci Foreign Definitions
-# Metadata schemas for external content sources.
-# Added automatically by the save skill on first encounter with a new source.
-
-# Example entry:
-# source_type: jira_ticket
-# fields:
-#   - title
-#   - status
-#   - assignee
-#   - description
-#   - url
-#   - priority
-# last_updated: 2026-03-21
-"""
+META_FILES = [
+    "type-dictionary.md",
+    "tag-dictionary.md",
+    "field-dictionary.md",
+    "relation-dictionary.md",
+    "foreign-definitions.md",
+]
 
 
 def load_config() -> Optional[dict]:
-    """Load existing config if present."""
+    """Load existing config if present. LOCI_VAULT_ROOT env var takes precedence."""
+    vault_root_env = os.environ.get("LOCI_VAULT_ROOT")
+    if vault_root_env:
+        return {"vault_root": vault_root_env}
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH) as f:
             return yaml.safe_load(f)
@@ -111,51 +70,59 @@ def create_vault_structure(vault_root: Path) -> None:
         folder_path.mkdir(exist_ok=True)
         print(f"  Created: {folder_path}")
 
-    # Seed meta files if they don't exist
-    type_dict_path = vault_root / "meta" / "type-dictionary.md"
-    if not type_dict_path.exists():
-        type_dict_path.write_text(TYPE_DICTIONARY)
-        print(f"  Seeded: {type_dict_path}")
-
-    tag_dict_path = vault_root / "meta" / "tag-dictionary.md"
-    if not tag_dict_path.exists():
-        tag_dict_path.write_text(TAG_DICTIONARY)
-        print(f"  Seeded: {tag_dict_path}")
-
-    foreign_defs_path = vault_root / "meta" / "foreign-definitions.md"
-    if not foreign_defs_path.exists():
-        foreign_defs_path.write_text(FOREIGN_DEFINITIONS)
-        print(f"  Seeded: {foreign_defs_path}")
+    for filename in META_FILES:
+        dest = vault_root / "meta" / filename
+        if not dest.exists():
+            src = REFERENCES_DIR / filename
+            dest.write_text(src.read_text())
+            print(f"  Seeded: {dest}")
 
 
 def setup_interactive() -> dict:
     """Interactive first-run setup flow."""
     print("\nLoci is not configured yet. Let's set it up.\n")
 
-    # Nextcloud location
-    default_nc = Path.home() / "Nextcloud"
-    nc_input = input(f"Where is your Nextcloud folder? (default: {default_nc}): ").strip()
-    nextcloud_root = Path(nc_input) if nc_input else default_nc
+    default_vault = Path(__file__).parent.parent / "vault"
+    vault_input = input(f"Where should the vault live? (default: {default_vault}): ").strip()
+    vault_root = Path(vault_input) if vault_input else default_vault
 
-    if not nextcloud_root.exists():
-        print(f"Warning: {nextcloud_root} does not exist. Creating it.")
-        nextcloud_root.mkdir(parents=True)
-
-    # Vault folder name
-    vault_name = input("Vault folder name inside Nextcloud (default: loci): ").strip()
-    if not vault_name:
-        vault_name = "loci"
-
-    vault_root = nextcloud_root / vault_name
+    remote = input("rclone remote name for sync (e.g. nextcloud, dropbox — leave blank to skip): ").strip()
+    remote_path = ""
+    if remote:
+        remote_path = input("Path on the remote (default: loci): ").strip() or "loci"
 
     config = {
         "vault_root": str(vault_root),
-        "webdav_url": None,  # TBD when MCP layer is built
+        "sync_remote": remote or None,
+        "sync_remote_path": remote_path or "loci",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "version": 1,
+        "meta_version": META_VERSION,
     }
 
     return config
+
+
+def check_meta_version() -> None:
+    """
+    Warn at startup if the vault's meta_version is older than META_VERSION.
+    Skipped silently when running via LOCI_VAULT_ROOT (Docker), since there
+    is no config.yml to read meta_version from.
+    """
+    if os.environ.get("LOCI_VAULT_ROOT"):
+        return  # Docker / env-var mode: no config.yml to inspect
+    if not CONFIG_PATH.exists():
+        return
+    with open(CONFIG_PATH) as f:
+        config = yaml.safe_load(f) or {}
+    vault_meta_version = config.get("meta_version")
+    if vault_meta_version is not None and vault_meta_version < META_VERSION:
+        print(
+            f"WARNING: vault meta_version={vault_meta_version} is older than "
+            f"server META_VERSION={META_VERSION}. "
+            "Run `python tools/vault_init.py --force` to re-seed meta files.",
+            file=sys.stderr,
+        )
 
 
 def init(force: bool = False) -> dict:

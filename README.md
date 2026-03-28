@@ -6,7 +6,7 @@ Your personal knowledge vault. Capture, organize, and retrieve everything you th
 
 ## What is Loci?
 
-Loci is a personal knowledge management system built on plain Markdown files with YAML frontmatter, stored in Nextcloud and organized as a traversable knowledge graph. It is designed to be accessed by both you and LLM agents (Claude Code, Claude.ai).
+Loci is a personal knowledge management system built on plain Markdown files with YAML frontmatter, organized as a traversable knowledge graph. It is designed to be accessed by both you and LLM agents (Claude Code, Claude.ai).
 
 Every piece of content you save becomes a structured node with:
 - A stable UID
@@ -16,16 +16,9 @@ Every piece of content you save becomes a structured node with:
 
 ---
 
-## Requirements
+## Setup — Docker (recommended)
 
-- Python 3.13+
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
-- Nextcloud (self-hosted or cloud) with the desktop client syncing to a local folder
-- Claude Code (for local use) or Claude.ai with the Loci skill installed
-
----
-
-## Installation
+The easiest way to run Loci. Docker handles dependencies and sync inside the container.
 
 ### 1. Clone the repo
 
@@ -34,29 +27,106 @@ git clone https://github.com/you/loci.git
 cd loci
 ```
 
-### 2. Install dependencies
+### 2. Run the setup script
 
 ```bash
-uv sync
+python setup_docker.py
 ```
 
-### 3. Initialize the vault
+The script will:
+- Check for Docker or OrbStack — and offer to install one via Homebrew if neither is found
+- Ask where the vault should live
+- Optionally configure rclone sync (Nextcloud, Dropbox, Google Drive, S3, and more)
+- Build the image and start the container
+- Verify the server is responding
+
+### 3. Restart Claude Code
+
+The setup script installs the skill automatically. Restart Claude Code to pick it up.
+
+### 4. Test it
+
+Open Claude Code and say:
+
+```
+Save this as a note: Loci is now set up and working.
+```
+
+### How Docker and the vault interact
+
+The vault is **not inside the container**. Docker runs the MCP server process and the rclone sync loop — your vault data lives on the host filesystem and is mounted into the container at `/vault` at runtime. This means:
+
+- Vault data persists across container restarts and rebuilds
+- You can stop, update, or replace the container without touching your notes
+- The same vault can be used by the local stdio server (Claude Code / Claude Desktop) and the Docker SSE server simultaneously
+
+Your rclone config is mounted in read-only from the host — credentials are never baked into the image.
+
+### Managing the container
+
+**Terminal:**
+
+```bash
+# Restart (no rebuild)
+docker compose -f deploy/docker-compose.yml restart
+
+# Rebuild after code changes
+VAULT_PATH=/absolute/path/to/vault docker compose -f deploy/docker-compose.yml up -d --build
+
+# Stop
+docker compose -f deploy/docker-compose.yml down
+
+# View logs
+docker compose -f deploy/docker-compose.yml logs -f
+```
+
+**OrbStack:**
+
+Open the OrbStack app — the `loci` container will appear in the sidebar. From there you can restart, stop, or view logs with a single click without needing the terminal.
+
+---
+
+## Setup — Local (Python)
+
+Run the MCP server directly on your machine without Docker. Use this if you want to run Loci locally with Claude Code or Claude Desktop only.
+
+**Requires:** Python 3.13+, [uv](https://docs.astral.sh/uv/), [rclone](https://rclone.org/)
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/you/loci.git
+cd loci
+```
+
+### 2. Initialize
 
 ```bash
 python setup.py
 ```
 
 This will:
-- Ask where your Nextcloud folder is on this machine
-- Ask what to call the vault folder (default: `loci`)
-- Create the full folder structure inside Nextcloud
-- Save your config to `config.yml` in the project root
-- Seed the vault with all meta dictionaries
-- Register the MCP server with Claude Desktop
+- Install dependencies via uv
+- Ask where the vault should live (default: `vault/` inside the project)
+- Ask which rclone remote to use for sync
+- Create the vault folder structure and seed meta dictionaries
+- Register the MCP server with Claude Code and Claude Desktop
+
+### 3. Configure sync
+
+```bash
+cp sync/rclone.conf.sample ~/.config/rclone/rclone.conf
+# edit with your credentials
+```
+
+Pull the vault from the remote on first setup:
+
+```bash
+./sync/sync.sh pull
+```
+
 
 ### 4. Install the Loci skill in Claude Code
-
-Copy or symlink the skill into your Claude Code skills directory:
 
 ```bash
 cp -r loci-skill/loci-save/ ~/.claude/skills/loci-save/
@@ -70,86 +140,28 @@ Open Claude Code and say:
 Save this as a note: Loci is now set up and working.
 ```
 
-Claude should create a file at:
-```
-~/Nextcloud/loci/notes/loci-is-now-set-up-and-working.md
-```
-
 ---
 
-## Project Structure
+## Remote Access (Claude.ai / mobile)
 
-```
-loci/
-  loci-skill/
-    loci-save/
-      SKILL.md                  ← Claude's instructions for saving content
-    references/
-      type-fields.md            ← legacy type fields reference (superseded by field-dictionary)
-  loci_mcp/
-    server.py                   ← MCP server (Claude Desktop, stdio transport)
-  tools/
-    uid_generator.py            ← generates stable 8-char hex UIDs
-    slug.py                     ← converts titles to filename slugs
-    vault_init.py               ← first-run setup and vault scaffolding
-    write_file.py               ← writes vault items to the filesystem
-  api.py                        ← core vault API (read, write, patch, delete, list, duplicate check)
-  setup.py                      ← interactive setup: config, vault init, MCP registration
-  run_server.sh                 ← starts the MCP server
-  config.yml                    ← local config (not committed — see config.sample.yml)
-  pyproject.toml                ← project metadata and dependencies
-  uv.lock                       ← locked dependency versions
-  README.md
-```
-
----
-
-## Vault Structure
-
-```
-~/Nextcloud/loci/
-  /notes/
-  /articles/
-  /bookmarks/
-  /conversations/
-  /projects/
-  /tasks/
-  /events/
-  /entities/
-  /procedures/
-  /topics/
-  /references/
-  /meta/
-    type-dictionary.md          ← canonical type vocabulary
-    tag-dictionary.md           ← freeform tag vocabulary
-    field-dictionary.md         ← field definitions per type (authoritative schema)
-    foreign-definitions.md      ← external source schemas (Jira, calendar, etc.)
-```
-
----
-
-## Configuration
-
-Config lives at `config.yml` in the project root — gitignored, never committed. See `config.sample.yml` for the template.
-
-```yaml
-vault_root: ~/Nextcloud/loci
-webdav_url: null               # TBD when Claude.ai MCP layer is built
-created_at: 2026-03-21T14:32:00Z
-version: 1
-```
-
-To reconfigure (e.g. on a new machine):
+To use Loci from Claude.ai, Claude Desktop, or mobile, run the MCP server on a Linux home lab server and expose it via Cloudflare Tunnel — no open ports, no domain required.
 
 ```bash
-python setup.py
+bash deploy/setup-homelab.sh
 ```
+
+The script installs Docker, rclone, and cloudflared; creates a named tunnel; and starts the container. Once running:
+
+- **Claude Desktop / Claude Code:** `claude mcp add --transport sse loci <tunnel-url>/sse --scope user`
+- **Claude.ai / mobile:** Settings → Connectors → Add custom connector → `<tunnel-url>/sse`
+
+The vault lives on the server and is the single source of truth. All clients connect to the same endpoint. Nextcloud backup runs daily if `BACKUP_REMOTE` is configured in `deploy/.env`.
+
+**Authentication:** after setup, protect the tunnel with [Cloudflare Zero Trust Access](https://one.dash.cloudflare.com) — Access → Applications → Add Self-hosted app → policy: your email. Without this the endpoint is open.
 
 ---
 
 ## Usage
-
-### Saving content via Claude Code
 
 Just describe what you want to save:
 
@@ -160,15 +172,104 @@ Create a task: Review the Loci architecture by Friday
 Save this entity: John Smith, CEO at Acme Corp
 ```
 
-Claude will:
-1. Classify the type
-2. Generate frontmatter
-3. Suggest entity links
-4. Write the file to the correct vault folder
+Claude will classify the type, generate frontmatter, suggest entity links, and write the file.
 
-### Saving content via Claude.ai
+---
 
-Same natural language — but requires the MCP layer to be set up first (see `loci_mcp/` folder). Until then, use Claude Code.
+## Project Structure
+
+```
+loci/
+  vault/                          ← vault lives here (gitignored, synced via rclone)
+  loci-skill/
+    loci-save/
+      SKILL.md                    ← Claude's instructions for saving content
+    loci-query/
+      SKILL.md                    ← Claude's instructions for querying content
+    references/
+      type-dictionary.md          ← seed: canonical type vocabulary
+      field-dictionary.md         ← seed: field definitions per type
+      tag-dictionary.md           ← seed: initial tag vocabulary
+      relation-dictionary.md      ← seed: typed edge vocabulary
+      foreign-definitions.md      ← seed: external source schemas
+      type-fields.md              ← human-readable field reference by type
+  loci_mcp/
+    server.py                     ← MCP server (stdio or SSE via LOCI_TRANSPORT)
+                                    env vars: LOCI_TRANSPORT=stdio|sse
+                                              LOCI_VAULT_ROOT=/path/to/vault
+                                              LOCI_PORT=8000 (SSE only, default 8000)
+                                              LOCI_TOKEN=<secret> (SSE only, optional bearer auth)
+  tools/
+    uid_generator.py
+    slug.py
+    vault_init.py
+    write_file.py
+  sync/
+    rclone.conf.sample            ← rclone remote config template
+    sync.sh                       ← push/pull/bisync wrapper
+
+  deploy/
+    Dockerfile
+    docker-compose.yml
+    entrypoint.sh                 ← starts MCP server; optional daily backup to Nextcloud
+    setup-homelab.sh              ← one-shot setup script for Linux home lab server
+    loci-mcp.service              ← systemd service for always-on SSE server
+    nginx.conf.sample             ← nginx config for SSE + Cloudflare
+  api.py
+  setup.py
+  config.yml                      ← local config (gitignored — see config.sample.yml)
+  pyproject.toml
+  uv.lock
+  README.md
+```
+
+---
+
+## Vault Structure
+
+```
+vault/
+  documents/
+  articles/
+  bookmarks/
+  conversations/
+  projects/
+  tasks/
+  events/
+  entities/
+  procedures/
+  topics/
+  references/
+  meta/
+    type-dictionary.md            ← canonical type vocabulary       (schema_version: N)
+    field-dictionary.md           ← field definitions per type      (schema_version: N)
+    tag-dictionary.md             ← freeform tag vocabulary         (schema_version: N)
+    relation-dictionary.md        ← typed edge vocabulary           (schema_version: N)
+    foreign-definitions.md        ← external source schemas         (schema_version: N)
+```
+
+---
+
+## Schema Versioning
+
+Each vault meta file carries a `# schema_version: N` comment. The project-side seed files live in `loci-skill/references/` and are the source of truth for what a fresh vault gets. `vault_init.py` reads from these files to seed the vault on first run.
+
+`config.yml` tracks `meta_version: N` — the version of the schema that was used to seed this vault. Future upgrade scripts compare this against the current `META_VERSION` in `vault_init.py` to determine what migrations to apply.
+
+### Adding a new type or field (non-breaking)
+
+1. Edit the relevant file in `loci-skill/references/`
+2. Increment `schema_version` in that file and `META_VERSION` in `vault_init.py`
+3. Apply the same change to the live vault meta file (your `vault/meta/`)
+4. Update `meta_version` in `config.yml`
+
+### Breaking changes (rename, remove, restructure)
+
+Breaking changes require an explicit migration script (`tools/migrate_v1_to_v2.py`) that reads the live vault, transforms affected nodes, and updates `meta_version` in `config.yml`. Document the change in a changelog entry.
+
+### Why two copies?
+
+The vault meta files are user-owned — they accumulate customizations (new tags, local schema tweaks) that the project seeds don't have. The `loci-skill/references/` files are the initial template only. Non-breaking additions can be auto-applied by a future `vault_upgrade.py`; breaking changes always require explicit migration.
 
 ---
 
@@ -181,18 +282,23 @@ Same natural language — but requires the MCP layer to be set up first (see `lo
 - [x] MCP server — local stdio transport, Claude Desktop integration
 - [x] patch and delete operations
 - [x] Field dictionary — authoritative schema in vault meta, skill reads at runtime
+- [x] Schema versioning — seed files in loci-skill/references/, meta_version in config.yml
+- [x] rclone sync layer — provider-agnostic vault sync
+- [x] SSE transport — remote MCP server support (Claude.ai / mobile)
+- [x] deploy/ — systemd + nginx templates for server deployment
+- [x] Docker image — containerize MCP server with vault as a mounted volume
+- [x] Graph layer — NetworkX in-memory index for traversal and relationship queries
+- [x] loci-query skill — retrieve, relate, and summarize knowledge across vault nodes
 
 ### Next
-- [ ] Graph layer — NetworkX in-memory for bootstrap phase; migrate to Kuzu once vault reaches meaningful size or traversal performance matters. SQLite considered and rejected: relational model creates unnecessary friction for multi-hop graph queries
-- [ ] Loci query skill — retrieve, relate, summarize across vault nodes
-- [ ] Testing suite — vault_init correctness, schema validation, graph indexing, skill classification and duplicate detection, ingestion edge cases
+- [ ] Testing suite — vault_init correctness, schema validation, duplicate detection, ingestion edge cases
+- [ ] Streamable HTTP transport (SSE is deprecated in MCP spec)
 
 ### Later
-- [ ] Vector DB — deferred; at personal vault scale, pass summaries to the LLM for semantic retrieval. No embeddings needed until summaries exceed context window. Revisit ChromaDB / LanceDB / Qdrant at that point
-- [ ] Claude.ai MCP server (WebDAV transport)
+- [ ] Vector DB — deferred until summaries exceed context window. Revisit ChromaDB / LanceDB / Qdrant at that point
 - [ ] Browser extension / bookmarklet
-- [ ] Mobile capture — iOS Share Sheet
-- [ ] Telegram bot — bidirectional ambient interface (inbound save + outbound reminders and suggestions)
+- [ ] Native mobile / desktop apps (local-first, SQLite backend — see planning doc)
+- [ ] Telegram bot — bidirectional ambient interface
 
 ### Open questions
 - Relationship inference: at what vault size does automatic inference become useful vs. noisy?
@@ -200,10 +306,15 @@ Same natural language — but requires the MCP layer to be set up first (see `lo
 - Journal privacy: separate encryption layer for private entries?
 - Content editing model: edit in place, or new node linked via `supersedes` / `revisits`?
 - History tracking: implicit (git log) or explicit (encoded in graph)?
-- `reference` type placement: currently Structural, may belong under Content — revisit
 
 ---
 
 ## Design Decisions
 
 Key decisions are documented in the Loci vault at `notes/2026-03-21-locus-requirements.md`. If you are contributing or extending Loci, read that first.
+
+---
+
+## Contributing
+
+Coming soon.

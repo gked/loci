@@ -4,10 +4,12 @@ Add these fields to the base schema for each type. All base fields still apply.
 
 ---
 
-## note
-No additional required fields. Optional:
+## document
+No additional required fields. The fallback type — use when no more specific type fits.
+Optional:
 ```yaml
 status: draft | evergreen | archived
+subtype: essay | spec | design-doc | meeting-notes | journal | longform   # carried by tag too
 ```
 
 ---
@@ -25,7 +27,7 @@ site_name: <from og:site_name or domain> # parsed from page
 source_url: <URL>
 author: <name or null>
 published_at: <date or null>
-format: article | book | paper | video   # carried by tag too
+format: article | blog-post | news | book | paper | scholarly | technical | video   # carried by tag too
 highlights: []                           # list of key quotes or passages
 ```
 
@@ -33,7 +35,7 @@ highlights: []                           # list of key quotes or passages
 
 ## conversation
 ```yaml
-participants: []          # list of names or model identifiers
+participants: []          # list of entity UIDs, person names, or model names
 model: <e.g. claude-sonnet-4-6 or null for human conversations>
 turns: <integer count>
 platform: claude | chatgpt | human | other
@@ -66,6 +68,7 @@ assignee: <name or null>
 start_at: <ISO 8601 datetime>
 end_at: <ISO 8601 datetime or null>
 location: <string or null>
+organizer: <entity UID or name or null>   # who organised or hosted the event
 participants: []          # entity UIDs or names
 ```
 
@@ -73,14 +76,17 @@ participants: []          # entity UIDs or names
 
 ## entity
 ```yaml
-subtype: person | company | organization | institution   # carried by tag too
+subtype: person | organization | place   # carried by tag too; organization covers companies, NGOs, institutions
 website: <URL or null>
 # Person-specific (optional):
 role: <job title or null>
 organization: <entity UID or name>
-# Company/org-specific (optional):
+# Organization-specific (optional):
 industry: <string or null>
 founded_at: <year or null>
+# Place-specific (optional):
+address: <string or null>
+located_in: <entity UID or name of containing place or null>   # e.g. city within a country
 ```
 
 ---
@@ -111,3 +117,40 @@ source_type: <external app name, e.g. jira, google-calendar, email>
 external_id: <ID in the source system, e.g. PROJ-123>
 metadata: {}             # key-value pairs from foreign-definitions schema
 ```
+
+---
+
+## Relation Types
+
+Typed edges between vault nodes. Format: `{uid: <uid>, type: <relation-type>}`.
+Use the most specific type that fits. Fall back to `relates-to` only when nothing else applies.
+
+### Structural / Ownership
+| type | definition |
+|---|---|
+| `belongs-to` | This item is owned by or lives inside a larger whole (task → project, note → topic). |
+| `is-part-of` | This item is a structural sub-component of another (chapter inside a book, section inside a document). Use over `belongs-to` for content hierarchy. |
+| `has-part` | Inverse of `is-part-of`. The current node contains the linked node as a component. |
+
+### Provenance / Derivation
+| type | definition |
+|---|---|
+| `is-based-on` | This item was derived from or builds directly on another (a note summarising an article; a draft based on a source). |
+| `same-work-as` | Both nodes are different manifestations of the same underlying work — e.g. a preprint and its published version, or an original and its translation. Borrowed from openWEMI. |
+| `supersedes` | This item replaces or updates an older node. The older node remains but is considered deprecated. Borrowed from openWEMI. |
+| `version-of` | This item is a revision or variant of another without fully replacing it (draft v2 alongside draft v1). |
+
+### Semantic
+| type | definition |
+|---|---|
+| `about` | This node is primarily about another node. Especially: an article or note → a topic node. Borrowed from schema.org. |
+| `mentions` | This node references another in passing, without being primarily about it. Lighter than `about`. Borrowed from schema.org. |
+| `influences` | One node shapes, informs, or has affected the direction of another. |
+| `supports` | Provides evidence, reasoning, or examples for a claim made in another node. |
+| `contradicts` | Challenges, refutes, or conflicts with the content of another node. |
+| `inspired-by` | Conceptually sparked by another node, but not a direct derivation. |
+
+### Generic
+| type | definition |
+|---|---|
+| `relates-to` | Unspecified bidirectional connection. Use only when no other type fits. |

@@ -1,0 +1,36 @@
+# rclone.conf.sample
+# Copy to ~/.config/rclone/rclone.conf and fill in your credentials.
+# Only configure the provider(s) you use — remove the rest.
+#
+# Full docs: https://rclone.org/docs/
+
+# --- Nextcloud (WebDAV) ---
+[nextcloud]
+type = webdav
+url = https://your-nextcloud-host/remote.php/dav/files/your-username
+vendor = nextcloud
+user = your-username
+pass = your-app-password   # generate in Nextcloud → Settings → Security
+
+# --- Dropbox ---
+[dropbox]
+type = dropbox
+# Run `rclone config` interactively to complete OAuth setup.
+
+# --- Google Drive ---
+[gdrive]
+type = drive
+# Run `rclone config` interactively to complete OAuth setup.
+
+# --- Microsoft OneDrive ---
+[onedrive]
+type = onedrive
+# Run `rclone config` interactively to complete OAuth setup.
+
+# --- S3-compatible (e.g. Backblaze B2, Wasabi, MinIO) ---
+[s3]
+type = s3
+provider = Other         # or AWS, Backblaze, Wasabi, etc.
+access_key_id = YOUR_KEY
+secret_access_key = YOUR_SECRET
+endpoint = https://s3.your-provider.com
