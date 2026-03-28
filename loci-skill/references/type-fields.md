@@ -35,7 +35,7 @@ highlights: []                           # list of key quotes or passages
 
 ## conversation
 ```yaml
-participants: []          # list of names or model identifiers
+participants: []          # list of entity UIDs, person names, or model names
 model: <e.g. claude-sonnet-4-6 or null for human conversations>
 turns: <integer count>
 platform: claude | chatgpt | human | other

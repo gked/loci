@@ -188,6 +188,15 @@ loci/
   loci-skill/
     loci-save/
       SKILL.md                    ← Claude's instructions for saving content
+    loci-query/
+      SKILL.md                    ← Claude's instructions for querying content
+    references/
+      type-dictionary.md          ← seed: canonical type vocabulary
+      field-dictionary.md         ← seed: field definitions per type
+      tag-dictionary.md           ← seed: initial tag vocabulary
+      relation-dictionary.md      ← seed: typed edge vocabulary
+      foreign-definitions.md      ← seed: external source schemas
+      type-fields.md              ← human-readable field reference by type
   loci_mcp/
     server.py                     ← MCP server (stdio or SSE via LOCI_TRANSPORT)
   tools/
@@ -222,7 +231,7 @@ loci/
 
 ```
 vault/
-  notes/
+  documents/
   articles/
   bookmarks/
   conversations/
@@ -234,11 +243,35 @@ vault/
   topics/
   references/
   meta/
-    type-dictionary.md            ← canonical type vocabulary
-    tag-dictionary.md             ← freeform tag vocabulary
-    field-dictionary.md           ← field definitions per type
-    foreign-definitions.md        ← external source schemas (Jira, calendar, etc.)
+    type-dictionary.md            ← canonical type vocabulary       (schema_version: N)
+    field-dictionary.md           ← field definitions per type      (schema_version: N)
+    tag-dictionary.md             ← freeform tag vocabulary         (schema_version: N)
+    relation-dictionary.md        ← typed edge vocabulary           (schema_version: N)
+    foreign-definitions.md        ← external source schemas         (schema_version: N)
 ```
+
+---
+
+## Schema Versioning
+
+Each vault meta file carries a `# schema_version: N` comment. The project-side seed files live in `loci-skill/references/` and are the source of truth for what a fresh vault gets. `vault_init.py` reads from these files to seed the vault on first run.
+
+`config.yml` tracks `meta_version: N` — the version of the schema that was used to seed this vault. Future upgrade scripts compare this against the current `META_VERSION` in `vault_init.py` to determine what migrations to apply.
+
+### Adding a new type or field (non-breaking)
+
+1. Edit the relevant file in `loci-skill/references/`
+2. Increment `schema_version` in that file and `META_VERSION` in `vault_init.py`
+3. Apply the same change to the live vault meta file (your `vault/meta/`)
+4. Update `meta_version` in `config.yml`
+
+### Breaking changes (rename, remove, restructure)
+
+Breaking changes require an explicit migration script (`tools/migrate_v1_to_v2.py`) that reads the live vault, transforms affected nodes, and updates `meta_version` in `config.yml`. Document the change in a changelog entry.
+
+### Why two copies?
+
+The vault meta files are user-owned — they accumulate customizations (new tags, local schema tweaks) that the project seeds don't have. The `loci-skill/references/` files are the initial template only. Non-breaking additions can be auto-applied by a future `vault_upgrade.py`; breaking changes always require explicit migration.
 
 ---
 
@@ -251,6 +284,7 @@ vault/
 - [x] MCP server — local stdio transport, Claude Desktop integration
 - [x] patch and delete operations
 - [x] Field dictionary — authoritative schema in vault meta, skill reads at runtime
+- [x] Schema versioning — seed files in loci-skill/references/, meta_version in config.yml
 - [x] rclone sync layer — provider-agnostic vault sync
 - [x] SSE transport — remote MCP server support (Claude.ai / mobile)
 - [x] deploy/ — systemd + nginx templates for server deployment
