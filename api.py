@@ -189,11 +189,23 @@ def list_items(type: str = None) -> dict:
     }
 
 
+def _app_version() -> str:
+    """Read the app version from pyproject.toml."""
+    p = Path(__file__).parent / "pyproject.toml"
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if line.startswith("version"):
+            return line.split("=")[1].strip().strip('"')
+    return "unknown"
+
+
 def read_meta(file: str) -> str:
     """
     Read a vault meta file.
     file: type-dictionary | tag-dictionary | foreign-definitions | config
     """
+    if file == "config":
+        return f"app_version: {_app_version()}\n"
+
     vault_root = _vault_root()
     file_map = {
         "type-dictionary":      vault_root / "meta" / "type-dictionary.md",
@@ -201,7 +213,6 @@ def read_meta(file: str) -> str:
         "field-dictionary":     vault_root / "meta" / "field-dictionary.md",
         "relation-dictionary":  vault_root / "meta" / "relation-dictionary.md",
         "foreign-definitions":  vault_root / "meta" / "foreign-definitions.md",
-        "config":               vault_root / "meta" / "config.yml",
     }
     p = file_map.get(file)
     if not p:
