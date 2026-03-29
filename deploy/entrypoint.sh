@@ -12,7 +12,7 @@ if [ -n "$BACKUP_REMOTE" ] && [ -n "$BACKUP_REMOTE_PATH" ]; then
         while true; do
             sleep "$BACKUP_INTERVAL"
             echo "Backing up vault to ${BACKUP_REMOTE}:${BACKUP_REMOTE_PATH}..."
-            rclone sync /vault "${BACKUP_REMOTE}:${BACKUP_REMOTE_PATH}" --progress \
+            rclone sync /knowledge-vault "${BACKUP_REMOTE}:${BACKUP_REMOTE_PATH}" --progress \
                 && echo "Backup complete." \
                 || echo "Backup failed — will retry next interval."
         done

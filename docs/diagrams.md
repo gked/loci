@@ -14,7 +14,8 @@ flowchart TD
     subgraph Local["Local Machine (Mac)"]
         MCP_L["MCP Server\n(stdio)"]
         API_L["api.py"]
-        V_L["vault/"]
+        V_L["knowledge-vault/"]
+        A_L["assets/\nasset-registry/"]
     end
 
     subgraph Server["Lab Server"]
@@ -22,18 +23,21 @@ flowchart TD
         NX["nginx"]
         MCP_R["MCP Server\n(SSE, systemd)"]
         API_R["api.py"]
-        V_R["vault/"]
+        V_R["knowledge-vault/"]
+        A_R["assets/\nasset-registry/"]
     end
 
     CC -->|"stdio"| MCP_L
     MCP_L --> API_L
     API_L -->|"read / write"| V_L
+    API_L -->|"save / resolve"| A_L
 
     CAI -->|"HTTPS"| CF
     CF --> NX
     NX -->|"proxy"| MCP_R
     MCP_R --> API_R
     API_R -->|"read / write"| V_R
+    API_R -->|"save / resolve"| A_R
 ```
 
 ---

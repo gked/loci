@@ -6,11 +6,11 @@ services:
     ports:
       - "127.0.0.1:4444:8000"
     volumes:
-      - ${VAULT_PATH:-../vault}:/vault
+      - ${VAULT_PATH:-../knowledge-vault}:/knowledge-vault
       - ${RCLONE_CONFIG:-~/.config/rclone/rclone.conf}:/root/.config/rclone/rclone.conf:ro
     environment:
       - LOCI_TRANSPORT=sse
-      - LOCI_VAULT_ROOT=/vault
+      - LOCI_VAULT_ROOT=/knowledge-vault
       - LOCI_PORT=8000
       - BACKUP_REMOTE=${BACKUP_REMOTE:-}
       - BACKUP_REMOTE_PATH=${BACKUP_REMOTE_PATH:-loci}

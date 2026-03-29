@@ -28,6 +28,7 @@ from write_file import (
     TYPE_FOLDERS,
 )
 import nx_graph as graph
+import asset_registry as ar
 
 
 # ---------------------------------------------------------------------------
@@ -39,6 +40,10 @@ def _vault_root() -> Path:
     if not config:
         raise RuntimeError("Loci is not configured. Run: python tools/vault_init.py")
     return Path(config["vault_root"]).expanduser()
+
+
+def _loci_root() -> Path:
+    return _vault_root().parent
 
 
 # ---------------------------------------------------------------------------
@@ -166,13 +171,144 @@ def get(path: str) -> str:
     """
     Read a vault file. Accepts an absolute path or a path relative to vault_root.
     Raises FileNotFoundError if the file does not exist.
+    When the node has has_asset: true, asset content is appended inline (text files
+    under the size threshold) or as a path reference (binary/large files).
     """
     p = Path(path)
     if not p.is_absolute():
         p = _vault_root() / path
     if not p.exists():
         raise FileNotFoundError(f"Vault file not found: {p}")
-    return p.read_text(encoding="utf-8")
+
+    text = p.read_text(encoding="utf-8")
+
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            fm = yaml.safe_load(parts[1]) or {}
+            uid = fm.get("uid")
+            if uid and fm.get("has_asset"):
+                try:
+                    result = ar.resolve(_loci_root(), uid)
+                    size = result["size_bytes"]
+                    mime = result["mime_type"]
+                    apath = result["path"]
+                    if size <= ar.SIZE_THRESHOLD_BYTES and mime.startswith("text/"):
+                        content = Path(apath).read_text(encoding="utf-8", errors="replace")
+                        text += (
+                            f"\n\n---\nasset_path: {apath}\n"
+                            f"asset_mime_type: {mime}\n"
+                            f"asset_size_bytes: {size}\n---\n\n"
+                            f"{content}"
+                        )
+                    else:
+                        text += (
+                            f"\n\nasset_path: {apath}\n"
+                            f"asset_mime_type: {mime}\n"
+                            f"asset_size_bytes: {size}"
+                        )
+                except FileNotFoundError as e:
+                    text += f"\n\nasset_content: null\nasset_error: {e}"
+
+    return text
+
+
+def resolve_asset(uid: str, format: str = None) -> dict:
+    """
+    Resolve an asset UID to its file path and metadata.
+    Returns {path, mime_type, format, size_bytes}.
+    """
+    return ar.resolve(_loci_root(), uid, format)
+
+
+def find_unregistered_assets() -> list:
+    """Return relative paths of files in assets/ not listed in manifest.txt."""
+    return ar.find_unregistered(_loci_root())
+
+
+def save_asset(
+    content: bytes,
+    format: str,
+    mime_type: str,
+    title: str,
+    summary: str = None,
+    tags: list = None,
+    domains: list = None,
+    relations: list = None,
+) -> dict:
+    """
+    Save a new asset with its vault proxy node using the crash-safe write sequence.
+    Returns {uid, asset_path, vault_path}.
+    """
+    from slug import filename as make_filename
+
+    uid = _generate_uid()
+    loci_root = _loci_root()
+    vault_root = _vault_root()
+
+    asset_rel_path = f"assets/{uid}.{format}"
+    asset_final = loci_root / asset_rel_path
+    asset_tmp = ar.assets_dir(loci_root) / f".{uid}.{format}.tmp"
+
+    vault_fname = make_filename(title)
+    vault_path = vault_root / "documents" / vault_fname
+
+    vault_node = {
+        "title": title,
+        "summary": summary,
+        "tags": tags or [],
+        "domains": domains or [],
+        "relations": relations or [],
+    }
+
+    ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
+    ar.registry_dir(loci_root).mkdir(parents=True, exist_ok=True)
+    ar.pending_dir(loci_root).mkdir(parents=True, exist_ok=True)
+
+    # Step 1: Write intent file
+    intent_path = ar.write_intent(
+        loci_root, uid, format, mime_type,
+        str(asset_tmp), asset_rel_path, str(vault_path), vault_node,
+    )
+
+    # Steps 2+3: Stage to tmp, rename to final (atomic)
+    asset_tmp.write_bytes(content)
+    asset_tmp.rename(asset_final)
+
+    # Step 4: Write registry entry
+    ar.write_registry_entry(loci_root, uid, format, mime_type, asset_rel_path)
+
+    # Step 5: Append to manifest
+    ar.append_manifest(loci_root, asset_rel_path)
+
+    # Step 6: Write vault proxy node
+    with contextlib.redirect_stdout(io.StringIO()):
+        result = _write_item(
+            type="document",
+            title=title,
+            body=f"# {title}\n",
+            tags=tags,
+            domains=domains,
+            summary=summary,
+            relations=relations,
+            extra_fields={"uid": uid, "has_asset": True},
+            skip_duplicate_check=True,
+        )
+    graph.index_node(
+        uid,
+        type="document",
+        title=title,
+        tags=tags or [],
+        domains=domains or [],
+        summary=summary or "",
+        path=result["path"],
+    )
+    graph.index_edges(uid, relations or [])
+
+    # Step 7: Delete intent file
+    intent_path.unlink()
+
+    return {"uid": uid, "asset_path": str(asset_final), "vault_path": result["path"]}
 
 
 def list_items(type: str = None) -> dict:

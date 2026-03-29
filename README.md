@@ -54,7 +54,7 @@ Save this as a note: Loci is now set up and working.
 
 ### How Docker and the vault interact
 
-The vault is **not inside the container**. Docker runs the MCP server process and the rclone sync loop — your vault data lives on the host filesystem and is mounted into the container at `/vault` at runtime. This means:
+The vault is **not inside the container**. Docker runs the MCP server process and the rclone sync loop — your vault data lives on the host filesystem and is mounted into the container at `/knowledge-vault` at runtime. This means:
 
 - Vault data persists across container restarts and rebuilds
 - You can stop, update, or replace the container without touching your notes
@@ -71,7 +71,7 @@ Your rclone config is mounted in read-only from the host — credentials are nev
 docker compose -f deploy/docker-compose.yml restart
 
 # Rebuild after code changes
-VAULT_PATH=/absolute/path/to/vault docker compose -f deploy/docker-compose.yml up -d --build
+VAULT_PATH=/absolute/path/to/knowledge-vault docker compose -f deploy/docker-compose.yml up -d --build
 
 # Stop
 docker compose -f deploy/docker-compose.yml down
@@ -180,7 +180,7 @@ Claude will classify the type, generate frontmatter, suggest entity links, and w
 
 ```
 loci/
-  vault/                          ← vault lives here (gitignored, synced via rclone)
+  knowledge-vault/                ← vault lives here (gitignored, synced via rclone)
   loci-skill/
     loci-save/
       SKILL.md                    ← Claude's instructions for saving content
@@ -196,7 +196,7 @@ loci/
   loci_mcp/
     server.py                     ← MCP server (stdio or SSE via LOCI_TRANSPORT)
                                     env vars: LOCI_TRANSPORT=stdio|sse
-                                              LOCI_VAULT_ROOT=/path/to/vault
+                                              LOCI_VAULT_ROOT=/path/to/knowledge-vault
                                               LOCI_PORT=8000 (SSE only, default 8000)
                                               LOCI_TOKEN=<secret> (SSE only, optional bearer auth)
   tools/
@@ -204,6 +204,7 @@ loci/
     slug.py
     vault_init.py
     write_file.py
+    asset_registry.py              ← asset resolve, register, find-unregistered, crash recovery
   sync/
     rclone.conf.sample            ← rclone remote config template
     sync.sh                       ← push/pull/bisync wrapper
@@ -228,25 +229,37 @@ loci/
 ## Vault Structure
 
 ```
-vault/
-  documents/
-  articles/
-  bookmarks/
-  conversations/
-  projects/
-  tasks/
-  events/
-  entities/
-  procedures/
-  topics/
-  references/
-  meta/
-    type-dictionary.md            ← canonical type vocabulary       (schema_version: N)
-    field-dictionary.md           ← field definitions per type      (schema_version: N)
-    tag-dictionary.md             ← freeform tag vocabulary         (schema_version: N)
-    relation-dictionary.md        ← typed edge vocabulary           (schema_version: N)
-    foreign-definitions.md        ← external source schemas         (schema_version: N)
+~/Nextcloud/loci/                    ← loci root (all stores are siblings)
+  knowledge-vault/                   ← knowledge graph — markdown only
+    documents/
+    articles/
+    bookmarks/
+    conversations/
+    projects/
+    tasks/
+    events/
+    entities/
+    procedures/
+    topics/
+    references/
+    meta/
+      type-dictionary.md        ← canonical type vocabulary       (schema_version: N)
+      field-dictionary.md       ← field definitions per type      (schema_version: N)
+      tag-dictionary.md         ← freeform tag vocabulary         (schema_version: N)
+      relation-dictionary.md    ← typed edge vocabulary           (schema_version: N)
+      foreign-definitions.md    ← external source schemas         (schema_version: N)
+
+  assets/                       ← binary/rich files (HTML, PDF, PNG, etc.)
+    <uid>.<ext>                 ← one file per asset, named by vault node UID
+
+  asset-registry/               ← resolver layer — decouples vault from file locations
+    <uid>.yaml                  ← one registry entry per asset (format, mime, locations)
+    manifest.txt                ← flat list of all registered asset paths (one per line)
+    .pending/                   ← intent files for crash recovery during writes
 ```
+
+Vault nodes reference assets by setting `has_asset: true`. The registry maps UIDs to physical
+file locations. If a file moves, only the registry entry changes — vault nodes are untouched.
 
 ---
 
@@ -289,6 +302,7 @@ The vault meta files are user-owned — they accumulate customizations (new tags
 - [x] Docker image — containerize MCP server with vault as a mounted volume
 - [x] Graph layer — NetworkX in-memory index for traversal and relationship queries
 - [x] loci-query skill — retrieve, relate, and summarize knowledge across vault nodes
+- [x] Asset registry — binary/rich file storage (HTML, PDF, PNG, etc.) with crash-safe write sequence, resolver, and startup recovery
 
 ### Next
 - [ ] Testing suite — vault_init correctness, schema validation, duplicate detection, ingestion edge cases

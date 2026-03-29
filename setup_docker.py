@@ -130,7 +130,7 @@ def ensure_docker() -> None:
 
 def ask_vault_path() -> Path:
     print("\nStep 2 — Vault location")
-    default = PROJECT_ROOT / "vault"
+    default = PROJECT_ROOT / "knowledge-vault"
     raw = ask("  Where should the vault live?", str(default))
     path = Path(raw).expanduser().resolve()
     path.mkdir(parents=True, exist_ok=True)

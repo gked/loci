@@ -62,13 +62,20 @@ def save_config(config: dict) -> None:
 
 
 def create_vault_structure(vault_root: Path) -> None:
-    """Create vault folder structure and seed meta files."""
+    """Create vault folder structure, asset storage, and seed meta files."""
     vault_root.mkdir(parents=True, exist_ok=True)
 
     for folder in VAULT_FOLDERS:
         folder_path = vault_root / folder
         folder_path.mkdir(exist_ok=True)
         print(f"  Created: {folder_path}")
+
+    # Asset storage lives alongside vault/, not inside it
+    loci_root = vault_root.parent
+    for folder in ["assets", "asset-registry/.pending"]:
+        p = loci_root / folder
+        p.mkdir(parents=True, exist_ok=True)
+        print(f"  Created: {p}")
 
     for filename in META_FILES:
         dest = vault_root / "meta" / filename
@@ -82,7 +89,7 @@ def setup_interactive() -> dict:
     """Interactive first-run setup flow."""
     print("\nLoci is not configured yet. Let's set it up.\n")
 
-    default_vault = Path(__file__).parent.parent / "vault"
+    default_vault = Path(__file__).parent.parent / "knowledge-vault"
     vault_input = input(f"Where should the vault live? (default: {default_vault}): ").strip()
     vault_root = Path(vault_input) if vault_input else default_vault
 

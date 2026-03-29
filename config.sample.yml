@@ -2,9 +2,9 @@
 # Copy this file to config.yml and update the values.
 # Do NOT commit config.yml to git — it contains machine-specific paths.
 
-vault_root: /absolute/path/to/loci/vault   # default: <project_root>/vault
+vault_root: /absolute/path/to/loci/knowledge-vault   # default: <project_root>/knowledge-vault
 sync_remote: nextcloud                      # rclone remote name (see sync/rclone.conf.sample)
-sync_remote_path: loci                      # path on the remote to sync vault/ to/from
+sync_remote_path: loci                      # path on the remote to sync knowledge-vault/ to/from
 created_at: 2026-03-21T14:32:00Z
 version: 1
-meta_version: 1                             # schema version used to seed vault/meta/ — managed by vault_init.py
+meta_version: 1                             # schema version used to seed knowledge-vault/meta/ — managed by vault_init.py

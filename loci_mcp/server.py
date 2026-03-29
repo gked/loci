@@ -26,10 +26,40 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import api as loci
 import nx_graph as graph
+import asset_registry as ar
 from mcp.server.fastmcp import FastMCP
 from vault_init import check_meta_version
 
 check_meta_version()
+
+# Recover any interrupted asset saves from previous runs
+try:
+    import contextlib as _contextlib
+    import io as _io
+    from write_file import write_item as _write_item
+
+    def _write_vault_proxy(vault_root, uid, vault_node):
+        with _contextlib.redirect_stdout(_io.StringIO()):
+            result = _write_item(
+                type="document",
+                title=vault_node.get("title", uid),
+                body=f"# {vault_node.get('title', uid)}\n",
+                tags=vault_node.get("tags"),
+                domains=vault_node.get("domains"),
+                summary=vault_node.get("summary"),
+                relations=vault_node.get("relations"),
+                extra_fields={"uid": uid, "has_asset": True},
+                skip_duplicate_check=True,
+            )
+        return result.get("path", "")
+
+    _recovered = ar.recover_pending(loci._vault_root().parent, loci._vault_root(), _write_vault_proxy)
+    if _recovered:
+        import sys as _sys
+        print(f"[loci] Recovered {len(_recovered)} interrupted asset write(s): {_recovered}", file=_sys.stderr)
+except Exception as _e:
+    import sys as _sys
+    print(f"[loci] Asset recovery skipped: {_e}", file=_sys.stderr)
 
 mcp = FastMCP("loci")
 
@@ -265,6 +295,71 @@ def search_vault(query: str) -> list[dict]:
     """
     graph.get(loci._vault_root())
     return graph.search(query)
+
+
+@mcp.tool()
+def resolve_asset(uid: str, format: str = None) -> dict:
+    """
+    Resolve an asset UID to its file path and metadata.
+    Returns {path, mime_type, format, size_bytes}.
+    Use this when you need the physical file location for a vault node with has_asset: true.
+    """
+    try:
+        return loci.resolve_asset(uid, format)
+    except (FileNotFoundError, ValueError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def find_unregistered_assets() -> list[str]:
+    """
+    Find files in assets/ that have no registry entry.
+    Returns a list of relative paths (e.g. ["assets/abc123.pdf"]).
+    Use this to surface ghost files that were dropped into assets/ without going through save_asset.
+    """
+    return loci.find_unregistered_assets()
+
+
+@mcp.tool()
+def save_asset(
+    content: str,
+    format: str,
+    mime_type: str,
+    title: str,
+    summary: str = None,
+    tags: list[str] = None,
+    domains: list[str] = None,
+    relations: list[dict] = None,
+) -> dict:
+    """
+    Save a new binary/rich-file asset with its vault proxy node.
+    Executes the full crash-safe write sequence. Returns {uid, asset_path, vault_path}.
+
+    Args:
+        content: File content as a UTF-8 string (for text files like HTML)
+                 or base64-encoded string (for binary files like PDF/PNG).
+        format:  File extension: html, pdf, png, mov, etc.
+        mime_type: MIME type: text/html, application/pdf, image/png, etc.
+        title:   Title for the vault proxy node.
+        summary: One-paragraph summary.
+        tags:    3-6 freeform lowercase hyphenated tags.
+        domains: One or more domain taxonomy values.
+        relations: List of {uid, type} dicts linking to other vault nodes.
+    """
+    try:
+        content_bytes = content.encode("utf-8") if isinstance(content, str) else content
+        return loci.save_asset(
+            content=content_bytes,
+            format=format,
+            mime_type=mime_type,
+            title=title,
+            summary=summary,
+            tags=tags,
+            domains=domains,
+            relations=relations,
+        )
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def _make_auth_app(asgi_app):
