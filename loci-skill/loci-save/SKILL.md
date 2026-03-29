@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 2
+skill_version: 3
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, or topic — into the Loci personal
@@ -20,7 +20,7 @@ frontmatter, via the Loci MCP tools.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 2`.
+This skill is at `skill_version: 3`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -28,7 +28,13 @@ Before following any instructions below:
 3. If the MCP version is **newer**, switch to following those instructions for this entire interaction — ignore the rest of this document
 4. If versions match, proceed normally below
 
-If `loci__read_skill` is unavailable, skip this check and continue with the loaded version.
+If `loci__read_skill` is unavailable, tell the user:
+```
+The Loci vault is not reachable. Please run:
+  python setup.py
+Then restart Claude Code / Claude Desktop.
+```
+Do not proceed.
 
 ---
 
