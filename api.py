@@ -340,7 +340,8 @@ def read_meta(file: str) -> str:
     file: type-dictionary | tag-dictionary | foreign-definitions | config
     """
     if file == "config":
-        return f"app_version: {_app_version()}\n"
+        cfg = load_config() or {}
+        return f"app_version: {_app_version()}\nvault_root: {cfg.get('vault_root', '')}\n"
 
     vault_root = _vault_root()
     file_map = {

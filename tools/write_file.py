@@ -40,7 +40,6 @@ TYPE_FOLDERS = {
     "entity": "entities",
     "procedure": "procedures",
     "topic": "topics",
-    "reference": "references",
 }
 
 

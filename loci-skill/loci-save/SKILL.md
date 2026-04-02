@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 3
+skill_version: 4
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, or topic — into the Loci personal
@@ -20,7 +20,7 @@ frontmatter, via the Loci MCP tools.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 3`.
+This skill is at `skill_version: 4`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -146,13 +146,30 @@ Save as new item, or update the existing one?
 
 ---
 
-### Step 5 — Write the file
+### Step 5 — Confirm save location
+
+Call `loci__read_meta(file="config")` to get the vault_root.
+
+Show the intended save location and ask for confirmation before writing:
+
+```
+Save to: <vault_root>/<type-folder>/<generated-filename>
+Proceed? [yes / no / change location]
+```
+
+If the user says **no** or **change location**, ask them to provide the desired path and update accordingly before proceeding.
+
+Do not call `loci__write_vault` until the user confirms.
+
+---
+
+### Step 6 — Write the file
 
 Call `loci__write_vault` with all assembled fields.
 
 Confirm to the user:
 ```
-Saved: <path>
+Saved: <full_path>
 UID: <uid>
 Type: <type>
 Links: <count>
@@ -160,7 +177,7 @@ Links: <count>
 
 ---
 
-### Step 6 — Foreign content schema discovery
+### Step 7 — Foreign content schema discovery
 
 If content comes from an external app (Jira, calendar, email, Slack, etc.)
 and no schema exists yet for that source:
