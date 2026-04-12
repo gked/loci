@@ -74,9 +74,10 @@ If unsure between two other types, ask the user. Do not guess — type affects
 frontmatter fields.
 
 **Subtype tags to apply automatically:**
-- `article` → add format tag: #book, #paper, #scholarly, #technical, #blog-post, #news, #video, or #article
+- `article` → add format tag: #book, #blog-post, #whitepaper, #research-paper, #news, #magazine, #video, #podcast, or #article
 - `entity` → set `subtype` field to person | organization | place — do NOT add as a tag
 - `procedure` → add domain tag: #recipe, #workout, #protocol, #playbook, #tutorial
+- `document` → add format tag if applicable: #essay, #spec, #design-doc, #meeting-notes, #journal, #note
 
 ---
 
@@ -272,6 +273,6 @@ Deletion is permanent — there is no undo.
 
 **No clear title:** generate from first sentence or ask. Never leave blank.
 
-**Unknown type:** default to `document` if the content is written text with no more specific fit. Ask only when genuinely ambiguous.
+**Unknown type:** use `article` if the content has a citable source (URL, author, publication). Use `document` if there is no publication record to track. Ask only when genuinely ambiguous.
 
 **Very long content:** summarize in `summary`, keep full content in body.
