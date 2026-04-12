@@ -3,7 +3,7 @@
 # The save skill reads this file at runtime.
 # schema_version: 1
 
-document     — written content that doesn't fit a more specific type: essays, specs, design docs, meeting notes, journal entries, longform notes; the default fallback type
+document     — content you authored: essays, specs, notes, meeting notes, journal entries, design docs (use tags for format)
 article      — external content consumed and captured (format carried by tag: #book, #article, #paper, #video)
 bookmark     — saved URL with light metadata only; use article when capturing full content
 conversation — saved LLM or human conversation (participants can be entity UIDs or model names)

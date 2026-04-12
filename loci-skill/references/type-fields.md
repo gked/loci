@@ -5,7 +5,7 @@ Add these fields to the base schema for each type. All base fields still apply.
 ---
 
 ## document
-No additional required fields. The fallback type — use when no more specific type fits.
+No additional required fields. The primary type for content you authored.
 Optional:
 ```yaml
 status: draft | evergreen | archived
