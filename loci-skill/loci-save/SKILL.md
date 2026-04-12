@@ -71,7 +71,7 @@ site_name, and summary fields — do not ask the user for them unless the fetch 
 The summary should be a concise high-level description of what the page is about.
 
 If unsure between two other types, ask the user. Do not guess — type affects
-folder placement and frontmatter fields.
+frontmatter fields.
 
 **Subtype tags to apply automatically:**
 - `article` → add format tag: #book, #paper, #scholarly, #technical, #blog-post, #news, #video, or #article
@@ -153,7 +153,7 @@ Call `loci__read_meta(file="config")` to get the vault_root.
 Show the intended save location and ask for confirmation before writing:
 
 ```
-Save to: <vault_root>/<type-folder>/<generated-filename>
+Save to: <vault_root>/<generated-filename>
 Proceed? [yes / no / change location]
 ```
 
@@ -247,7 +247,7 @@ always archive the old value before setting the new one.
 
 Show a brief summary of what will change before patching:
 ```
-Updating: documents/2026-03-21-my-document.md
+Updating: 2026-03-21-my-document.md
   relations: adding link to [Project X] (f9e8d7c6)
 Proceed? [yes / no]
 ```

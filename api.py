@@ -25,7 +25,7 @@ from write_file import (
     write_item as _write_item,
     patch_item as _patch_item,
     check_duplicate as _check_duplicate,
-    TYPE_FOLDERS,
+    VALID_TYPES,
 )
 import nx_graph as graph
 import asset_registry as ar
@@ -158,10 +158,9 @@ def check_duplicate(type: str, title: str, url: str = None) -> dict:
     Check whether a similar vault item already exists.
     Returns {"duplicate": False} or {"duplicate": True, "path": str, "name": str}.
     """
-    folder = TYPE_FOLDERS.get(type)
-    if not folder:
-        raise ValueError(f"Unknown type: {type!r}. Must be one of: {list(TYPE_FOLDERS.keys())}")
-    dup = _check_duplicate(_vault_root(), folder, title, url)
+    if type not in VALID_TYPES:
+        raise ValueError(f"Unknown type: {type!r}. Must be one of: {sorted(VALID_TYPES)}")
+    dup = _check_duplicate(_vault_root(), title, url)
     if dup:
         return {"duplicate": True, "path": str(dup), "name": dup.name}
     return {"duplicate": False}
@@ -251,7 +250,7 @@ def save_asset(
     asset_tmp = ar.assets_dir(loci_root) / f".{uid}.{format}.tmp"
 
     vault_fname = make_filename(title)
-    vault_path = vault_root / "documents" / vault_fname
+    vault_path = vault_root / vault_fname
 
     vault_node = {
         "title": title,
@@ -313,16 +312,27 @@ def save_asset(
 
 def list_items(type: str = None) -> dict:
     """
-    List items in a vault type folder (or all folders).
+    List items in the vault, optionally filtered by type.
+    Reads frontmatter from each file to determine type.
     Returns {type_name: [filename, ...], ...}.
     """
     vault_root = _vault_root()
-    folders = {type: TYPE_FOLDERS[type]} if type and type in TYPE_FOLDERS else TYPE_FOLDERS
-    return {
-        t: sorted(f.name for f in (vault_root / folder).glob("*.md"))
-        if (vault_root / folder).exists() else []
-        for t, folder in folders.items()
-    }
+    result: dict = {}
+    for path in sorted(vault_root.glob("*.md")):
+        raw = path.read_text(encoding="utf-8")
+        if not raw.startswith("---"):
+            continue
+        parts = raw.split("---", 2)
+        if len(parts) < 3:
+            continue
+        fm = yaml.safe_load(parts[1]) or {}
+        node_type = fm.get("type")
+        if not node_type:
+            continue
+        if type and node_type != type:
+            continue
+        result.setdefault(node_type, []).append(path.name)
+    return result
 
 
 def _app_version() -> str:

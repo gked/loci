@@ -20,17 +20,6 @@ REFERENCES_DIR = Path(__file__).parent.parent / "loci-skill" / "references"
 META_VERSION = 1
 
 VAULT_FOLDERS = [
-    "documents",
-    "articles",
-    "bookmarks",
-    "conversations",
-    "projects",
-    "tasks",
-    "events",
-    "entities",
-    "procedures",
-    "topics",
-    "references",
     "meta",
 ]
 
