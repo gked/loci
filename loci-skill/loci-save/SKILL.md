@@ -18,6 +18,16 @@ frontmatter, via the Loci MCP tools.
 
 ---
 
+## Ground rule
+
+**When in doubt, ask. Never guess on anything that requires user intent.**
+
+This applies everywhere in the workflow: type classification, project or entity linkage,
+duplicate resolution, ambiguous matches. If there are multiple candidates, surface them
+and let the user choose. One focused question is better than a wrong assumption.
+
+---
+
 ## Version Check (run before anything else)
 
 This skill is at `skill_version: 4`.
