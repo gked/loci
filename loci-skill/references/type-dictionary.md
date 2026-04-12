@@ -10,7 +10,7 @@ conversation — saved LLM or human conversation (participants can be entity UID
 project      — ongoing work with goals and milestones
 task         — discrete actionable item with due date and status
 event        — point-in-time or period occurrence
-entity       — real-world actor: person, organization, or place (subtype field: person | organization | place)
-procedure    — repeatable process with ordered steps and expected outcome (subtype by tag: #recipe, #workout, #protocol, #playbook, #tutorial)
+entity       — real-world actor: person, organization, or place (subtype: person | organization | place — only type with a structural subtype; changes which fields apply)
+procedure    — repeatable process with ordered steps and expected outcome (use tags for process category: #recipe, #workout, #protocol, #playbook, #tutorial)
 topic        — organizing hub for a subject area
 reference    — pointer to external content (hybrid ownership model)

@@ -9,8 +9,8 @@ No additional required fields. The fallback type — use when no more specific t
 Optional:
 ```yaml
 status: draft | evergreen | archived
-subtype: essay | spec | design-doc | meeting-notes | journal | longform   # carried by tag too
 ```
+Format and style descriptors (essay, spec, design-doc, meeting-notes, journal, note) belong in `tags`, not a subtype field.
 
 ---
 
@@ -76,7 +76,7 @@ participants: []          # entity UIDs or names
 
 ## entity
 ```yaml
-subtype: person | organization | place   # carried by tag too; organization covers companies, NGOs, institutions
+subtype: person | organization | place   # required; organization covers companies, NGOs, institutions
 website: <URL or null>
 # Person-specific (optional):
 role: <job title or null>
@@ -92,8 +92,8 @@ located_in: <entity UID or name of containing place or null>   # e.g. city withi
 ---
 
 ## procedure
+Use tags for process category: #recipe, #workout, #protocol, #playbook, #tutorial
 ```yaml
-subtype: recipe | workout | protocol | playbook | tutorial   # carried by tag too
 steps: []                # ordered list of step descriptions
 expected_outcome: <string>
 inputs: []               # list of required inputs (ingredients, equipment, etc.)
