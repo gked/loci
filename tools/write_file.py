@@ -29,17 +29,17 @@ from slug import filename as make_filename
 from vault_init import load_config
 
 
-TYPE_FOLDERS = {
-    "document": "documents",
-    "article": "articles",
-    "bookmark": "bookmarks",
-    "conversation": "conversations",
-    "project": "projects",
-    "task": "tasks",
-    "event": "events",
-    "entity": "entities",
-    "procedure": "procedures",
-    "topic": "topics",
+VALID_TYPES = {
+    "document",
+    "article",
+    "bookmark",
+    "conversation",
+    "project",
+    "task",
+    "event",
+    "entity",
+    "procedure",
+    "topic",
 }
 
 
@@ -58,18 +58,14 @@ def resolve_vault_root() -> Path:
     return Path(config["vault_root"])
 
 
-def check_duplicate(vault_root: Path, type_folder: str, title: str, url: str = None) -> Optional[Path]:
+def check_duplicate(vault_root: Path, title: str, url: str = None) -> Optional[Path]:
     """
-    Check for likely duplicate items in the type folder.
+    Check for likely duplicate items in the vault root.
     Returns the path of a likely duplicate, or None.
     """
-    folder = vault_root / type_folder
-    if not folder.exists():
-        return None
-
     title_lower = title.lower()
 
-    for existing_file in folder.glob("*.md"):
+    for existing_file in vault_root.glob("*.md"):
         # Check title similarity via filename slug
         if title_lower.replace(" ", "-") in existing_file.stem:
             return existing_file
@@ -115,20 +111,18 @@ def write_item(
     Returns:
         Dict with saved item metadata: uid, path, type, title
     """
-    if type not in TYPE_FOLDERS:
-        raise ValueError(f"Unknown type '{type}'. Must be one of: {list(TYPE_FOLDERS.keys())}")
+    if type not in VALID_TYPES:
+        raise ValueError(f"Unknown type '{type}'. Must be one of: {sorted(VALID_TYPES)}")
 
     vault_root = resolve_vault_root()
-    type_folder = TYPE_FOLDERS[type]
-    folder_path = vault_root / type_folder
-    folder_path.mkdir(parents=True, exist_ok=True)
+    vault_root.mkdir(parents=True, exist_ok=True)
 
     # Duplicate check
     if not skip_duplicate_check:
         url = None
         if references:
             url = references[0].get("url")
-        duplicate = check_duplicate(vault_root, type_folder, title, url)
+        duplicate = check_duplicate(vault_root, title, url)
         if duplicate:
             print(f"\nWarning: A similar item already exists: {duplicate.name}")
             print("Save as new item anyway? (y/n): ", end="")
@@ -140,7 +134,7 @@ def write_item(
     # Generate UID and filename
     uid = generate_uid()
     fname = make_filename(title)
-    file_path = folder_path / fname
+    file_path = vault_root / fname
 
     # Build frontmatter
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

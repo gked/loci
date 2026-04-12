@@ -295,12 +295,12 @@ The vault meta files are user-owned — they accumulate customizations (new tags
 - [x] MCP server — local stdio transport, Claude Desktop integration
 - [x] patch and delete operations
 - [x] Field dictionary — authoritative schema in vault meta, skill reads at runtime
-- [x] Schema versioning — seed files in loci-skill/references/, meta_version in config.yml
-- [x] rclone sync layer — provider-agnostic vault sync
-- [x] SSE transport — remote MCP server support (Claude.ai / mobile)
-- [x] deploy/ — systemd + nginx templates for server deployment
+- [ ] Schema versioning — seed files in loci-skill/references/, meta_version in config.yml
+- [ ] rclone sync layer — provider-agnostic vault sync
+- [ ] SSE transport — remote MCP server support (Claude.ai / mobile)
+- [ ] deploy/ — systemd + nginx templates for server deployment
 - [x] Docker image — containerize MCP server with vault as a mounted volume
-- [x] Graph layer — NetworkX in-memory index for traversal and relationship queries
+- [ ] Graph layer — NetworkX in-memory index for traversal and relationship queries
 - [x] loci-query skill — retrieve, relate, and summarize knowledge across vault nodes
 - [x] Asset registry — binary/rich file storage (HTML, PDF, PNG, etc.) with crash-safe write sequence, resolver, and startup recovery
 
