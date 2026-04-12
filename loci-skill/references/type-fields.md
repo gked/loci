@@ -10,7 +10,7 @@ Optional:
 ```yaml
 status: draft | evergreen | archived
 ```
-Format and style descriptors (essay, spec, design-doc, meeting-notes, journal, note) belong in `tags`, not a subtype field.
+Format descriptors belong in `tags`: #essay, #spec, #design-doc, #meeting-notes, #journal, #note, etc.
 
 ---
 
@@ -27,9 +27,9 @@ site_name: <from og:site_name or domain> # parsed from page
 source_url: <URL>
 author: <name or null>
 published_at: <date or null>
-format: article | blog-post | news | book | paper | scholarly | technical | video   # carried by tag too
 highlights: []                           # list of key quotes or passages
 ```
+Format belongs in `tags`: #book, #blog-post, #whitepaper, #research-paper, #news, #magazine, #video, #podcast, etc.
 
 ---
 
