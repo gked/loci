@@ -132,7 +132,17 @@ Pull the vault from the remote on first setup:
 cp -r loci-skill/loci-save/ ~/.claude/skills/loci-save/
 ```
 
-### 5. Test it
+### 5. Restart the MCP server
+
+After code changes, restart the server by running:
+
+```bash
+uv run --directory /path/to/loci python loci_mcp/server.py
+```
+
+For Claude Desktop, the server is managed by the app — just quit and reopen Claude Desktop. For Claude Code, restart the session or toggle the MCP connection in settings.
+
+### 6. Test it
 
 Open Claude Code and say:
 
@@ -300,7 +310,7 @@ The vault meta files are user-owned — they accumulate customizations (new tags
 - [ ] SSE transport — remote MCP server support (Claude.ai / mobile)
 - [ ] deploy/ — systemd + nginx templates for server deployment
 - [x] Docker image — containerize MCP server with vault as a mounted volume
-- [ ] Graph layer — NetworkX in-memory index for traversal and relationship queries
+- [x] Graph layer — NetworkX in-memory index for traversal and relationship queries
 - [x] loci-query skill — retrieve, relate, and summarize knowledge across vault nodes
 - [x] Asset registry — binary/rich file storage (HTML, PDF, PNG, etc.) with crash-safe write sequence, resolver, and startup recovery
 
