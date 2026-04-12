@@ -5,7 +5,8 @@
 # Add new tags here when a concept recurs and deserves a stable label.
 #
 # Format: one tag per line, lowercase, hyphenated.
-# Note: type subtypes (book, person, recipe, etc.) live in type-dictionary.md — not here.
+# Note: entity subtype (person, organization, place) is a frontmatter field, not a tag — do not add as a tag.
+# Process category tags (#recipe, #workout, #protocol, etc.) and article format tags (#book, #paper, etc.) belong here.
 # schema_version: 1
 
 ## Tags
