@@ -302,12 +302,6 @@ description: >
 ---
 
 ### procedure
-field: subtype
-type: enum
-values: recipe | workout | protocol | playbook | tutorial
-required: yes
-description: category of procedure
-
 field: steps
 type: array
 required: yes

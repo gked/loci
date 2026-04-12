@@ -5,12 +5,12 @@ Add these fields to the base schema for each type. All base fields still apply.
 ---
 
 ## document
-No additional required fields. The fallback type — use when no more specific type fits.
+No additional required fields. Use when there is no source URL, author attribution, or publication date to track.
 Optional:
 ```yaml
 status: draft | evergreen | archived
-subtype: essay | spec | design-doc | meeting-notes | journal | longform   # carried by tag too
 ```
+Format descriptors belong in `tags`: #essay, #spec, #design-doc, #meeting-notes, #journal, #note, etc.
 
 ---
 
@@ -27,9 +27,9 @@ site_name: <from og:site_name or domain> # parsed from page
 source_url: <URL>
 author: <name or null>
 published_at: <date or null>
-format: article | blog-post | news | book | paper | scholarly | technical | video   # carried by tag too
 highlights: []                           # list of key quotes or passages
 ```
+Format belongs in `tags`: #book, #blog-post, #whitepaper, #research-paper, #news, #magazine, #video, #podcast, etc.
 
 ---
 
@@ -76,7 +76,7 @@ participants: []          # entity UIDs or names
 
 ## entity
 ```yaml
-subtype: person | organization | place   # carried by tag too; organization covers companies, NGOs, institutions
+subtype: person | organization | place   # required; organization covers companies, NGOs, institutions
 website: <URL or null>
 # Person-specific (optional):
 role: <job title or null>
@@ -92,8 +92,8 @@ located_in: <entity UID or name of containing place or null>   # e.g. city withi
 ---
 
 ## procedure
+Use tags for process category: #recipe, #workout, #protocol, #playbook, #tutorial
 ```yaml
-subtype: recipe | workout | protocol | playbook | tutorial   # carried by tag too
 steps: []                # ordered list of step descriptions
 expected_outcome: <string>
 inputs: []               # list of required inputs (ingredients, equipment, etc.)
