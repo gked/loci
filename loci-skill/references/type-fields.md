@@ -5,7 +5,7 @@ Add these fields to the base schema for each type. All base fields still apply.
 ---
 
 ## document
-No additional required fields. The primary type for content you authored.
+No additional required fields. Use for written content without external provenance — no source URL, author attribution, or publication date to track.
 Optional:
 ```yaml
 status: draft | evergreen | archived
