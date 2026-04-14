@@ -296,6 +296,30 @@ The vault meta files are user-owned — they accumulate customizations (new tags
 
 ---
 
+## Vault Topology Visualization
+
+`viz_vault.py` renders a graph of all vault nodes and their relationships as a PNG.
+
+```bash
+uv run python viz_vault.py
+```
+
+Output is saved to `/tmp/loci_topology.png`. Open it with:
+
+```bash
+open /tmp/loci_topology.png
+```
+
+**What it shows:**
+- Each node is a vault item, colored by type (see legend)
+- Edges are typed relations (e.g. `belongs-to`, `parent-of`, `about`)
+- Arrows show direction (source → target)
+- Isolated nodes (no links) are visible on the periphery
+
+**Dependencies** are installed automatically by `uv` on first run (`networkx`, `matplotlib`). No manual install needed.
+
+---
+
 ## Roadmap
 
 ### Done
