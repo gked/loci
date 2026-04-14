@@ -260,8 +260,7 @@ def search(query: str) -> list[dict]:
         title = attrs.get("title", "")
         summary = attrs.get("summary", "") or ""
         aliases = attrs.get("aliases") or []
-        alias_text = " ".join(aliases).lower()
-        if q in title.lower() or q in summary.lower() or q in alias_text:
+        if q in title.lower() or q in summary.lower() or any(q in alias.lower() for alias in aliases):
             result.append({
                 "uid": uid,
                 "title": title,

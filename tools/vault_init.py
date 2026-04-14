@@ -122,15 +122,15 @@ def check_meta_version() -> str | None:
     with open(CONFIG_PATH) as f:
         config = yaml.safe_load(f) or {}
     vault_meta_version = config.get("meta_version")
-    if vault_meta_version is not None and vault_meta_version < META_VERSION:
+    if vault_meta_version is None or vault_meta_version < META_VERSION:
         vault_root = Path(config["vault_root"])
         reseed_meta(vault_root)
         config["meta_version"] = META_VERSION
         save_config(config)
+        from_version = f"v{vault_meta_version}" if vault_meta_version is not None else "unversioned"
         return (
-            f"Vault meta files were automatically updated from v{vault_meta_version} "
-            f"to v{META_VERSION} (schema change: language and aliases fields added). "
-            "No action needed."
+            f"Vault meta files were automatically updated from {from_version} "
+            f"to v{META_VERSION}. No action needed."
         )
     return None
 
