@@ -30,7 +30,7 @@ import asset_registry as ar
 from mcp.server.fastmcp import FastMCP
 from vault_init import check_meta_version
 
-check_meta_version()
+_startup_notice: str | None = check_meta_version()
 
 # Recover any interrupted asset saves from previous runs
 try:
@@ -182,8 +182,14 @@ def list_vault(type: str = None) -> dict:
     """
     List items in a vault type folder. Omit type to list all folders.
     Returns {type_name: [filename, ...], ...}.
+    If meta files were auto-updated at startup, result includes a "_notice" key.
     """
-    return loci.list_items(type)
+    global _startup_notice
+    result = loci.list_items(type)
+    if _startup_notice:
+        result["_notice"] = _startup_notice
+        _startup_notice = None  # show once, then clear
+    return result
 
 
 @mcp.tool()
