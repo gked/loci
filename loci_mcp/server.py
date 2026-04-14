@@ -1,10 +1,17 @@
 """
 loci_mcp/server.py
-Loci MCP server for Claude Desktop — stdio transport.
+Loci MCP server — stdio (Claude Code / Claude Desktop) or SSE (Docker / remote).
 
 Thin wrapper over api.py. All vault logic lives there.
 
-Registration (~/Library/Application Support/Claude/claude_desktop_config.json):
+Transport is selected by the LOCI_TRANSPORT environment variable:
+  stdio (default) — spawned as a subprocess by Claude Code or Claude Desktop
+  sse             — long-running HTTP server (uvicorn, used in Docker)
+
+Claude Code registration (~/.claude.json, via CLI):
+  claude mcp add --scope user loci uv -- run --directory /absolute/path/to/loci python loci_mcp/server.py
+
+Claude Desktop registration (~/Library/Application Support/Claude/claude_desktop_config.json):
   {
     "mcpServers": {
       "loci": {
@@ -14,7 +21,7 @@ Registration (~/Library/Application Support/Claude/claude_desktop_config.json):
     }
   }
 
-Run setup.py to register automatically. Restart Claude Desktop after any config change.
+Run setup.py to register automatically. Restart Claude Code / Claude Desktop after any config change.
 """
 
 import os
