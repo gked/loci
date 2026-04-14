@@ -68,6 +68,8 @@ def _build(vault_root: Path) -> nx.DiGraph:
             tags=fm.get("tags") or [],
             domains=fm.get("domains") or [],
             summary=fm.get("summary", ""),
+            language=fm.get("language", ""),
+            aliases=fm.get("aliases") or [],
             path=str(md_file),
         )
 
@@ -257,7 +259,9 @@ def search(query: str) -> list[dict]:
     for uid, attrs in g.nodes(data=True):
         title = attrs.get("title", "")
         summary = attrs.get("summary", "") or ""
-        if q in title.lower() or q in summary.lower():
+        aliases = attrs.get("aliases") or []
+        alias_text = " ".join(aliases).lower()
+        if q in title.lower() or q in summary.lower() or q in alias_text:
             result.append({
                 "uid": uid,
                 "title": title,

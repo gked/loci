@@ -35,6 +35,23 @@ type: string
 required: yes
 description: "self" for user content; entity name or UID for external content
 
+field: language
+type: string
+required: no
+description: >
+  ISO 639-1 code of the body's primary language (e.g. ru, de, fr, zh, ja).
+  Omit for English — only set when the body is not in English.
+
+field: aliases
+type: array
+required: no
+description: >
+  Alternative names, transliterations, or translations of the title.
+  Always include the English form when the title is non-English.
+  Examples: ["Oleg Markeev"] for an entity titled "Маркеев Олег";
+  ["Black Moon"] for an article titled "Чёрная луна".
+  Also used for abbreviations and alternate spellings.
+
 field: created_at
 type: datetime
 required: yes

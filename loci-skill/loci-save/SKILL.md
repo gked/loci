@@ -91,6 +91,27 @@ Call `loci__read_meta(file="relation-dictionary")` to get the current relation
 type vocabulary. Use this when choosing the `type` field for any relation — pick
 the most specific type that fits rather than defaulting to `relates-to`.
 
+**Language rule:**
+- `summary` is **always written in English** regardless of the body's language — it is the search bridge.
+- `title` is the canonical name in the content's original language (e.g. `Чёрная луна` for a Russian book).
+- Set `language: <ISO 639-1 code>` (e.g. `ru`, `de`, `zh`) **only** when the body is not in English. Omit for English content.
+
+**Aliases rule:**
+- When `title` or an entity name is non-English, always populate `aliases` with the English transliteration or translation.
+- Also include common abbreviations or alternate spellings if applicable.
+- Examples:
+  ```yaml
+  # Entity: Russian author
+  title: Маркеев Олег
+  aliases:
+    - Oleg Markeev
+
+  # Article: Russian book
+  title: Чёрная луна
+  aliases:
+    - Black Moon
+  ```
+
 **Relations format:**
 ```yaml
 relations:

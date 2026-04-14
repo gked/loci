@@ -17,7 +17,7 @@ from typing import Optional
 CONFIG_PATH = Path(__file__).parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "loci-skill" / "references"
 
-META_VERSION = 1
+META_VERSION = 2
 
 VAULT_FOLDERS = [
     "meta",
@@ -68,10 +68,19 @@ def create_vault_structure(vault_root: Path) -> None:
 
     for filename in META_FILES:
         dest = vault_root / "meta" / filename
+        src = REFERENCES_DIR / filename
         if not dest.exists():
-            src = REFERENCES_DIR / filename
             dest.write_text(src.read_text())
             print(f"  Seeded: {dest}")
+
+
+def reseed_meta(vault_root: Path) -> None:
+    """Force overwrite all meta files from loci-skill/references/."""
+    for filename in META_FILES:
+        dest = vault_root / "meta" / filename
+        src = REFERENCES_DIR / filename
+        dest.write_text(src.read_text())
+        print(f"  Re-seeded: {dest}")
 
 
 def setup_interactive() -> dict:
@@ -126,9 +135,19 @@ def init(force: bool = False) -> dict:
     Initialize Loci. Returns the active config.
 
     Args:
-        force: If True, re-run setup even if config exists.
+        force: If True, re-seed all meta files from references/ and bump
+               meta_version in config. Does not re-run interactive setup.
     """
     existing = load_config()
+
+    if existing and force:
+        vault_root = Path(existing["vault_root"])
+        print(f"Re-seeding meta files at {vault_root / 'meta'}...")
+        reseed_meta(vault_root)
+        existing["meta_version"] = META_VERSION
+        save_config(existing)
+        print("Done.")
+        return existing
 
     if existing and not force:
         print(f"Loci already configured. Vault root: {existing['vault_root']}")
