@@ -108,26 +108,31 @@ def setup_interactive() -> dict:
     return config
 
 
-def check_meta_version() -> None:
+def check_meta_version() -> str | None:
     """
-    Warn at startup if the vault's meta_version is older than META_VERSION.
-    Skipped silently when running via LOCI_VAULT_ROOT (Docker), since there
-    is no config.yml to read meta_version from.
+    Auto-reseed meta files at server startup if vault meta_version is older
+    than META_VERSION. Returns a notice string if reseeding occurred so the
+    caller can surface it to the user; returns None otherwise.
+    Skipped silently when running via LOCI_VAULT_ROOT (Docker).
     """
     if os.environ.get("LOCI_VAULT_ROOT"):
-        return  # Docker / env-var mode: no config.yml to inspect
+        return None  # Docker / env-var mode: no config.yml to inspect
     if not CONFIG_PATH.exists():
-        return
+        return None
     with open(CONFIG_PATH) as f:
         config = yaml.safe_load(f) or {}
     vault_meta_version = config.get("meta_version")
     if vault_meta_version is not None and vault_meta_version < META_VERSION:
-        print(
-            f"WARNING: vault meta_version={vault_meta_version} is older than "
-            f"server META_VERSION={META_VERSION}. "
-            "Run `python tools/vault_init.py --force` to re-seed meta files.",
-            file=sys.stderr,
+        vault_root = Path(config["vault_root"])
+        reseed_meta(vault_root)
+        config["meta_version"] = META_VERSION
+        save_config(config)
+        return (
+            f"Vault meta files were automatically updated from v{vault_meta_version} "
+            f"to v{META_VERSION} (schema change: language and aliases fields added). "
+            "No action needed."
         )
+    return None
 
 
 def init(force: bool = False) -> dict:

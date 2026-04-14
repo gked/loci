@@ -62,6 +62,9 @@ Then restart Claude Code / Claude Desktop.
 
 Do not proceed until the vault is reachable.
 
+If the result contains a `_notice` key, show it to the user as an FYI before proceeding — e.g.:
+> FYI: Vault meta files were automatically updated to v2 (language and aliases fields added).
+
 ---
 
 ### Step 1 — Classify the content

@@ -25,6 +25,9 @@ The Loci vault is not reachable. Please run:
 Then restart Claude Code / Claude Desktop.
 ```
 
+If the result contains a `_notice` key, show it to the user as an FYI before proceeding — e.g.:
+> FYI: Vault meta files were automatically updated to v2 (language and aliases fields added).
+
 ---
 
 ## Query Modes
