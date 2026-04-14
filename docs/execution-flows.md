@@ -15,11 +15,10 @@ python setup.py
   ├─ vault_init()                     # create vault/ skeleton if absent
   │
   ├─ register_mcp_claude_code()
-  │    └─ claude mcp add --scope user loci
-  │         uv run --directory <project> python loci_mcp/server.py
+  │    └─ claude mcp add --scope user loci uv -- run --directory <project> python loci_mcp/server.py
   │         → writes entry to ~/.claude.json
   │
-  ├─ register_mcp_desktop()
+  ├─ register_mcp_claude_desktop()
   │    └─ writes mcpServers.loci entry into
   │         ~/Library/Application Support/Claude/claude_desktop_config.json
   │
@@ -88,7 +87,7 @@ python setup.py                        # safe to re-run (idempotent)
   ├─ register_mcp_claude_code()        # re-registers with same command
   │                                    #   (overwrites existing ~/.claude.json entry)
   │
-  ├─ register_mcp_desktop()            # overwrites mcpServers.loci entry
+  ├─ register_mcp_claude_desktop()     # overwrites mcpServers.loci entry
   │
   └─ install_skill_symlinks()          # replaces symlinks (unlink + re-link)
 
