@@ -30,7 +30,7 @@ cd loci
 ### 2. Run the setup script
 
 ```bash
-python setup_docker.py
+uv run setup_docker.py
 ```
 
 The script will:
