@@ -4,6 +4,18 @@ Your personal knowledge vault. Capture, organize, and retrieve everything you th
 
 ---
 
+## The Name
+
+*Loci* is the Latin plural of *locus* — "places" or "locations."
+
+The most relevant origin is the **method of loci**, an ancient mnemonic technique dating back to classical antiquity. To use it, you mentally place pieces of information at specific locations along a familiar route or building — a memory palace — then walk through it to retrieve them. It's one of the oldest and most effective memory systems ever described.
+
+The word carries the same spatial meaning across other domains: in mathematics, a *locus* is the set of all points satisfying a condition; in genetics, a *locus* is a fixed position on a chromosome where a gene lives; in Latin phrases like *locus classicus* (the authoritative passage on a topic), the root always points to a specific, defined place.
+
+That's the idea behind this project. Every note, article, task, and conversation you save gets a **fixed location** in a structured graph — a stable UID, typed relationships, semantic metadata. You (and your LLM agents) can navigate it the way a memory palace is navigated: by association, by position, by path.
+
+---
+
 ## What is Loci?
 
 Loci is a personal knowledge management system built on plain Markdown files with YAML frontmatter, organized as a traversable knowledge graph. It is designed to be accessed by both you and LLM agents (Claude Code, Claude.ai).
