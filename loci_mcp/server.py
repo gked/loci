@@ -271,7 +271,7 @@ def query_related(uid: str, depth: int = 2) -> list[dict]:
     """
     Return all vault nodes within `depth` hops of the given uid.
     Results include distance from the origin node, sorted nearest-first.
-    Each entry: {uid, title, type, distance}.
+    Each entry: {uid, title, type, distance, summary}.
     """
     graph.get(loci._vault_root())
     return graph.related(uid, depth)
@@ -289,14 +289,44 @@ def query_path(uid_from: str, uid_to: str) -> list[dict]:
 
 
 @mcp.tool()
-def find_nodes(type: str = None, tag: str = None) -> list[dict]:
+def find_nodes(
+    type: str = None,
+    tag: str = None,
+    status: str = None,
+    due_before: str = None,
+    due_after: str = None,
+    created_after: str = None,
+    updated_after: str = None,
+    related_to: str = None,
+    language: str = None,
+) -> list[dict]:
     """
-    Find vault nodes by type and/or tag.
-    At least one filter should be provided.
-    Each entry: {uid, title, type, path}.
+    Find vault nodes matching any combination of filters. At least one should be provided.
+    Each entry: {uid, title, type, path, status, due_date, language}.
+
+    Args:
+        type: Node type (task, book, project, note, …)
+        tag: Tag value — node must include this tag
+        status: Exact status match (open, done, archived, …)
+        due_before: ISO date (YYYY-MM-DD) — nodes whose due_date <= this value
+        due_after:  ISO date (YYYY-MM-DD) — nodes whose due_date >= this value
+        created_after:  ISO date — nodes created on or after this date
+        updated_after:  ISO date — nodes updated on or after this date
+        related_to: UID — only return nodes connected to this node by any edge
+        language: Language code (en, ru, de, …)
     """
     graph.get(loci._vault_root())
-    return graph.find(node_type=type, tag=tag)
+    return graph.find(
+        node_type=type,
+        tag=tag,
+        status=status,
+        due_before=due_before,
+        due_after=due_after,
+        created_after=created_after,
+        updated_after=updated_after,
+        related_to=related_to,
+        language=language,
+    )
 
 
 @mcp.tool()
