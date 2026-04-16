@@ -1,0 +1,115 @@
+# tests/fixtures/expected/retrieval.yaml
+# Expected results for test_retrieval.py parametrized cases.
+#
+# mode: exact   — result set must equal expected_uids exactly
+# mode: contains — expected_uids must be a subset of the result set
+# (no mode)     — used for path tests; check expected_path_uids ordering
+
+# ---------------------------------------------------------------------------
+# find_nodes — by type
+# ---------------------------------------------------------------------------
+
+- id: find_nodes_by_type_task
+  method: find_nodes
+  args: {type: task}
+  expected_uids: [aaa00001, aaa00002, aaa00003, aaa00004, due00001]
+  mode: exact
+
+- id: find_nodes_by_type_article
+  method: find_nodes
+  args: {type: article}
+  expected_uids: [ccc00001, ccc00002, srch0001]
+  mode: exact
+
+# ---------------------------------------------------------------------------
+# find_nodes — by tag
+# ---------------------------------------------------------------------------
+
+- id: find_nodes_by_tag_python
+  method: find_nodes
+  args: {tag: python}
+  expected_uids: [aaa00001, aaa00003, aaa00004, bbb00001, ccc00001, eee00001, lang0001]
+  mode: exact
+
+- id: find_nodes_by_tag_testing
+  method: find_nodes
+  args: {tag: testing}
+  expected_uids: [aaa00001, aaa00002, aaa00004, bbb00002, eee00002]
+  mode: exact
+
+# ---------------------------------------------------------------------------
+# find_nodes — by status
+# ---------------------------------------------------------------------------
+
+- id: find_nodes_by_status_todo
+  method: find_nodes
+  args: {status: todo}
+  expected_uids: [aaa00001, aaa00002, aaa00003, due00001]
+  mode: exact
+
+- id: find_nodes_by_status_done
+  method: find_nodes
+  args: {status: done}
+  expected_uids: [aaa00004]
+  mode: exact
+
+# ---------------------------------------------------------------------------
+# find_nodes — by language
+# ---------------------------------------------------------------------------
+
+- id: find_nodes_by_language_es
+  method: find_nodes
+  args: {language: es}
+  expected_uids: [lang0001]
+  mode: exact
+
+# ---------------------------------------------------------------------------
+# find_nodes — by due_date
+# ---------------------------------------------------------------------------
+
+- id: find_nodes_due_before_2026_02
+  method: find_nodes
+  args: {due_before: "2026-02-01"}
+  expected_uids: [due00001]
+  mode: exact
+
+# ---------------------------------------------------------------------------
+# query_path — ordered shortest path
+# ---------------------------------------------------------------------------
+
+- id: query_path_chain_a_to_c
+  method: query_path
+  args: {uid_from: "chain001", uid_to: "chain003"}
+  expected_path_uids: ["chain001", "chain002", "chain003"]
+
+# ---------------------------------------------------------------------------
+# query_related — ego graph neighbors
+# ---------------------------------------------------------------------------
+
+- id: query_related_hub_spokes_depth1
+  method: query_related
+  args: {uid: "hub00001", depth: 1}
+  expected_uids: [spoke001, spoke002, spoke003]
+  mode: exact
+
+- id: query_related_chain_depth2
+  method: query_related
+  args: {uid: "chain001", depth: 2}
+  expected_uids: [chain002, chain003]
+  mode: contains
+
+# ---------------------------------------------------------------------------
+# search_vault — title and summary substring match
+# ---------------------------------------------------------------------------
+
+- id: search_vault_distributed
+  method: search_vault
+  args: {query: "distributed"}
+  expected_uids: [srch0001]
+  mode: contains
+
+- id: search_vault_graph_database
+  method: search_vault
+  args: {query: "graph database"}
+  expected_uids: [srch0003]
+  mode: contains
