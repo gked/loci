@@ -375,6 +375,12 @@ Key decisions are documented in the Loci vault at `notes/2026-03-21-locus-requir
 
 ---
 
+## Testing
+
+See [docs/testing.md](docs/testing.md) for how to run tests, add cases, and understand the fixture vault.
+
+---
+
 ## Contributing
 
 Coming soon.

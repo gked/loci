@@ -195,8 +195,8 @@ def related(uid: str, depth: int = 2) -> list[dict]:
             continue
         try:
             distance = nx.shortest_path_length(g_undirected, uid, node)
-        except nx.NetworkXNoPath:
-            distance = None
+        except nx.NetworkXNoPath:  # pragma: no cover
+            distance = None  # pragma: no cover
         attrs = ego.nodes[node]
         result.append({
             "uid": node,

@@ -13,7 +13,7 @@ def generate_uid() -> str:
     return uuid.uuid4().hex[:8]
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     # Can be called directly from CLI or by Claude Code
     # Usage: python uid_generator.py
     # Output: a3f9c2b1

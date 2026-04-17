@@ -1,0 +1,270 @@
+"""
+tests/test_write_file.py
+Tests for tools/write_file.py: frontmatter serialization, write_item,
+patch_item, and check_duplicate.
+"""
+
+import yaml
+import pytest
+from pathlib import Path
+from datetime import datetime, timezone
+
+from write_file import (
+    serialize_frontmatter,
+    write_item,
+    patch_item,
+    check_duplicate,
+)
+
+
+# ---------------------------------------------------------------------------
+# serialize_frontmatter
+# ---------------------------------------------------------------------------
+
+def test_serialize_frontmatter_produces_yaml_block():
+    result = serialize_frontmatter({"uid": "abc12345", "type": "document", "title": "T"})
+    assert result.startswith("---\n")
+    assert result.endswith("---\n")
+    parsed = yaml.safe_load(result.strip("---\n"))
+    assert parsed == {"uid": "abc12345", "type": "document", "title": "T"}
+
+
+def test_serialize_frontmatter_unicode():
+    result = serialize_frontmatter({"title": "Привет мир"})
+    assert "Привет мир" in result
+
+
+# ---------------------------------------------------------------------------
+# write_item
+# ---------------------------------------------------------------------------
+
+def test_write_item_creates_file(tmp_vault):
+    result = write_item(
+        type="document",
+        title="Hello World",
+        body="Some body text.",
+        skip_duplicate_check=True,
+    )
+    assert result["type"] == "document"
+    assert result["title"] == "Hello World"
+    p = Path(result["path"])
+    assert p.exists()
+    raw = p.read_text(encoding="utf-8")
+    assert raw.startswith("---\n")
+    assert "Hello World" in raw
+
+
+def test_write_item_frontmatter_fields(tmp_vault):
+    result = write_item(
+        type="task",
+        title="My Task",
+        body="Do something.",
+        tags=["python", "testing"],
+        domains=["engineering"],
+        summary="A test task.",
+        skip_duplicate_check=True,
+    )
+    raw = Path(result["path"]).read_text(encoding="utf-8")
+    fm = yaml.safe_load(raw.split("---", 2)[1])
+    assert fm["type"] == "task"
+    assert fm["tags"] == ["python", "testing"]
+    assert fm["domains"] == ["engineering"]
+    assert fm["summary"] == "A test task."
+    assert len(fm["uid"]) == 8
+
+
+def test_write_item_body_follows_frontmatter(tmp_vault):
+    result = write_item(
+        type="document",
+        title="Body Test",
+        body="This is the body.",
+        skip_duplicate_check=True,
+    )
+    raw = Path(result["path"]).read_text(encoding="utf-8")
+    body_part = raw.split("---", 2)[2]
+    assert "This is the body." in body_part
+
+
+def test_write_item_extra_fields_merged(tmp_vault):
+    result = write_item(
+        type="document",
+        title="Asset Doc",
+        body="",
+        extra_fields={"has_asset": True, "uid": "fixed001"},
+        skip_duplicate_check=True,
+    )
+    raw = Path(result["path"]).read_text(encoding="utf-8")
+    fm = yaml.safe_load(raw.split("---", 2)[1])
+    assert fm["has_asset"] is True
+    assert fm["uid"] == "fixed001"
+
+
+def test_write_item_invalid_type_raises(tmp_vault):
+    with pytest.raises(ValueError, match="Unknown type"):
+        write_item(type="banana", title="T", body="", skip_duplicate_check=True)
+
+
+# ---------------------------------------------------------------------------
+# patch_item
+# ---------------------------------------------------------------------------
+
+def _make_vault_file(tmp_vault: Path, uid: str = "test0001") -> Path:
+    """Write a minimal vault file and return its path."""
+    p = tmp_vault / f"{uid}-test-note.md"
+    fm = {
+        "uid": uid,
+        "type": "document",
+        "title": "Original Title",
+        "tags": ["old-tag"],
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+    }
+    p.write_text("---\n" + yaml.dump(fm) + "---\n\nOriginal body.", encoding="utf-8")
+    return p
+
+
+def test_patch_item_merges_updates(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"tags": ["new-tag"], "status": "done"})
+    raw = p.read_text(encoding="utf-8")
+    fm = yaml.safe_load(raw.split("---", 2)[1])
+    assert fm["tags"] == ["new-tag"]
+    assert fm["status"] == "done"
+    assert fm["uid"] == "test0001"  # original field preserved
+    assert result["uid"] == "test0001"
+
+
+def test_patch_item_bumps_updated_at(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    # Truncate to seconds to match strftime("%Y-%m-%dT%H:%M:%SZ") precision
+    before = datetime.now(timezone.utc).replace(microsecond=0)
+    patch_item(str(p), {"title": "Updated"})
+    raw = p.read_text(encoding="utf-8")
+    fm = yaml.safe_load(raw.split("---", 2)[1])
+    updated = datetime.fromisoformat(fm["updated_at"].replace("Z", "+00:00"))
+    assert updated >= before
+
+
+def test_patch_item_preserves_body_by_default(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    patch_item(str(p), {"title": "Changed"})
+    raw = p.read_text(encoding="utf-8")
+    assert "Original body." in raw
+
+
+def test_patch_item_replaces_body_when_provided(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    patch_item(str(p), {}, body="New body content.")
+    raw = p.read_text(encoding="utf-8")
+    assert "New body content." in raw
+    assert "Original body." not in raw
+
+
+def test_patch_item_file_without_frontmatter_delimiter(tmp_vault):
+    """patch_item on a file that doesn't start with --- treats whole content as body."""
+    p = tmp_vault / "plain.md"
+    p.write_text("Just plain text body.\n", encoding="utf-8")
+    result = patch_item(str(p), {"title": "New Title"})
+    assert result["title"] == "New Title"
+    raw = p.read_text(encoding="utf-8")
+    assert "Just plain text body." in raw
+
+
+def test_patch_item_incomplete_frontmatter_delimiter(tmp_vault):
+    """patch_item on a file with opening --- but no closing --- treats whole content as body."""
+    p = tmp_vault / "bad-fm.md"
+    p.write_text("---\nno closing delimiter content\n", encoding="utf-8")
+    result = patch_item(str(p), {"title": "Patched"})
+    assert result["title"] == "Patched"
+
+
+def test_patch_item_missing_file_raises(tmp_vault):
+    with pytest.raises(FileNotFoundError):
+        patch_item(str(tmp_vault / "nonexistent.md"), {})
+
+
+def test_patch_item_returns_metadata(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"title": "New Title"})
+    assert result["uid"] == "test0001"
+    assert result["title"] == "New Title"
+    assert result["type"] == "document"
+    assert result["path"] == str(p)
+
+
+# ---------------------------------------------------------------------------
+# check_duplicate
+# ---------------------------------------------------------------------------
+
+def test_check_duplicate_matches_title_slug(tmp_vault):
+    # The fixture vault has "doc-testing-strategies.md"
+    match = check_duplicate(tmp_vault, "testing strategies")
+    assert match is not None
+    assert "testing-strategies" in match.name
+
+
+def test_check_duplicate_matches_url_in_content(tmp_vault):
+    p = tmp_vault / "bookmark-test.md"
+    p.write_text(
+        "---\nuid: bkm00001\ntype: bookmark\ntitle: Example\n---\n\nhttps://example.com/article",
+        encoding="utf-8",
+    )
+    match = check_duplicate(tmp_vault, "something new", url="https://example.com/article")
+    assert match is not None
+    assert match.name == "bookmark-test.md"
+
+
+def test_check_duplicate_returns_none_when_no_match(tmp_vault):
+    match = check_duplicate(tmp_vault, "totally unique xyzzy12345")
+    assert match is None
+
+
+# ---------------------------------------------------------------------------
+# resolve_vault_root — error path
+# ---------------------------------------------------------------------------
+
+def test_resolve_vault_root_raises_when_no_config(monkeypatch, tmp_path):
+    monkeypatch.delenv("LOCI_VAULT_ROOT", raising=False)
+    import vault_init
+    monkeypatch.setattr(vault_init, "CONFIG_PATH", tmp_path / "nonexistent.yml")
+    from write_file import resolve_vault_root
+    with pytest.raises(RuntimeError, match="not configured"):
+        resolve_vault_root()
+
+
+# ---------------------------------------------------------------------------
+# write_item — interactive duplicate check
+# ---------------------------------------------------------------------------
+
+def test_write_item_references_url_used_for_duplicate_check(tmp_vault, monkeypatch):
+    """write_item extracts URL from references[0] when checking duplicates."""
+    # First write a bookmark with a URL in its body so check_duplicate can find it by URL
+    existing = tmp_vault / "bkm-existing.md"
+    existing.write_text(
+        "---\nuid: bkm00099\ntype: bookmark\ntitle: Old Bookmark\n---\n\nhttps://example.com/ref-test",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("builtins.input", lambda: "n")
+    result = write_item(
+        type="bookmark",
+        title="New Bookmark Different Title",
+        body="",
+        references=[{"url": "https://example.com/ref-test", "title": "Example", "source_type": "web"}],
+    )
+    # URL match found → user typed "n" → write aborted
+    assert result == {}
+
+
+def test_write_item_duplicate_check_aborted(tmp_vault, monkeypatch):
+    # Create a file that will be detected as a duplicate
+    write_item(type="document", title="Duplicate Title", body="", skip_duplicate_check=True)
+    monkeypatch.setattr("builtins.input", lambda: "n")
+    result = write_item(type="document", title="Duplicate Title", body="")
+    assert result == {}
+
+
+def test_write_item_duplicate_check_confirmed(tmp_vault, monkeypatch):
+    write_item(type="document", title="Dup Confirmed", body="", skip_duplicate_check=True)
+    monkeypatch.setattr("builtins.input", lambda: "y")
+    result = write_item(type="document", title="Dup Confirmed", body="")
+    assert result.get("uid") is not None
