@@ -242,12 +242,20 @@ def test_get_rebuilds_when_file_added_outside_session(tmp_vault, monkeypatch):
     """
     A file created after the initial build (simulating a write from another
     process or session) must be picked up automatically on the next get() call.
+
+    _built_at is backdated to 0.0 after the first build so the staleness check
+    always fires regardless of filesystem mtime resolution (avoids HFS+ 1-second
+    granularity flakiness on slow or legacy volumes).
     """
     monkeypatch.setattr(g, "_graph", None)
     monkeypatch.setattr(g, "_built_at", 0.0)
 
     first = g.get(tmp_vault)
     initial_count = first.number_of_nodes()
+
+    # Backdate _built_at so any current mtime will be seen as newer — filesystem
+    # resolution (1 s on HFS+, nanoseconds on APFS/tmpfs) becomes irrelevant.
+    monkeypatch.setattr(g, "_built_at", 0.0)
 
     # Write a new vault file directly (bypassing index_node, as an external write would)
     (tmp_vault / "auto-detected.md").write_text(

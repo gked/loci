@@ -14,7 +14,6 @@ The vault markdown files are the source of truth.
 from __future__ import annotations
 
 import threading
-import time
 from pathlib import Path
 from typing import Optional
 
