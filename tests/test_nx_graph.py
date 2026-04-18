@@ -198,6 +198,7 @@ def test_neighbors_includes_title_and_type(live_graph):
 
 def test_get_builds_graph_from_vault(tmp_vault, monkeypatch):
     monkeypatch.setattr(g, "_graph", None)
+    monkeypatch.setattr(g, "_built_at", 0.0)
     graph_obj = g.get(tmp_vault)
     assert graph_obj is not None
     assert graph_obj.number_of_nodes() > 0
@@ -205,6 +206,7 @@ def test_get_builds_graph_from_vault(tmp_vault, monkeypatch):
 
 def test_get_returns_same_instance_on_repeated_calls(tmp_vault, monkeypatch):
     monkeypatch.setattr(g, "_graph", None)
+    monkeypatch.setattr(g, "_built_at", 0.0)
     first = g.get(tmp_vault)
     second = g.get(tmp_vault)
     assert first is second
@@ -219,6 +221,7 @@ def test_get_skips_meta_files(tmp_vault, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setattr(g, "_graph", None)
+    monkeypatch.setattr(g, "_built_at", 0.0)
     graph_obj = g.get(tmp_vault)
     assert not graph_obj.has_node("metaonly")
 
@@ -228,10 +231,69 @@ def test_get_ignores_files_without_uid(tmp_vault, monkeypatch):
         "---\ntype: document\ntitle: No UID\n---\n\nBody.", encoding="utf-8"
     )
     monkeypatch.setattr(g, "_graph", None)
+    monkeypatch.setattr(g, "_built_at", 0.0)
     graph_obj = g.get(tmp_vault)
     # Node should not appear since it has no uid
     titles = [graph_obj.nodes[n]["title"] for n in graph_obj.nodes]
     assert "No UID" not in titles
+
+
+def test_get_rebuilds_when_file_added_outside_session(tmp_vault, monkeypatch):
+    """
+    A file created after the initial build (simulating a write from another
+    process or session) must be picked up automatically on the next get() call.
+    """
+    monkeypatch.setattr(g, "_graph", None)
+    monkeypatch.setattr(g, "_built_at", 0.0)
+
+    first = g.get(tmp_vault)
+    initial_count = first.number_of_nodes()
+
+    # Write a new vault file directly (bypassing index_node, as an external write would)
+    (tmp_vault / "auto-detected.md").write_text(
+        "---\nuid: autodet01\ntype: document\ntitle: Auto Detected\ntags: []\n"
+        "relations: []\nsummary: Added outside session.\n---\n\nBody.",
+        encoding="utf-8",
+    )
+
+    second = g.get(tmp_vault)
+    assert second.number_of_nodes() == initial_count + 1
+    assert second.has_node("autodet01")
+
+
+def test_get_does_not_rebuild_when_vault_unchanged(tmp_vault, monkeypatch):
+    """No file changes → same graph instance returned on repeated calls."""
+    monkeypatch.setattr(g, "_graph", None)
+    monkeypatch.setattr(g, "_built_at", 0.0)
+    first = g.get(tmp_vault)
+    second = g.get(tmp_vault)
+    assert first is second
+
+
+# ---------------------------------------------------------------------------
+# _vault_dir_mtime
+# ---------------------------------------------------------------------------
+
+def test_vault_dir_mtime_increases_after_new_file(tmp_path):
+    from nx_graph import _vault_dir_mtime
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    before = _vault_dir_mtime(vault)
+    (vault / "new.md").write_text("hello", encoding="utf-8")
+    after = _vault_dir_mtime(vault)
+    assert after >= before
+
+
+def test_vault_dir_mtime_checks_subdirectories(tmp_path):
+    from nx_graph import _vault_dir_mtime
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    subdir = vault / "tasks"
+    subdir.mkdir()
+    before = _vault_dir_mtime(vault)
+    (subdir / "new.md").write_text("hello", encoding="utf-8")
+    after = _vault_dir_mtime(vault)
+    assert after >= before
 
 
 # ---------------------------------------------------------------------------
