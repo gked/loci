@@ -32,12 +32,14 @@ def tmp_vault(tmp_path):
     shutil.copytree(FIXTURE_VAULT, vault_path)
     os.environ["LOCI_VAULT_ROOT"] = str(vault_path)
 
-    _nx_graph._graph = None  # force rebuild from the temp vault
+    _nx_graph._graph = None   # force rebuild from the temp vault
+    _nx_graph._built_at = 0.0
 
     yield vault_path
 
     del os.environ["LOCI_VAULT_ROOT"]
-    _nx_graph._graph = None  # clean up so the next test starts fresh
+    _nx_graph._graph = None   # clean up so the next test starts fresh
+    _nx_graph._built_at = 0.0
 
 
 @pytest.fixture

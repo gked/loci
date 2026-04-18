@@ -22,6 +22,7 @@ import yaml
 
 _graph: Optional[nx.DiGraph] = None
 _vault_root: Optional[Path] = None
+_built_at: float = 0.0  # vault dir mtime observed at last build
 _lock = threading.Lock()
 
 
@@ -47,6 +48,19 @@ def _date_str(val) -> str:
     """Normalise a frontmatter date value to an ISO string. YAML parses bare
     dates (e.g. 2024-01-15) as datetime.date objects, so we stringify them."""
     return str(val) if val else ""
+
+
+def _vault_dir_mtime(vault_root: Path) -> float:
+    """
+    Return the most recent mtime across vault_root and its immediate subdirectories.
+    Creating or deleting a file updates the containing directory's mtime, so this
+    is a cheap O(subdirs) staleness signal — no need to stat every .md file.
+    """
+    latest = vault_root.stat().st_mtime
+    for entry in vault_root.iterdir():
+        if entry.is_dir():
+            latest = max(latest, entry.stat().st_mtime)
+    return latest
 
 
 def _build(vault_root: Path) -> nx.DiGraph:
@@ -98,12 +112,22 @@ def _build(vault_root: Path) -> nx.DiGraph:
 # ---------------------------------------------------------------------------
 
 def get(vault_root: Path) -> nx.DiGraph:
-    """Return the graph, building it lazily on first call."""
-    global _graph, _vault_root
+    """
+    Return the graph, building (or rebuilding) as needed.
+
+    Rebuilds when:
+    - the graph has never been built (_graph is None), or
+    - any directory under vault_root has a newer mtime than when the graph
+      was last built, indicating files were added or removed outside this
+      server process.
+    """
+    global _graph, _vault_root, _built_at
     with _lock:
-        if _graph is None:
+        current_mtime = _vault_dir_mtime(vault_root)
+        if _graph is None or current_mtime > _built_at:
             _vault_root = vault_root
             _graph = _build(vault_root)
+            _built_at = current_mtime
     return _graph
 
 
