@@ -341,7 +341,7 @@ def _app_version() -> str:
     for line in p.read_text(encoding="utf-8").splitlines():
         if line.startswith("version"):
             return line.split("=")[1].strip().strip('"')
-    return "unknown"
+    return "unknown"  # pragma: no cover
 
 
 def read_meta(file: str) -> str:

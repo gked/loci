@@ -1,0 +1,334 @@
+"""
+tests/test_server.py
+Tests for loci_mcp/server.py: tool error-wrapping and auth middleware.
+
+Server tool functions are called directly as Python callables. The MCP
+@mcp.tool() decorator registers them but preserves the original signature.
+
+Startup side-effects in server.py (check_meta_version, recover_pending) are
+wrapped in try/except, so importing the module is safe even without a
+configured vault.
+"""
+
+import asyncio
+import os
+import pytest
+from unittest.mock import patch
+
+import loci_mcp.server as server
+from loci_mcp.server import (
+    generate_uid,
+    check_duplicate,
+    write_vault,
+    list_vault,
+    fetch_url_metadata,
+    query_neighbors,
+    query_related,
+    query_path,
+    find_nodes,
+    search_vault,
+    find_unregistered_assets,
+    delete_vault,
+    patch_vault,
+    read_vault,
+    read_meta,
+    resolve_asset,
+    write_meta,
+    read_skill,
+    write_skill,
+    save_asset,
+    _make_auth_app,
+)
+
+
+# ---------------------------------------------------------------------------
+# Error-wrapping: FileNotFoundError → {"error": ...}
+# ---------------------------------------------------------------------------
+
+def test_delete_vault_wraps_file_not_found(tmp_vault):
+    with patch("loci_mcp.server.loci.delete", side_effect=FileNotFoundError("not found")):
+        result = delete_vault("/some/path.md")
+    assert result == {"error": "not found"}
+
+
+def test_patch_vault_wraps_file_not_found(tmp_vault):
+    with patch("loci_mcp.server.loci.patch", side_effect=FileNotFoundError("missing")):
+        result = patch_vault("/some/path.md", {"title": "X"})
+    assert result == {"error": "missing"}
+
+
+def test_patch_vault_wraps_value_error(tmp_vault):
+    with patch("loci_mcp.server.loci.patch", side_effect=ValueError("bad field")):
+        result = patch_vault("/some/path.md", {"bad": "field"})
+    assert result == {"error": "bad field"}
+
+
+def test_resolve_asset_wraps_file_not_found(tmp_vault):
+    with patch("loci_mcp.server.loci.resolve_asset", side_effect=FileNotFoundError("no asset")):
+        result = resolve_asset("abc12345")
+    assert result == {"error": "no asset"}
+
+
+def test_resolve_asset_wraps_value_error(tmp_vault):
+    with patch("loci_mcp.server.loci.resolve_asset", side_effect=ValueError("wrong format")):
+        result = resolve_asset("abc12345", format="xyz")
+    assert result == {"error": "wrong format"}
+
+
+def test_save_asset_wraps_any_exception(tmp_vault):
+    with patch("loci_mcp.server.loci.save_asset", side_effect=RuntimeError("disk full")):
+        result = save_asset(
+            content="data", format="html", mime_type="text/html", title="Test"
+        )
+    assert result == {"error": "disk full"}
+
+
+# ---------------------------------------------------------------------------
+# Error-wrapping: returns error string (not dict)
+# ---------------------------------------------------------------------------
+
+def test_read_vault_returns_error_string_on_missing_file(tmp_vault):
+    with patch("loci_mcp.server.loci.get", side_effect=FileNotFoundError("no file")):
+        result = read_vault("/ghost.md")
+    assert isinstance(result, str)
+    assert "no file" in result
+
+
+def test_read_meta_returns_error_string_on_unknown_key(tmp_vault):
+    with patch("loci_mcp.server.loci.read_meta", side_effect=ValueError("Unknown meta file")):
+        result = read_meta("bad-key")
+    assert isinstance(result, str)
+    assert "Unknown meta file" in result
+
+
+def test_write_meta_returns_error_string_on_readonly(tmp_vault):
+    with patch("loci_mcp.server.loci.write_meta", side_effect=ValueError("read-only")):
+        result = write_meta("type-dictionary", "content")
+    assert isinstance(result, str)
+    assert "read-only" in result
+
+
+def test_read_skill_returns_error_string_when_missing(tmp_vault):
+    with patch("loci_mcp.server.loci.read_skill", side_effect=FileNotFoundError("no skill")):
+        result = read_skill()
+    assert isinstance(result, str)
+    assert "no skill" in result
+
+
+def test_write_skill_returns_error_string_when_missing(tmp_vault):
+    with patch("loci_mcp.server.loci.write_skill", side_effect=FileNotFoundError("no skill")):
+        result = write_skill("content")
+    assert isinstance(result, str)
+    assert "no skill" in result
+
+
+# ---------------------------------------------------------------------------
+# _make_auth_app
+# ---------------------------------------------------------------------------
+
+async def _call_middleware(middleware, scope):
+    """Run the middleware and collect all sent messages."""
+    messages = []
+
+    async def send(msg):
+        messages.append(msg)
+
+    await middleware(scope, None, send)
+    return messages
+
+
+def test_make_auth_app_no_token_returns_original_app(monkeypatch):
+    monkeypatch.delenv("LOCI_TOKEN", raising=False)
+
+    async def dummy(scope, receive, send):
+        pass
+
+    wrapped = _make_auth_app(dummy)
+    assert wrapped is dummy
+
+
+def test_make_auth_app_empty_token_returns_original_app(monkeypatch):
+    monkeypatch.setenv("LOCI_TOKEN", "")
+
+    async def dummy(scope, receive, send):
+        pass
+
+    wrapped = _make_auth_app(dummy)
+    assert wrapped is dummy
+
+
+def test_auth_middleware_allows_valid_bearer_token(monkeypatch):
+    monkeypatch.setenv("LOCI_TOKEN", "secret123")
+
+    allowed = []
+
+    async def dummy(scope, receive, send):
+        allowed.append(True)
+
+    middleware = _make_auth_app(dummy)
+
+    scope = {
+        "type": "http",
+        "headers": [(b"authorization", b"Bearer secret123")],
+        "query_string": b"",
+    }
+    asyncio.run(_call_middleware(middleware, scope))
+    assert allowed == [True]
+
+
+def test_auth_middleware_rejects_missing_token(monkeypatch):
+    monkeypatch.setenv("LOCI_TOKEN", "secret123")
+
+    async def dummy(scope, receive, send):
+        pass
+
+    middleware = _make_auth_app(dummy)
+
+    scope = {
+        "type": "http",
+        "headers": [],
+        "query_string": b"",
+    }
+    messages = asyncio.run(_call_middleware(middleware, scope))
+    assert messages[0]["status"] == 401
+    assert messages[1]["body"] == b"Unauthorized"
+
+
+def test_auth_middleware_rejects_wrong_token(monkeypatch):
+    monkeypatch.setenv("LOCI_TOKEN", "secret123")
+
+    async def dummy(scope, receive, send):
+        pass
+
+    middleware = _make_auth_app(dummy)
+
+    scope = {
+        "type": "http",
+        "headers": [(b"authorization", b"Bearer wrongtoken")],
+        "query_string": b"",
+    }
+    messages = asyncio.run(_call_middleware(middleware, scope))
+    assert messages[0]["status"] == 401
+
+
+def test_auth_middleware_allows_token_as_query_param(monkeypatch):
+    monkeypatch.setenv("LOCI_TOKEN", "secret123")
+
+    allowed = []
+
+    async def dummy(scope, receive, send):
+        allowed.append(True)
+
+    middleware = _make_auth_app(dummy)
+
+    scope = {
+        "type": "http",
+        "headers": [],
+        "query_string": b"token=secret123",
+    }
+    asyncio.run(_call_middleware(middleware, scope))
+    assert allowed == [True]
+
+
+def test_auth_middleware_passes_through_non_http_scope(monkeypatch):
+    monkeypatch.setenv("LOCI_TOKEN", "secret123")
+
+    passed = []
+
+    async def dummy(scope, receive, send):
+        passed.append(scope["type"])
+
+    middleware = _make_auth_app(dummy)
+
+    scope = {"type": "lifespan"}
+    asyncio.run(_call_middleware(middleware, scope))
+    assert passed == ["lifespan"]
+
+
+# ---------------------------------------------------------------------------
+# Tool functions — happy-path coverage
+# ---------------------------------------------------------------------------
+
+def test_generate_uid_delegates_to_api(tmp_vault):
+    with patch("loci_mcp.server.loci.generate_uid", return_value="abc12345"):
+        result = generate_uid()
+    assert result == "abc12345"
+
+
+def test_check_duplicate_returns_no_duplicate(tmp_vault):
+    with patch("loci_mcp.server.loci.check_duplicate", return_value={"duplicate": False}):
+        result = check_duplicate("document", "Some Title")
+    assert result == {"duplicate": False}
+
+
+def test_write_vault_returns_uid(tmp_vault):
+    payload = {"uid": "abc12345", "path": "/p/doc.md", "type": "document", "title": "T"}
+    with patch("loci_mcp.server.loci.save", return_value=payload):
+        result = write_vault("document", "T", "body")
+    assert result["uid"] == "abc12345"
+
+
+def test_list_vault_includes_startup_notice_once(tmp_vault, monkeypatch):
+    monkeypatch.setattr(server, "_startup_notice", "meta updated to v3")
+    with patch("loci_mcp.server.loci.list_items", return_value={}):
+        result = list_vault()
+    assert result["_notice"] == "meta updated to v3"
+    assert server._startup_notice is None  # cleared after first show
+
+
+def test_fetch_url_metadata_returns_dict(tmp_vault):
+    expected = {"url": "https://example.com", "title": "Example", "site_name": None, "description": None}
+    with patch("loci_mcp.server.loci.fetch_url_metadata", return_value=expected):
+        result = fetch_url_metadata("https://example.com")
+    assert result["title"] == "Example"
+
+
+def test_query_neighbors_returns_list(tmp_vault):
+    neighbors = [{"uid": "n002", "title": "Beta", "type": "task", "rel_type": "relates-to", "direction": "out"}]
+    with patch("loci_mcp.server.graph.get"), \
+         patch("loci_mcp.server.graph.neighbors", return_value=neighbors):
+        result = query_neighbors("n001")
+    assert len(result) == 1
+    assert result[0]["uid"] == "n002"
+
+
+def test_query_related_returns_list(tmp_vault):
+    related = [{"uid": "n002", "title": "Beta", "type": "task", "distance": 1, "summary": ""}]
+    with patch("loci_mcp.server.graph.get"), \
+         patch("loci_mcp.server.graph.related", return_value=related):
+        result = query_related("n001")
+    assert result[0]["distance"] == 1
+
+
+def test_query_path_returns_path(tmp_vault):
+    nodes = [
+        {"uid": "n001", "title": "Alpha", "type": "document"},
+        {"uid": "n002", "title": "Beta",  "type": "task"},
+    ]
+    with patch("loci_mcp.server.graph.get"), \
+         patch("loci_mcp.server.graph.path", return_value=nodes):
+        result = query_path("n001", "n002")
+    assert len(result) == 2
+    assert result[-1]["uid"] == "n002"
+
+
+def test_find_nodes_returns_matching_list(tmp_vault):
+    found = [{"uid": "n001", "title": "Alpha", "type": "task", "path": "/p", "status": "open", "due_date": "", "language": ""}]
+    with patch("loci_mcp.server.graph.get"), \
+         patch("loci_mcp.server.graph.find", return_value=found):
+        result = find_nodes(type="task")
+    assert result[0]["type"] == "task"
+
+
+def test_search_vault_returns_results(tmp_vault):
+    hits = [{"uid": "n001", "title": "Alpha", "type": "document", "path": "/p", "summary": ""}]
+    with patch("loci_mcp.server.graph.get"), \
+         patch("loci_mcp.server.graph.search", return_value=hits):
+        result = search_vault("alpha")
+    assert result[0]["uid"] == "n001"
+
+
+def test_find_unregistered_assets_returns_list(tmp_vault):
+    with patch("loci_mcp.server.loci.find_unregistered_assets", return_value=["assets/orphan.pdf"]):
+        result = find_unregistered_assets()
+    assert "assets/orphan.pdf" in result

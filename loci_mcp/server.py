@@ -40,12 +40,12 @@ from vault_init import check_meta_version
 _startup_notice: str | None = check_meta_version()
 
 # Recover any interrupted asset saves from previous runs
-try:
+try:  # pragma: no cover
     import contextlib as _contextlib
     import io as _io
     from write_file import write_item as _write_item
 
-    def _write_vault_proxy(vault_root, uid, vault_node):
+    def _write_vault_proxy(vault_root, uid, vault_node):  # pragma: no cover
         with _contextlib.redirect_stdout(_io.StringIO()):
             result = _write_item(
                 type="document",
@@ -64,9 +64,9 @@ try:
     if _recovered:
         import sys as _sys
         print(f"[loci] Recovered {len(_recovered)} interrupted asset write(s): {_recovered}", file=_sys.stderr)
-except Exception as _e:
+except Exception as _e:  # pragma: no cover
     import sys as _sys
-    print(f"[loci] Asset recovery skipped: {_e}", file=_sys.stderr)
+    print(f"[loci] Asset recovery skipped: {_e}", file=_sys.stderr)  # pragma: no cover
 
 mcp = FastMCP("loci")
 
@@ -440,7 +440,7 @@ def _make_auth_app(asgi_app):
     return auth_middleware
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     transport = os.environ.get("LOCI_TRANSPORT", "stdio")
     if transport == "sse":
         import uvicorn

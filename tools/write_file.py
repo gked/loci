@@ -230,7 +230,7 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
     }
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     # Quick smoke test
     result = write_item(
         type="document",

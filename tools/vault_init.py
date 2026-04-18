@@ -173,6 +173,6 @@ def init(force: bool = False) -> dict:
     return config
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     force = "--force" in sys.argv
     init(force=force)
