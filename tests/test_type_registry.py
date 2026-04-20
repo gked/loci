@@ -35,7 +35,7 @@ def test_loads_canonical_types():
     registry = TypeRegistry.load(_canonical_ontology())
     names = registry.type_names()
     for expected in ["document", "article", "task", "project", "entity",
-                     "procedure", "topic", "bookmark", "conversation", "event", "reference"]:
+                     "procedure", "topic", "bookmark", "conversation", "event"]:
         assert expected in names
 
 

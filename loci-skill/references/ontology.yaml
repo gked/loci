@@ -193,9 +193,3 @@ types:
         - name: parent_topic
           type: string
 
-  - name: reference
-    extends: null
-    description: Pointer to external content (hybrid ownership model).
-    fields:
-      required: []
-      optional: []

@@ -47,6 +47,8 @@ Use when the user names a specific topic, person, project, or concept.
 4. Call `loci__query_neighbors(uid=<uid>)` to surface direct connections with their relation types and directions.
 5. Present: the node content, then a "Connected to:" section listing neighbors with type, relation type, and direction (in/out).
 
+**If the target node is type `topic`:** topics are graph hubs, so automatically continue into Mode 3 (neighborhood) without waiting to be asked — call `loci__query_related(uid=<uid>, depth=2)` and present the full neighborhood grouped by distance. The user's intent when looking up a topic is almost always "show me everything under this concept."
+
 If no results found via search, tell the user clearly — do not invent content.
 
 ---

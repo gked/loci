@@ -46,6 +46,7 @@ A citable source means: a URL where it was published, an identifiable author, or
 
 **9. Is the content an organizing hub for a subject area with no content of its own?**
 → `topic`
+Deciding between topic and tag: if you'd want to navigate *to* this subject and see what's linked, use `topic`. If you'd use it only as a filter label on other content, use a tag. A topic that ends up with no relations is probably better as a tag.
 
 **When to ask:** if two types still seem equally valid after applying these rules, ask the user. Do not guess — type determines which fields are collected.
 

@@ -102,9 +102,7 @@ the most specific type that fits rather than defaulting to `relates-to`.
 
 **User-defined types:**
 
-If the user asks to save content with a type that is not one of the 11
-canonical types (document, article, bookmark, conversation, project, task,
-event, entity, procedure, topic, reference):
+If the user asks to save content with a type that is not a canonical type (canonical types are defined in the ontology registry — call `loci__read_meta(file="ontology")` to check):
 
 1. Call `loci__read_meta(file="ontology-user")` to check if the type is already
    registered as a user extension.
@@ -170,6 +168,19 @@ On confirmation, add the UID to `relations` with the appropriate relation type.
 On "create node", save that node first then link back.
 
 **Do not auto-link without confirmation.**
+
+**Topic-specific handling (when type = topic):**
+
+1. If `parent_topic` is set, resolve the parent by calling `loci__search_vault(query=<parent_topic_title>)`, then:
+   - If exactly one result: use its UID directly.
+   - If multiple results: present them to the user ("Which did you mean?") with title and a one-line summary for each, and wait for confirmation before proceeding.
+   - If no results: inform the user the parent topic wasn't found and ask whether to create it first or save without a parent.
+   - Once resolved, set `parent_topic` to that UID and add a `child-of` relation pointing to it.
+2. After the file is saved (Step 6), offer a follow-on scan:
+   ```
+   Want me to scan existing vault content for items to link to this topic?
+   ```
+   If yes, call `loci__search_vault(query=<topic title>)` to find candidates, present them grouped by type, and let the user choose which to link. For each confirmed link, patch the topic node to add the relation (use the appropriate relation type — e.g. `contains`, `relates-to`).
 
 ---
 

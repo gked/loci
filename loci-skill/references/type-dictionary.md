@@ -24,5 +24,4 @@ task         — discrete actionable item with due date and status
 event        — point-in-time or period occurrence
 entity       — real-world actor: person, organization, or place (subtype: person | organization | place — only type with a structural subtype; changes which fields apply)
 procedure    — repeatable process with ordered steps and expected outcome (use tags for process category: #recipe, #workout, #protocol, #playbook, #tutorial)
-topic        — organizing hub for a subject area
-reference    — pointer to external content (hybrid ownership model)
+topic        — organizing hub for a subject area; first-class graph node for a concept you'd navigate to and see linked content from (use a tag instead if it's purely a filter label)

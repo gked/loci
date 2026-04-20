@@ -356,4 +356,8 @@ description: whether this topic is still being actively developed
 field: parent_topic
 type: string
 required: no
-description: UID of a broader parent topic if this is a sub-topic
+description: >
+  UID of the broader parent topic if this is a sub-topic.
+  When set, also add a relation of type child-of pointing to the parent topic UID —
+  parent_topic is a denormalized copy for human readability; the graph edge is the
+  authoritative link for traversal.
