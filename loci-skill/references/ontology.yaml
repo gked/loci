@@ -1,0 +1,201 @@
+# Loci Ontology
+# ontology_version: 1
+#
+# Machine-readable type system. Loaded into TypeRegistry at server startup.
+# This file is reseeded on META_VERSION bumps — do not edit in your vault.
+# To define custom types: create ontology-user.yaml in your vault/meta/ folder.
+#
+# Safety rules for ontology-user.yaml:
+#   - extends must name a canonical type (one level only — no extending user types)
+#   - name must not collide with any canonical type
+#   - additive only: add fields, add enum values — never redefine inherited ones
+
+base_fields:
+  required:
+    - uid
+    - type
+    - title
+    - author
+    - created_at
+    - updated_at
+    - archived_at
+    - tags
+    - domains
+    - summary
+    - relations
+    - references
+  optional:
+    - language
+    - aliases
+
+types:
+  - name: document
+    extends: null
+    description: >
+      Written content without external provenance. No source URL required.
+      Use tags for format variation: essay, spec, meeting-notes, journal.
+    fields:
+      required:
+        - name: status
+          type: enum
+          values: [draft, evergreen, archived]
+      optional: []
+
+  - name: article
+    extends: null
+    description: >
+      External content with provenance: blog posts, books, papers, news.
+      Use tags for format: book, blog-post, whitepaper, research-paper.
+    fields:
+      required:
+        - name: source_url
+          type: string
+        - name: format
+          type: enum
+          values: [article, blog-post, news, book, paper, scholarly, technical, video]
+      optional:
+        - name: author
+          type: string
+        - name: published_at
+          type: datetime
+        - name: highlights
+          type: array
+
+  - name: bookmark
+    extends: null
+    description: Saved URL with minimal metadata. Use article when capturing full content.
+    fields:
+      required:
+        - name: source_url
+          type: string
+      optional:
+        - name: site_name
+          type: string
+
+  - name: conversation
+    extends: null
+    description: Saved LLM or human conversation.
+    fields:
+      required:
+        - name: participants
+          type: array
+        - name: platform
+          type: enum
+          values: [claude, chatgpt, human, other]
+      optional:
+        - name: model
+          type: string
+        - name: turns
+          type: string
+
+  - name: project
+    extends: null
+    description: Ongoing work with goals and milestones.
+    fields:
+      required:
+        - name: status
+          type: enum
+          values: [active, paused, completed, abandoned]
+      optional:
+        - name: goals
+          type: array
+        - name: milestones
+          type: array
+        - name: due_date
+          type: datetime
+
+  - name: task
+    extends: null
+    description: Discrete actionable item with due date and status.
+    fields:
+      required:
+        - name: status
+          type: enum
+          values: [todo, in-progress, done, cancelled, duplicate]
+      optional:
+        - name: due_date
+          type: datetime
+        - name: priority
+          type: enum
+          values: [high, medium, low]
+        - name: assignee
+          type: string
+
+  - name: event
+    extends: null
+    description: Point-in-time or period occurrence.
+    fields:
+      required:
+        - name: start_at
+          type: datetime
+      optional:
+        - name: end_at
+          type: datetime
+        - name: location
+          type: string
+        - name: participants
+          type: array
+
+  - name: entity
+    extends: null
+    description: >
+      Real-world actor: person, organization, or place.
+      Only canonical type with a structural subtype that changes which fields apply.
+    fields:
+      required:
+        - name: subtype
+          type: enum
+          values: [person, organization, place]
+      optional:
+        - name: roles
+          type: array
+        - name: organization
+          type: string
+        - name: location
+          type: string
+        - name: website
+          type: string
+        - name: industry
+          type: string
+        - name: founded_at
+          type: datetime
+        - name: affiliations
+          type: array
+        - name: history
+          type: array
+
+  - name: procedure
+    extends: null
+    description: >
+      Repeatable process with ordered steps and expected outcome.
+      Use tags for category: recipe, workout, protocol, playbook, tutorial.
+    fields:
+      required:
+        - name: steps
+          type: array
+      optional:
+        - name: expected_outcome
+          type: string
+        - name: inputs
+          type: array
+        - name: duration_minutes
+          type: string
+
+  - name: topic
+    extends: null
+    description: Organizing hub for a subject area.
+    fields:
+      required:
+        - name: status
+          type: enum
+          values: [active, archived]
+      optional:
+        - name: parent_topic
+          type: string
+
+  - name: reference
+    extends: null
+    description: Pointer to external content (hybrid ownership model).
+    fields:
+      required: []
+      optional: []

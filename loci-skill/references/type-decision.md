@@ -1,6 +1,11 @@
 # Type Classification Guide
 # Read by the save skill at Step 1.
 # Answers: what type is this content, and what format tags apply.
+#
+# STRUCTURAL AUTHORITY: ontology.yaml
+# The canonical list of valid types, their required fields, and enum values
+# are defined in ontology.yaml. This file only explains when to use each type.
+# If a type named here is not in ontology.yaml, it does not exist.
 
 ## Core rule
 

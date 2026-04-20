@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 4
+skill_version: 5
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, or topic — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 4`.
+This skill is at `skill_version: 5`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -86,13 +86,34 @@ Call `loci__read_meta(file="tag-dictionary")` and prefer existing tags over
 synonyms. If a new tag is likely to recur, add it via `loci__write_meta`
 before writing the item.
 
-Call `loci__read_meta(file="field-dictionary")` to get the current field
-definitions for all types. Use this as the authoritative source for which
-fields to include, their types, valid enum values, and whether they are required.
+Call `loci__read_meta(file="ontology")` to get the structural definition for
+the chosen type: which fields are required, which are optional, and what the
+valid enum values are. This is the authoritative source for field structure.
+
+Call `loci__read_meta(file="field-dictionary")` for behavioral guidance: field
+descriptions, complex object schemas with examples (e.g. full `relations` and
+`references` shapes), entity archiving patterns, and temporal field rules. Do
+not use field-dictionary as a source for required/optional status or enum
+values — use ontology for that.
 
 Call `loci__read_meta(file="relation-dictionary")` to get the current relation
 type vocabulary. Use this when choosing the `type` field for any relation — pick
 the most specific type that fits rather than defaulting to `relates-to`.
+
+**User-defined types:**
+
+If the user asks to save content with a type that is not one of the 11
+canonical types (document, article, bookmark, conversation, project, task,
+event, entity, procedure, topic, reference):
+
+1. Call `loci__read_meta(file="ontology-user")` to check if the type is already
+   registered as a user extension.
+2. If found: proceed normally — the type is valid.
+3. If not found: call `loci__validate_type(name=<type>, extends=<canonical_parent>)`
+   to pre-flight the definition. Surface any errors to the user.
+   If valid, ask the user to confirm before writing the new type to
+   `ontology-user.yaml` via `loci__write_meta(file="ontology-user", content=<updated yaml>)`.
+   Then proceed with the save.
 
 **Language rule:**
 - `summary` is **always written in English** regardless of the body's language — it is the search bridge.

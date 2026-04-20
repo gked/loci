@@ -209,12 +209,13 @@ loci/
     loci-query/
       SKILL.md                    ← Claude's instructions for querying content
     references/
-      type-dictionary.md          ← seed: canonical type vocabulary
-      field-dictionary.md         ← seed: field definitions per type
+      ontology.yaml               ← machine-readable type system (TypeRegistry source)
+      ontology-user.yaml          ← user-defined type extensions (never reseeded)
+      type-dictionary.md          ← type selection guide (semantic; structure in ontology.yaml)
+      field-dictionary.md         ← field guidance (semantic; structure in ontology.yaml)
       tag-dictionary.md           ← seed: initial tag vocabulary
       relation-dictionary.md      ← seed: typed edge vocabulary
       foreign-definitions.md      ← seed: external source schemas
-      type-fields.md              ← human-readable field reference by type
   loci_mcp/
     server.py                     ← MCP server (stdio or SSE via LOCI_TRANSPORT)
                                     env vars: LOCI_TRANSPORT=stdio|sse

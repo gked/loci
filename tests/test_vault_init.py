@@ -17,6 +17,7 @@ from vault_init import (
     check_meta_version,
     META_VERSION,
     META_FILES,
+    USER_META_FILES,
 )
 
 
@@ -190,6 +191,61 @@ def test_check_meta_version_reseeds_when_unversioned(tmp_path, fake_config_path)
     result = check_meta_version()
     assert result is not None
     assert "unversioned" in result
+
+
+# ---------------------------------------------------------------------------
+# field-dictionary schema assertions
+# ---------------------------------------------------------------------------
+
+def test_field_dictionary_task_status_includes_duplicate(tmp_path):
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    field_dict = (vault_root / "meta" / "field-dictionary.md").read_text(encoding="utf-8")
+    task_status_line = next(
+        line for line in field_dict.splitlines()
+        if "todo" in line and "done" in line
+    )
+    assert "duplicate" in task_status_line
+
+
+# ---------------------------------------------------------------------------
+# USER_META_FILES — seeded once, never reseeded
+# ---------------------------------------------------------------------------
+
+def test_user_meta_files_seeded_on_create(tmp_path):
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    for fname in USER_META_FILES:
+        p = vault_root / "meta" / fname
+        assert p.exists(), f"User meta file not seeded: {fname}"
+        assert p.stat().st_size > 0
+
+
+def test_user_meta_files_not_overwritten_by_create(tmp_path):
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    user_file = vault_root / "meta" / "ontology-user.yaml"
+    user_file.write_text("# my custom types\ntypes: [{name: recipe}]\n", encoding="utf-8")
+    create_vault_structure(vault_root)  # second call
+    assert "recipe" in user_file.read_text(encoding="utf-8")
+
+
+def test_user_meta_files_not_overwritten_by_reseed(tmp_path):
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    user_file = vault_root / "meta" / "ontology-user.yaml"
+    user_file.write_text("# my custom types\ntypes: [{name: recipe}]\n", encoding="utf-8")
+    reseed_meta(vault_root)
+    assert "recipe" in user_file.read_text(encoding="utf-8")
+
+
+def test_reseed_meta_still_updates_canonical_files(tmp_path):
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    canonical = vault_root / "meta" / "ontology.yaml"
+    canonical.write_text("# stale ontology\n", encoding="utf-8")
+    reseed_meta(vault_root)
+    assert "# stale ontology" not in canonical.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

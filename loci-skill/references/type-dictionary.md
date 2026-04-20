@@ -1,7 +1,16 @@
 # Loci Type Dictionary
-# Canonical type vocabulary — edit with care.
-# The save skill reads this file at runtime.
-# schema_version: 1
+# Human-readable type selection guide for the save skill.
+#
+# STRUCTURAL AUTHORITY: ontology.yaml
+# Canonical type names, inheritance, required/optional fields, and enum values
+# are defined in ontology.yaml and enforced at runtime by the TypeRegistry.
+# This file does NOT define which types exist — it explains when to use each one.
+# If this file conflicts with ontology.yaml, ontology.yaml wins.
+#
+# What this file owns:
+#   - One-line descriptions of each type's purpose
+#   - Guidance on when to use one type vs another
+#   - Notes on tags as an alternative to new types
 #
 # Rule: a separate type is justified only when variants have different required fields.
 # Descriptive differences (format, category, style) belong in tags, not types.

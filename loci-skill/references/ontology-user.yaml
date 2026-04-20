@@ -1,0 +1,23 @@
+# Loci User Ontology
+# Define custom types that extend canonical ones.
+# This file is yours — it is seeded once and never overwritten by the system.
+#
+# Rules:
+#   - extends must name a canonical type (one level only)
+#   - name must not collide with any canonical type
+#   - additive only: you may add fields and enum values,
+#     but cannot redefine or remove inherited ones
+#
+# Example:
+#   types:
+#     - name: recipe
+#       extends: procedure
+#       description: A cooking or food preparation procedure.
+#       fields:
+#         optional:
+#           - name: servings
+#             type: string
+#           - name: cuisine
+#             type: string
+
+types: []

@@ -39,6 +39,28 @@ from vault_init import check_meta_version
 
 _startup_notice: str | None = check_meta_version()
 
+# Run linter at startup to catch manual edits made outside MCP.
+# Only errors (not warnings) are surfaced — warnings are available via lint_vault tool.
+try:
+    import api as _api_lint
+    _lint_result = _api_lint.lint_vault()
+    _lint_errors = _lint_result.get("errors", [])
+    if _lint_errors:
+        _error_summary = "; ".join(
+            f"{e['path']}: [{e['code']}] {e['message']}"
+            for e in _lint_errors[:5]
+        )
+        _overflow = f" (+{len(_lint_errors) - 5} more)" if len(_lint_errors) > 5 else ""
+        _lint_notice = (
+            f"Vault linter found {len(_lint_errors)} error(s) — "
+            f"call lint_vault for the full report. "
+            f"First errors: {_error_summary}{_overflow}"
+        )
+        _startup_notice = "\n".join(filter(None, [_startup_notice, _lint_notice]))
+except Exception as _lint_exc:
+    import sys as _sys
+    print(f"[loci] Startup linter failed (skipped): {_lint_exc}", file=_sys.stderr)
+
 # Recover any interrupted asset saves from previous runs
 try:  # pragma: no cover
     import contextlib as _contextlib
@@ -203,7 +225,15 @@ def list_vault(type: str = None) -> dict:
 def read_meta(file: str) -> str:
     """
     Read a vault meta file.
-    file: type-dictionary | tag-dictionary | field-dictionary | relation-dictionary | foreign-definitions | config
+    file: type-dictionary | tag-dictionary | field-dictionary | relation-dictionary |
+          foreign-definitions | ontology | ontology-user | config
+
+    ontology        — machine-readable canonical type definitions (required fields,
+                      optional fields, enum values). Source of truth for structure.
+    ontology-user   — user-defined type extensions. Read before writing a node of a
+                      user-defined type to confirm the type is registered.
+    field-dictionary — behavioral guidance: field descriptions, complex object schemas,
+                       archiving patterns, temporal field rules (LLM-readable).
     """
     try:
         return loci.read_meta(file)
@@ -244,10 +274,41 @@ def write_skill(content: str) -> str:
 
 
 @mcp.tool()
+def validate_type(name: str, extends: str, fields: list[dict] = None) -> dict:
+    """
+    Validate a proposed user-defined type before writing it to ontology-user.yaml.
+    Returns {"valid": bool, "errors": [...], "resolved_fields": {...}}.
+
+    Args:
+        name:    Proposed type name — must not collide with any canonical type.
+        extends: A canonical type to inherit from (e.g. "procedure", "task").
+        fields:  Optional list of additional fields: [{name, type, values?}].
+                 'type' is one of: string | array | datetime | enum | boolean.
+                 For enum fields, include 'values': [...].
+    """
+    return loci.validate_type(name, extends, fields)
+
+
+@mcp.tool()
+def lint_vault() -> dict:
+    """
+    Lint all vault files against the Loci schema.
+    Returns errors (schema violations, unknown types, bad uids, duplicate uids)
+    and warnings (dangling relations, orphaned nodes, empty summaries).
+    Run this after manual vault edits or when debugging unexpected behavior.
+    """
+    return loci.lint_vault()
+
+
+@mcp.tool()
 def write_meta(file: str, content: str) -> str:
     """
     Overwrite a vault meta file.
-    file: tag-dictionary | foreign-definitions
+    file: tag-dictionary | foreign-definitions | ontology-user
+
+    ontology-user — write updated YAML to register a new user-defined type.
+                    Read the current content first with read_meta(file="ontology-user"),
+                    append the new type entry, then write the full updated content here.
     """
     try:
         return loci.write_meta(file, content)

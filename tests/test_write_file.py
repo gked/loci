@@ -14,7 +14,9 @@ from write_file import (
     write_item,
     patch_item,
     check_duplicate,
+    validate_required_fields,
 )
+from type_registry import TypeRegistry, REFERENCES_DIR
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +45,7 @@ def test_write_item_creates_file(tmp_vault):
         type="document",
         title="Hello World",
         body="Some body text.",
+        extra_fields={"status": "draft"},
         skip_duplicate_check=True,
     )
     assert result["type"] == "document"
@@ -62,6 +65,7 @@ def test_write_item_frontmatter_fields(tmp_vault):
         tags=["python", "testing"],
         domains=["engineering"],
         summary="A test task.",
+        extra_fields={"status": "todo"},
         skip_duplicate_check=True,
     )
     raw = Path(result["path"]).read_text(encoding="utf-8")
@@ -78,6 +82,7 @@ def test_write_item_body_follows_frontmatter(tmp_vault):
         type="document",
         title="Body Test",
         body="This is the body.",
+        extra_fields={"status": "draft"},
         skip_duplicate_check=True,
     )
     raw = Path(result["path"]).read_text(encoding="utf-8")
@@ -90,7 +95,7 @@ def test_write_item_extra_fields_merged(tmp_vault):
         type="document",
         title="Asset Doc",
         body="",
-        extra_fields={"has_asset": True, "uid": "fixed001"},
+        extra_fields={"status": "draft", "has_asset": True, "uid": "fixed001"},
         skip_duplicate_check=True,
     )
     raw = Path(result["path"]).read_text(encoding="utf-8")
@@ -249,6 +254,7 @@ def test_write_item_references_url_used_for_duplicate_check(tmp_vault, monkeypat
         type="bookmark",
         title="New Bookmark Different Title",
         body="",
+        extra_fields={"source_url": "https://example.com/ref-test"},
         references=[{"url": "https://example.com/ref-test", "title": "Example", "source_type": "web"}],
     )
     # URL match found → user typed "n" → write aborted
@@ -257,14 +263,138 @@ def test_write_item_references_url_used_for_duplicate_check(tmp_vault, monkeypat
 
 def test_write_item_duplicate_check_aborted(tmp_vault, monkeypatch):
     # Create a file that will be detected as a duplicate
-    write_item(type="document", title="Duplicate Title", body="", skip_duplicate_check=True)
+    write_item(type="document", title="Duplicate Title", body="", extra_fields={"status": "draft"}, skip_duplicate_check=True)
     monkeypatch.setattr("builtins.input", lambda: "n")
-    result = write_item(type="document", title="Duplicate Title", body="")
+    result = write_item(type="document", title="Duplicate Title", body="", extra_fields={"status": "draft"})
     assert result == {}
 
 
 def test_write_item_duplicate_check_confirmed(tmp_vault, monkeypatch):
-    write_item(type="document", title="Dup Confirmed", body="", skip_duplicate_check=True)
+    write_item(type="document", title="Dup Confirmed", body="", extra_fields={"status": "draft"}, skip_duplicate_check=True)
     monkeypatch.setattr("builtins.input", lambda: "y")
-    result = write_item(type="document", title="Dup Confirmed", body="")
+    result = write_item(type="document", title="Dup Confirmed", body="", extra_fields={"status": "draft"})
     assert result.get("uid") is not None
+
+
+# ---------------------------------------------------------------------------
+# validate_required_fields
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def registry():
+    return TypeRegistry.load(REFERENCES_DIR / "ontology.yaml")
+
+
+def test_validate_required_fields_valid_task(registry):
+    type_def = registry.get("task")
+    errors = validate_required_fields(type_def, {"status": "todo"})
+    assert errors == []
+
+
+def test_validate_required_fields_missing_required(registry):
+    type_def = registry.get("task")
+    errors = validate_required_fields(type_def, {})
+    assert any("status" in e for e in errors)
+
+
+def test_validate_required_fields_null_required(registry):
+    type_def = registry.get("task")
+    errors = validate_required_fields(type_def, {"status": None})
+    assert any("status" in e for e in errors)
+
+
+def test_validate_required_fields_invalid_enum(registry):
+    type_def = registry.get("task")
+    errors = validate_required_fields(type_def, {"status": "blocked"})
+    assert any("blocked" in e for e in errors)
+    assert any("status" in e for e in errors)
+
+
+def test_validate_required_fields_valid_enum_duplicate(registry):
+    type_def = registry.get("task")
+    errors = validate_required_fields(type_def, {"status": "duplicate"})
+    assert errors == []
+
+
+def test_validate_required_fields_invalid_optional_enum(registry):
+    type_def = registry.get("task")
+    errors = validate_required_fields(type_def, {"status": "todo", "priority": "critical"})
+    assert any("priority" in e for e in errors)
+    assert any("critical" in e for e in errors)
+
+
+def test_validate_required_fields_valid_optional_enum(registry):
+    type_def = registry.get("task")
+    errors = validate_required_fields(type_def, {"status": "todo", "priority": "high"})
+    assert errors == []
+
+
+def test_validate_required_fields_entity_missing_subtype(registry):
+    type_def = registry.get("entity")
+    errors = validate_required_fields(type_def, {})
+    assert any("subtype" in e for e in errors)
+
+
+def test_validate_required_fields_entity_invalid_subtype(registry):
+    type_def = registry.get("entity")
+    errors = validate_required_fields(type_def, {"subtype": "robot"})
+    assert any("subtype" in e for e in errors)
+
+
+def test_validate_required_fields_no_type_specific_fields(registry):
+    """document has status as required; empty extra_fields triggers an error."""
+    type_def = registry.get("document")
+    errors = validate_required_fields(type_def, {})
+    assert any("status" in e for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# write_item — required field validation integration
+# ---------------------------------------------------------------------------
+
+def test_write_item_returns_errors_when_required_field_missing(tmp_vault):
+    result = write_item(
+        type="task",
+        title="Missing Status",
+        body="",
+        skip_duplicate_check=True,
+        # no extra_fields → status missing
+    )
+    assert "errors" in result
+    assert any("status" in e for e in result["errors"])
+
+
+def test_write_item_returns_errors_for_invalid_enum(tmp_vault):
+    result = write_item(
+        type="task",
+        title="Bad Status",
+        body="",
+        extra_fields={"status": "blocked"},
+        skip_duplicate_check=True,
+    )
+    assert "errors" in result
+    assert any("blocked" in e for e in result["errors"])
+
+
+def test_write_item_succeeds_with_valid_required_fields(tmp_vault):
+    result = write_item(
+        type="task",
+        title="Valid Task",
+        body="",
+        extra_fields={"status": "todo"},
+        skip_duplicate_check=True,
+    )
+    assert "errors" not in result
+    assert result.get("uid") is not None
+
+
+def test_write_item_no_file_written_on_validation_error(tmp_vault):
+    before = list(tmp_vault.glob("*.md"))
+    write_item(
+        type="task",
+        title="Should Not Write",
+        body="",
+        skip_duplicate_check=True,
+    )
+    after = list(tmp_vault.glob("*.md"))
+    assert len(after) == len(before)

@@ -1,14 +1,19 @@
 # Loci Field Dictionary
-# Defines all frontmatter fields per type — consulted by the save skill at ingestion.
-# Edit this file to evolve the schema without touching the skill.
-# schema_version: 1
+# Semantic guidance for the save skill — what each field means, how to fill it,
+# and behavioral instructions that cannot be expressed in schema alone.
 #
-# Format:
-#   field: <name>
-#   type: string | array | enum | boolean | datetime | object
-#   values: (for enum) pipe-separated valid values
-#   required: yes | no
-#   description: brief explanation
+# STRUCTURAL AUTHORITY: ontology.yaml
+# Field names, types, required/optional status, and enum values are defined in
+# ontology.yaml and enforced at runtime by the TypeRegistry.
+# This file does NOT define structure — it explains it.
+# If this file conflicts with ontology.yaml, ontology.yaml wins.
+#
+# What this file owns:
+#   - Human-readable descriptions of what each field means
+#   - Usage guidance (e.g. "consult tag-dictionary before adding new tags")
+#   - Behavioral instructions (e.g. "when updated, archive the old value")
+#   - Object schemas and examples for complex fields (affiliations, history)
+#   - Domain taxonomy with descriptions
 
 ---
 
@@ -199,7 +204,7 @@ description: target completion date
 ### task
 field: status
 type: enum
-values: todo | in-progress | done | cancelled
+values: todo | in-progress | done | cancelled | duplicate
 required: yes
 description: current state of the task
 

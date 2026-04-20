@@ -30,7 +30,7 @@ def _write_raw(vault: Path, name: str, fm: dict, body: str = "") -> Path:
 # ---------------------------------------------------------------------------
 
 def test_save_creates_file(tmp_vault):
-    result = api.save(type="document", title="Test Doc", body="Hello.")
+    result = api.save(type="document", title="Test Doc", body="Hello.", extra_fields={"status": "draft"})
     p = Path(result["path"])
     assert p.exists()
     assert result["type"] == "document"
@@ -45,6 +45,7 @@ def test_save_frontmatter_written(tmp_vault):
         body="Do it.",
         tags=["python"],
         summary="A task.",
+        extra_fields={"status": "todo"},
     )
     raw = Path(result["path"]).read_text(encoding="utf-8")
     fm = yaml.safe_load(raw.split("---", 2)[1])
@@ -63,7 +64,7 @@ def test_save_invalid_type_raises(tmp_vault):
 # ---------------------------------------------------------------------------
 
 def test_delete_removes_file(tmp_vault):
-    result = api.save(type="document", title="To Delete", body="")
+    result = api.save(type="document", title="To Delete", body="", extra_fields={"status": "draft"})
     path = result["path"]
     assert Path(path).exists()
     api.delete(path)
@@ -71,14 +72,14 @@ def test_delete_removes_file(tmp_vault):
 
 
 def test_delete_returns_metadata(tmp_vault):
-    result = api.save(type="document", title="Del Meta", body="")
+    result = api.save(type="document", title="Del Meta", body="", extra_fields={"status": "draft"})
     deleted = api.delete(result["path"])
     assert deleted["deleted"] is True
     assert deleted["path"] == result["path"]
 
 
 def test_delete_relative_path_resolves(tmp_vault):
-    result = api.save(type="document", title="Rel Delete", body="")
+    result = api.save(type="document", title="Rel Delete", body="", extra_fields={"status": "draft"})
     fname = Path(result["path"]).name
     api.delete(fname)  # relative path
     assert not Path(result["path"]).exists()
@@ -94,7 +95,7 @@ def test_delete_missing_file_raises(tmp_vault):
 # ---------------------------------------------------------------------------
 
 def test_patch_merges_frontmatter(tmp_vault):
-    result = api.save(type="document", title="Patch Me", body="Original.")
+    result = api.save(type="document", title="Patch Me", body="Original.", extra_fields={"status": "draft"})
     api.patch(result["path"], {"tags": ["updated"], "status": "done"})
     raw = Path(result["path"]).read_text(encoding="utf-8")
     fm = yaml.safe_load(raw.split("---", 2)[1])
@@ -104,7 +105,7 @@ def test_patch_merges_frontmatter(tmp_vault):
 
 
 def test_patch_replaces_body(tmp_vault):
-    result = api.save(type="document", title="Body Patch", body="Old body.")
+    result = api.save(type="document", title="Body Patch", body="Old body.", extra_fields={"status": "draft"})
     api.patch(result["path"], {}, body="New body.")
     raw = Path(result["path"]).read_text(encoding="utf-8")
     assert "New body." in raw
@@ -112,14 +113,14 @@ def test_patch_replaces_body(tmp_vault):
 
 
 def test_patch_relative_path_resolves(tmp_vault):
-    result = api.save(type="document", title="Rel Patch", body="")
+    result = api.save(type="document", title="Rel Patch", body="", extra_fields={"status": "draft"})
     fname = Path(result["path"]).name
     patched = api.patch(fname, {"title": "Renamed"})
     assert patched["title"] == "Renamed"
 
 
 def test_patch_returns_metadata(tmp_vault):
-    result = api.save(type="document", title="Patch Return", body="")
+    result = api.save(type="document", title="Patch Return", body="", extra_fields={"status": "draft"})
     patched = api.patch(result["path"], {"tags": ["x"]})
     assert patched["uid"] == result["uid"]
     assert patched["type"] == "document"
@@ -140,7 +141,7 @@ def test_check_duplicate_no_match(tmp_vault):
 
 
 def test_check_duplicate_finds_match(tmp_vault):
-    api.save(type="document", title="Duplicate Me", body="")
+    api.save(type="document", title="Duplicate Me", body="", extra_fields={"status": "draft"})
     result = api.check_duplicate(type="document", title="Duplicate Me")
     assert result["duplicate"] is True
     assert "duplicate-me" in result["name"]
@@ -151,14 +152,14 @@ def test_check_duplicate_finds_match(tmp_vault):
 # ---------------------------------------------------------------------------
 
 def test_get_reads_file(tmp_vault):
-    result = api.save(type="document", title="Readable", body="Read this.")
+    result = api.save(type="document", title="Readable", body="Read this.", extra_fields={"status": "draft"})
     text = api.get(result["path"])
     assert "Read this." in text
     assert "Readable" in text
 
 
 def test_get_relative_path_resolves(tmp_vault):
-    result = api.save(type="document", title="Rel Get", body="content")
+    result = api.save(type="document", title="Rel Get", body="content", extra_fields={"status": "draft"})
     fname = Path(result["path"]).name
     text = api.get(fname)
     assert "content" in text
@@ -219,16 +220,16 @@ def test_get_inlines_small_text_asset(tmp_vault):
 # ---------------------------------------------------------------------------
 
 def test_list_items_returns_all_types(tmp_vault):
-    api.save(type="document", title="Doc One", body="")
-    api.save(type="task", title="Task One", body="")
+    api.save(type="document", title="Doc One", body="", extra_fields={"status": "draft"})
+    api.save(type="task", title="Task One", body="", extra_fields={"status": "todo"})
     result = api.list_items()
     assert "document" in result
     assert "task" in result
 
 
 def test_list_items_filtered_by_type(tmp_vault):
-    api.save(type="document", title="Doc A", body="")
-    api.save(type="task", title="Task A", body="")
+    api.save(type="document", title="Doc A", body="", extra_fields={"status": "draft"})
+    api.save(type="task", title="Task A", body="", extra_fields={"status": "todo"})
     result = api.list_items(type="task")
     assert "task" in result
     assert "document" not in result
@@ -257,6 +258,8 @@ def _make_meta_dir(vault: Path) -> Path:
     for name in ["type-dictionary.md", "tag-dictionary.md", "field-dictionary.md",
                  "relation-dictionary.md", "foreign-definitions.md"]:
         (meta / name).write_text(f"# {name}\n", encoding="utf-8")
+    (meta / "ontology.yaml").write_text("types: []\n", encoding="utf-8")
+    (meta / "ontology-user.yaml").write_text("types: []\n", encoding="utf-8")
     return meta
 
 
@@ -276,15 +279,39 @@ def test_read_meta_unknown_file_raises(tmp_vault):
         api.read_meta("nonexistent-file")
 
 
+def test_read_meta_ontology(tmp_vault):
+    _make_meta_dir(tmp_vault)
+    result = api.read_meta("ontology")
+    assert "types" in result
+
+
+def test_read_meta_ontology_user(tmp_vault):
+    _make_meta_dir(tmp_vault)
+    result = api.read_meta("ontology-user")
+    assert "types" in result
+
+
 def test_write_meta_writable_file(tmp_vault):
     _make_meta_dir(tmp_vault)
     path = api.write_meta("tag-dictionary", "# updated\nnew content\n")
     assert Path(path).read_text(encoding="utf-8") == "# updated\nnew content\n"
 
 
+def test_write_meta_ontology_user(tmp_vault):
+    _make_meta_dir(tmp_vault)
+    content = "types:\n  - name: recipe\n    extends: procedure\n"
+    path = api.write_meta("ontology-user", content)
+    assert Path(path).read_text(encoding="utf-8") == content
+
+
 def test_write_meta_readonly_file_raises(tmp_vault):
     with pytest.raises(ValueError, match="read-only"):
         api.write_meta("type-dictionary", "content")
+
+
+def test_write_meta_ontology_readonly_raises(tmp_vault):
+    with pytest.raises(ValueError, match="read-only"):
+        api.write_meta("ontology", "content")
 
 
 def test_write_meta_unknown_file_raises(tmp_vault):
