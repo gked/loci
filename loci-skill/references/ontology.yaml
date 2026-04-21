@@ -193,3 +193,26 @@ types:
         - name: parent_topic
           type: string
 
+  - name: asset
+    extends: null
+    description: >
+      A thing you own or possess — a digital file stored in the asset vault,
+      a physical object, or both. subtype categorises the kind of asset;
+      storage summarises whether it is digital, physical, or both.
+      File metadata (mime_type, locations) lives in the asset-registry YAML;
+      physical inventory (condition, location, quantity, attributes) lives
+      in the physical array of that same registry entry.
+    fields:
+      required:
+        - name: subtype
+          type: enum
+          values: [book, video, music, podcast, presentation, visual, physical]
+      optional:
+        - name: storage
+          type: enum
+          values: [digital, physical, both]
+        - name: acquired_at
+          type: datetime
+        - name: highlights
+          type: array
+

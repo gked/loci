@@ -21,30 +21,34 @@ Work through these questions in order. Stop at the first match.
 **1. Is the content just a URL the user wants to save without extracting it?**
 → `bookmark`
 
-**2. Does the content have a citable source?**
+**2. Is the content a file stored in the asset vault, or a physical object the user owns?**
+→ `asset` — set `subtype` (book | video | music | podcast | presentation | visual | physical) and `storage` (digital | physical | both)
+Note: a book you are reading or have read is `article format: book`, not `asset`. An ebook file you own, or a physical book on your shelf, is `asset subtype: book`.
+
+**3. Does the content have a citable source?**
 A citable source means: a URL where it was published, an identifiable author, or a publication date.
 → Yes: `article`
 → No: `document`
 
-**3. Is the content a structured sequence of steps with an expected outcome?**
+**4. Is the content a structured sequence of steps with an expected outcome?**
 → `procedure`
 
-**4. Is the content about a real-world actor — a person, organization, or place?**
+**5. Is the content about a real-world actor — a person, organization, or place?**
 → `entity` — set the `subtype` field (person | organization | place); do NOT add subtype as a tag
 
-**5. Is the content an ongoing effort with goals and milestones?**
+**6. Is the content an ongoing effort with goals and milestones?**
 → `project`
 
-**6. Is the content a discrete actionable item?**
+**7. Is the content a discrete actionable item?**
 → `task`
 
-**7. Is the content a point-in-time or period occurrence?**
+**8. Is the content a point-in-time or period occurrence?**
 → `event`
 
-**8. Is the content a saved conversation (LLM or human)?**
+**9. Is the content a saved conversation (LLM or human)?**
 → `conversation`
 
-**9. Is the content an organizing hub for a subject area with no content of its own?**
+**10. Is the content an organizing hub for a subject area with no content of its own?**
 → `topic`
 Deciding between topic and tag: if you'd want to navigate *to* this subject and see what's linked, use `topic`. If you'd use it only as a filter label on other content, use a tag. A topic that ends up with no relations is probably better as a tag.
 

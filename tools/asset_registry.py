@@ -78,6 +78,10 @@ def resolve(loci_root: Path, uid: str, fmt: str = None) -> dict:
         entry = next((f for f in files if f.get("primary")), files[0] if files else None)
 
     if entry is None:
+        if reg.get("physical"):
+            raise FileNotFoundError(
+                f"Asset {uid} is a physical-only asset with no digital files"
+            )
         raise FileNotFoundError(f"Registry entry for {uid} has no files")
 
     failed = []
@@ -128,6 +132,57 @@ def write_registry_entry(
     }
 
     reg_path = rd / f"{uid}.yaml"
+    reg_path.write_text(
+        yaml.dump(entry, sort_keys=False, allow_unicode=True), encoding="utf-8"
+    )
+
+
+def write_physical_entry(loci_root: Path, uid: str, physical_instances: list[dict]) -> None:
+    """
+    Write asset-registry/<uid>.yaml for a physical-only asset (no digital file).
+
+    physical_instances is a list of dicts, each with at minimum:
+      format   str  — e.g. "paperback", "coin", "vehicle", "photo-album"
+      location str  — where it is physically
+
+    Optional keys per instance: condition, acquired_at, quantity, attributes, notes.
+    """
+    rd = registry_dir(loci_root)
+    rd.mkdir(parents=True, exist_ok=True)
+
+    entry = {
+        "uid": uid,
+        "registered_at": _now(),
+        "files": [],
+        "physical": physical_instances,
+    }
+
+    reg_path = rd / f"{uid}.yaml"
+    reg_path.write_text(
+        yaml.dump(entry, sort_keys=False, allow_unicode=True), encoding="utf-8"
+    )
+
+
+def add_physical_instance(loci_root: Path, uid: str, instance: dict) -> None:
+    """
+    Append a physical instance to an existing asset-registry entry.
+    Creates a minimal entry (no files) if none exists yet.
+
+    instance must have at minimum: format (str) and location (str).
+    """
+    rd = registry_dir(loci_root)
+    rd.mkdir(parents=True, exist_ok=True)
+    reg_path = rd / f"{uid}.yaml"
+
+    if reg_path.exists():
+        entry = yaml.safe_load(reg_path.read_text(encoding="utf-8")) or {}
+    else:
+        entry = {"uid": uid, "registered_at": _now(), "files": []}
+
+    physical = entry.get("physical") or []
+    physical.append(instance)
+    entry["physical"] = physical
+
     reg_path.write_text(
         yaml.dump(entry, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )

@@ -212,6 +212,17 @@ def test_resolve_empty_files_list_raises(loci_root):
         ar.resolve(loci_root, uid)
 
 
+def test_resolve_physical_only_raises_with_clear_message(loci_root):
+    """Physical-only registry entry (files=[], physical=[...]) → descriptive error."""
+    uid = "phys0001"
+    ar.write_physical_entry(
+        loci_root, uid,
+        [{"format": "paperback", "location": "Bookshelf A3"}],
+    )
+    with pytest.raises(FileNotFoundError, match="physical-only"):
+        ar.resolve(loci_root, uid)
+
+
 def test_resolve_falls_back_to_first_file_when_no_primary(loci_root):
     """Registry entry with no primary flag → fall back to files[0]."""
     import yaml
@@ -238,6 +249,76 @@ def test_resolve_falls_back_to_first_file_when_no_primary(loci_root):
 
     result = ar.resolve(loci_root, uid)
     assert result["format"] == "html"
+
+
+# ---------------------------------------------------------------------------
+# write_physical_entry
+# ---------------------------------------------------------------------------
+
+def test_write_physical_entry_creates_yaml(loci_root):
+    instances = [{"format": "paperback", "location": "Bookshelf A3", "condition": "good"}]
+    ar.write_physical_entry(loci_root, "phys0002", instances)
+    reg = ar.registry_dir(loci_root) / "phys0002.yaml"
+    assert reg.exists()
+    data = yaml.safe_load(reg.read_text(encoding="utf-8"))
+    assert data["uid"] == "phys0002"
+    assert data["files"] == []
+    assert len(data["physical"]) == 1
+    assert data["physical"][0]["format"] == "paperback"
+    assert data["physical"][0]["location"] == "Bookshelf A3"
+
+
+def test_write_physical_entry_multiple_instances(loci_root):
+    instances = [
+        {"format": "coin", "location": "Safe, drawer 2", "quantity": 3,
+         "attributes": {"metal": "gold", "weight_troy_oz": 1}},
+        {"format": "coin", "location": "Bank vault", "quantity": 1},
+    ]
+    ar.write_physical_entry(loci_root, "phys0003", instances)
+    data = yaml.safe_load(
+        (ar.registry_dir(loci_root) / "phys0003.yaml").read_text(encoding="utf-8")
+    )
+    assert len(data["physical"]) == 2
+    assert data["physical"][0]["attributes"]["metal"] == "gold"
+
+
+# ---------------------------------------------------------------------------
+# add_physical_instance
+# ---------------------------------------------------------------------------
+
+def test_add_physical_instance_to_existing_digital_entry(loci_root):
+    uid = "dual0001"
+    ar.write_registry_entry(loci_root, uid, "epub", "application/epub+zip", f"assets/{uid}.epub")
+    ar.add_physical_instance(loci_root, uid, {"format": "paperback", "location": "Bookshelf B1"})
+
+    data = yaml.safe_load(
+        (ar.registry_dir(loci_root) / f"{uid}.yaml").read_text(encoding="utf-8")
+    )
+    assert len(data["files"]) == 1
+    assert len(data["physical"]) == 1
+    assert data["physical"][0]["format"] == "paperback"
+
+
+def test_add_physical_instance_appends_to_existing_physical(loci_root):
+    uid = "dual0002"
+    ar.write_physical_entry(loci_root, uid, [{"format": "hardcover", "location": "Office shelf"}])
+    ar.add_physical_instance(loci_root, uid, {"format": "paperback", "location": "Bookshelf A3"})
+
+    data = yaml.safe_load(
+        (ar.registry_dir(loci_root) / f"{uid}.yaml").read_text(encoding="utf-8")
+    )
+    assert len(data["physical"]) == 2
+
+
+def test_add_physical_instance_creates_entry_if_missing(loci_root):
+    uid = "dual0003"
+    ar.add_physical_instance(loci_root, uid, {"format": "vehicle", "location": "Home garage"})
+
+    reg = ar.registry_dir(loci_root) / f"{uid}.yaml"
+    assert reg.exists()
+    data = yaml.safe_load(reg.read_text(encoding="utf-8"))
+    assert data["uid"] == uid
+    assert data["physical"][0]["format"] == "vehicle"
 
 
 # ---------------------------------------------------------------------------
