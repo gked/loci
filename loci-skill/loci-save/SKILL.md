@@ -187,6 +187,8 @@ relations:
     type: influences
 ```
 
+**Dependency pairs:** for `depends-on` / `enables`, store only one direction per edge — put `depends-on` on the dependent node. Never write both directions for the same pair.
+
 **References format:**
 ```yaml
 references:
