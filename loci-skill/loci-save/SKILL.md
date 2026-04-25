@@ -62,17 +62,19 @@ Then restart Claude Code / Claude Desktop.
 
 Do not proceed until the vault is reachable.
 
-If the result contains a `_notice` key, show it to the user as an FYI before proceeding — e.g.:
+If the result contains a `_notice` key and it does **not** mention lint errors, show it as an FYI before proceeding — e.g.:
 > FYI: Vault meta files were automatically updated to v2 (language and aliases fields added).
+
+If it mentions lint errors, skip the plain FYI — Step 0.5 handles it with a prompt instead.
 
 ---
 
 ### Step 0.5 — Handle ontology drift
 
-If the `_notice` from Step 0 mentions lint errors, surface it before proceeding with the save:
+If the `_notice` from Step 0 mentions lint errors, surface it before proceeding with the save (interpolate the actual error count from the notice):
 
 ```
-FYI: vault linter reports N errors (likely ontology drift from older saves).
+FYI: vault linter reports <N> errors (likely ontology drift from older saves).
 Want me to generate fix instructions before continuing? [yes / continue with save]
 ```
 
