@@ -59,6 +59,14 @@ def test_save_invalid_type_raises(tmp_vault):
         api.save(type="invalid", title="T", body="")
 
 
+def test_save_missing_required_field_returns_errors(tmp_vault):
+    # task requires status; omitting extra_fields must return {"errors": [...]}
+    # and must NOT raise KeyError: 'uid'  (regression for api.save graph-index guard)
+    result = api.save(type="task", title="Test", body="test body")
+    assert "errors" in result
+    assert "uid" not in result
+
+
 # ---------------------------------------------------------------------------
 # delete
 # ---------------------------------------------------------------------------

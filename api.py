@@ -90,7 +90,7 @@ def save(
             extra_fields=extra_fields,
             skip_duplicate_check=True,
         )
-    if result:
+    if result and "uid" in result:
         graph.index_node(
             result["uid"],
             type=type,
