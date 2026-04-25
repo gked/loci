@@ -98,6 +98,15 @@ def reseed_meta(vault_root: Path) -> None:
         print(f"  Re-seeded: {dest}")
 
 
+def reseed_meta(vault_root: Path) -> None:
+    """Force overwrite all meta files from loci-skill/references/."""
+    for filename in META_FILES:
+        dest = vault_root / "meta" / filename
+        src = REFERENCES_DIR / filename
+        dest.write_text(src.read_text())
+        print(f"  Re-seeded: {dest}")
+
+
 def setup_interactive() -> dict:
     """Interactive first-run setup flow."""
     print("\nLoci is not configured yet. Let's set it up.\n")

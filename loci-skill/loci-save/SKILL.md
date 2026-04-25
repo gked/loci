@@ -79,7 +79,6 @@ Want me to generate fix instructions before continuing? [yes / continue with sav
 ```
 
 Don't auto-fix. Don't block the current save unless the user wants to detour. Just surface and ask.
-
 ---
 
 ### Step 1 — Classify the content
@@ -138,6 +137,27 @@ If the user asks to save content with a type that is not a canonical type (canon
    If valid, ask the user to confirm before writing the new type to
    `ontology-user.yaml` via `loci__write_meta(file="ontology-user", content=<updated yaml>)`.
    Then proceed with the save.
+
+**Language rule:**
+- `summary` is **always written in English** regardless of the body's language — it is the search bridge.
+- `title` is the canonical name in the content's original language (e.g. `Чёрная луна` for a Russian book).
+- Set `language: <ISO 639-1 code>` (e.g. `ru`, `de`, `zh`) **only** when the body is not in English. Omit for English content.
+
+**Aliases rule:**
+- When `title` or an entity name is non-English, always populate `aliases` with the English transliteration or translation.
+- Also include common abbreviations or alternate spellings if applicable.
+- Examples:
+  ```yaml
+  # Entity: Russian author
+  title: Маркеев Олег
+  aliases:
+    - Oleg Markeev
+
+  # Article: Russian book
+  title: Чёрная луна
+  aliases:
+    - Black Moon
+  ```
 
 **Language rule:**
 - `summary` is **always written in English** regardless of the body's language — it is the search bridge.
