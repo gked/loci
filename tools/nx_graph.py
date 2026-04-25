@@ -14,6 +14,7 @@ The vault markdown files are the source of truth.
 from __future__ import annotations
 
 import threading
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -325,6 +326,69 @@ def find(
             "language": attrs.get("language", ""),
         })
     return sorted(result, key=lambda x: x["title"])
+
+
+def recent(days: int = 30, limit: int = 20) -> list[dict]:
+    """
+    Return the most recently updated vault nodes within the last N days.
+    Sorted by updated_at descending. Nodes without updated_at are excluded.
+    Returns list of {uid, title, type, path, updated_at, status}.
+    """
+    g = _graph
+    if g is None:
+        return []
+
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    result = []
+    for uid, attrs in g.nodes(data=True):
+        updated = attrs.get("updated_at", "")
+        if updated and updated[:10] >= cutoff_date:
+            result.append({
+                "uid": uid,
+                "title": attrs.get("title", ""),
+                "type": attrs.get("type", ""),
+                "path": attrs.get("path", ""),
+                "updated_at": updated,
+                "status": attrs.get("status", ""),
+            })
+    result.sort(key=lambda x: x["updated_at"], reverse=True)
+    return result[:limit]
+
+
+def insights(limit: int = 10) -> list[dict]:
+    """
+    Surface vault nodes that bridge different domains — connected to nodes from
+    domains other than their own. Sorted by breadth of cross-domain reach.
+    Returns list of {uid, title, type, domains, connects_to_domains, degree}.
+    """
+    g = _graph
+    if g is None:
+        return []
+
+    result = []
+    for uid, attrs in g.nodes(data=True):
+        own_domains = set(attrs.get("domains") or [])
+        if not own_domains:
+            continue
+
+        neighbor_domains: set = set()
+        for nb in list(g.successors(uid)) + list(g.predecessors(uid)):
+            neighbor_domains.update(g.nodes[nb].get("domains") or [])
+
+        # Nodes with multiple own domains require a neighbor outside ALL of them to qualify.
+        cross = neighbor_domains - own_domains
+        if cross:
+            result.append({
+                "uid": uid,
+                "title": attrs.get("title", ""),
+                "type": attrs.get("type", ""),
+                "domains": sorted(own_domains),
+                "connects_to_domains": sorted(cross),
+                "degree": g.degree(uid),
+            })
+
+    result.sort(key=lambda x: (len(x["connects_to_domains"]), x["degree"]), reverse=True)
+    return result[:limit]
 
 
 def search(query: str) -> list[dict]:

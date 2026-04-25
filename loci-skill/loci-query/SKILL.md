@@ -167,6 +167,55 @@ Signals: "X and Y", "both X and Y", "X vs Y", "intersection of X and Y".
 
 ---
 
+### Mode 7 — Recency: "what have I been thinking about lately?"
+
+Use when the user asks about recent activity, recent thoughts, or what's been on their mind.
+
+Signals: "lately", "recently", "what's been on my mind", "what have I been working on", "recent activity", "what did I do this week/month".
+
+1. Call `loci__query_recent(days=30)` to get recently updated nodes.
+2. If the result is empty, retry with `days=90`. If still empty, say so — don't invent activity.
+3. Group by type and present as a structured activity summary:
+   ```
+   Recent activity (last 30 days):
+
+   Tasks (5):
+     [todo] Build loci-query skill — updated 2026-04-15
+     [done] Add networkx to pyproject.toml — updated 2026-03-24
+
+   Documents (2):
+     Loci Test Framework Implementation Plan — updated 2026-04-16
+   ```
+4. After the summary, offer: "Want me to go deeper on any of these, or map the connections around a specific item?"
+
+---
+
+### Mode 8 — Insight: "what patterns or non-obvious connections do I have?"
+
+Use when the user asks about patterns, bridges, or non-obvious connections across their vault.
+
+Signals: "insight", "patterns", "non-obvious", "what bridges", "cross-domain", "what themes", "what connects across", "what am I not seeing".
+
+1. Call `loci__query_insights()` to get cross-domain bridge nodes.
+2. If the result is empty, say so: "No cross-domain bridges found yet — the vault may not have enough cross-domain links."
+3. For the top 3–5 results, call `loci__query_neighbors(uid)` to see what each bridges.
+4. Present as a list of observations:
+   ```
+   Cross-domain bridges in your vault:
+
+   🔗 [document] Loci Asset Registry Design Spec
+      technology-engineering ↔ personal-development
+      Connected to 8 nodes across both domains
+
+   🔗 [task] Build loci-query skill
+      technology-engineering ↔ personal-development
+      Connected to 4 nodes
+   ```
+5. Synthesize: write 2–3 sentences identifying the overarching pattern — what topics or themes are bridging across domains? This is the insight, not just the list.
+6. End with a specific follow-on: "The [topic/node] seems to be the connective tissue between X and Y. Want me to read it in full and explore its connections?"
+
+---
+
 ## Architecture note
 
 `find_nodes` filters (status, due dates, related_to, language) were added in the NetworkX phase as explicit parameters. This approach has a natural ceiling — every new filter dimension grows the tool signature.

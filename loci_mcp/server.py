@@ -415,6 +415,36 @@ def resolve_asset(uid: str, format: str = None) -> dict:
 
 
 @mcp.tool()
+def query_recent(days: int = 30, limit: int = 20) -> list[dict]:
+    """
+    Return the most recently updated vault nodes.
+    Use for "what have I been thinking about lately?" queries.
+    Each entry: {uid, title, type, path, updated_at, status}.
+
+    Args:
+        days: Look-back window in days (default 30)
+        limit: Maximum number of results to return (default 20)
+    """
+    graph.get(loci._vault_root())
+    return graph.recent(days, limit)
+
+
+@mcp.tool()
+def query_insights(limit: int = 10) -> list[dict]:
+    """
+    Surface vault nodes that bridge different domains.
+    Finds nodes connected to items from domains outside their own — these are
+    the unexpected cross-domain links that reveal non-obvious patterns.
+    Each entry: {uid, title, type, domains, connects_to_domains, degree}.
+
+    Args:
+        limit: Maximum number of bridge nodes to return (default 10)
+    """
+    graph.get(loci._vault_root())
+    return graph.insights(limit)
+
+
+@mcp.tool()
 def find_unregistered_assets() -> list[str]:
     """
     Find files in assets/ that have no registry entry.

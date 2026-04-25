@@ -443,3 +443,148 @@ def test_search_alias_match(monkeypatch):
     monkeypatch.setattr(g, "_graph", dg)
     result = g.search("deep learning")
     assert any(r["uid"] == "a001" for r in result)
+
+
+# ---------------------------------------------------------------------------
+# recent
+# ---------------------------------------------------------------------------
+
+def test_recent_null_graph_returns_empty(null_graph):
+    assert null_graph.recent() == []
+
+
+def test_recent_includes_nodes_within_window(monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    recent_date = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    dg = nx.DiGraph()
+    dg.add_node("r001", **_node_attrs(title="Fresh", updated_at=recent_date, status="open"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.recent(days=30)
+    assert any(r["uid"] == "r001" for r in result)
+
+
+def test_recent_excludes_nodes_outside_window(monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    old_date = (datetime.now(timezone.utc) - timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    dg = nx.DiGraph()
+    dg.add_node("r002", **_node_attrs(title="Stale", updated_at=old_date))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.recent(days=30)
+    assert not any(r["uid"] == "r002" for r in result)
+
+
+def test_recent_excludes_nodes_without_updated_at(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("r003", **_node_attrs(title="No Date", updated_at=""))
+    monkeypatch.setattr(g, "_graph", dg)
+    assert g.recent(days=30) == []
+
+
+def test_recent_sorted_newest_first(monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    newer = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    older = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    dg = nx.DiGraph()
+    dg.add_node("r004", **_node_attrs(title="Newer", updated_at=newer))
+    dg.add_node("r005", **_node_attrs(title="Older", updated_at=older))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.recent(days=30)
+    assert result[0]["uid"] == "r004"
+    assert result[1]["uid"] == "r005"
+
+
+def test_recent_respects_limit(monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    recent_date = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    dg = nx.DiGraph()
+    for i in range(5):
+        dg.add_node(f"r{i:03d}", **_node_attrs(title=f"Node {i}", updated_at=recent_date))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.recent(days=30, limit=3)
+    assert len(result) == 3
+
+
+def test_recent_return_shape(monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    recent_date = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    dg = nx.DiGraph()
+    dg.add_node("r006", **_node_attrs(type="task", title="My Task", updated_at=recent_date, status="todo"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.recent(days=30)
+    assert len(result) == 1
+    assert set(result[0].keys()) == {"uid", "title", "type", "path", "updated_at", "status"}
+    assert result[0]["status"] == "todo"
+
+
+def test_recent_days_zero_includes_today(monkeypatch):
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    dg = nx.DiGraph()
+    dg.add_node("r007", **_node_attrs(title="Today", updated_at=today))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.recent(days=0)
+    assert any(r["uid"] == "r007" for r in result)
+
+
+# ---------------------------------------------------------------------------
+# insights
+# ---------------------------------------------------------------------------
+
+def test_insights_null_graph_returns_empty(null_graph):
+    assert null_graph.insights() == []
+
+
+def test_insights_excludes_nodes_without_domains(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("i001", **_node_attrs(title="No Domains"))
+    dg.add_node("i002", **_node_attrs(title="Other", domains=["science-research"]))
+    dg.add_edge("i001", "i002", rel_type="relates-to")
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.insights()
+    assert not any(r["uid"] == "i001" for r in result)
+
+
+def test_insights_excludes_nodes_with_no_cross_domain_neighbors(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("i003", **_node_attrs(title="Eng A", domains=["technology-engineering"]))
+    dg.add_node("i004", **_node_attrs(title="Eng B", domains=["technology-engineering"]))
+    dg.add_edge("i003", "i004", rel_type="relates-to")
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.insights()
+    assert not any(r["uid"] == "i003" for r in result)
+
+
+def test_insights_includes_cross_domain_bridge(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("i005", **_node_attrs(title="Bridge", domains=["technology-engineering"]))
+    dg.add_node("i006", **_node_attrs(title="Personal", domains=["personal-development"]))
+    dg.add_edge("i005", "i006", rel_type="relates-to")
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.insights()
+    bridge = next((r for r in result if r["uid"] == "i005"), None)
+    assert bridge is not None
+    assert "personal-development" in bridge["connects_to_domains"]
+
+
+def test_insights_return_shape(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("i007", **_node_attrs(title="Bridge", domains=["technology-engineering"]))
+    dg.add_node("i008", **_node_attrs(title="Other", domains=["philosophy-ethics"]))
+    dg.add_edge("i007", "i008", rel_type="relates-to")
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.insights()
+    assert len(result) >= 1
+    item = next(r for r in result if r["uid"] == "i007")
+    assert set(item.keys()) == {"uid", "title", "type", "domains", "connects_to_domains", "degree"}
+
+
+def test_insights_respects_limit(monkeypatch):
+    dg = nx.DiGraph()
+    personal = "personal-development"
+    for i in range(5):
+        dg.add_node(f"hub{i:02d}", **_node_attrs(title=f"Hub {i}", domains=["technology-engineering"]))
+        dg.add_node(f"nb{i:02d}", **_node_attrs(title=f"Nb {i}", domains=[personal]))
+        dg.add_edge(f"hub{i:02d}", f"nb{i:02d}", rel_type="relates-to")
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.insights(limit=3)
+    assert len(result) == 3
