@@ -5,6 +5,11 @@
 # Format: type — definition
 # schema_version: 1
 
+## Dependency / Sequencing
+
+depends-on    — this item cannot start until the linked item is complete; use for prerequisite ordering (task → blocking task, milestone → dependency)
+enables       — inverse of depends-on; the current node must be completed before the linked node can proceed
+
 ## Structural / Ownership
 
 belongs-to    — this item is owned by or lives inside a larger whole (task→project, note→topic)
