@@ -17,18 +17,25 @@ from typing import Optional
 CONFIG_PATH = Path(__file__).parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "loci-skill" / "references"
 
-META_VERSION = 2
+META_VERSION = 4
 
 VAULT_FOLDERS = [
     "meta",
 ]
 
+# Reseeded on every META_VERSION bump.
 META_FILES = [
     "type-dictionary.md",
     "tag-dictionary.md",
     "field-dictionary.md",
     "relation-dictionary.md",
     "foreign-definitions.md",
+    "ontology.yaml",
+]
+
+# Seeded once on first setup, never overwritten — user owns these.
+USER_META_FILES = [
+    "ontology-user.yaml",
 ]
 
 
@@ -72,6 +79,23 @@ def create_vault_structure(vault_root: Path) -> None:
         if not dest.exists():
             dest.write_text(src.read_text())
             print(f"  Seeded: {dest}")
+
+    for filename in USER_META_FILES:
+        dest = vault_root / "meta" / filename
+        src = REFERENCES_DIR / filename
+        if not dest.exists():
+            dest.write_text(src.read_text())
+            print(f"  Seeded (user): {dest}")
+
+
+def reseed_meta(vault_root: Path) -> None:
+    """Force overwrite canonical meta files from loci-skill/references/.
+    USER_META_FILES are never touched — the user owns those."""
+    for filename in META_FILES:
+        dest = vault_root / "meta" / filename
+        src = REFERENCES_DIR / filename
+        dest.write_text(src.read_text())
+        print(f"  Re-seeded: {dest}")
 
 
 def reseed_meta(vault_root: Path) -> None:
@@ -173,6 +197,6 @@ def init(force: bool = False) -> dict:
     return config
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     force = "--force" in sys.argv
     init(force=force)

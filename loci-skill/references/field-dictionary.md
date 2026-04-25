@@ -1,14 +1,19 @@
 # Loci Field Dictionary
-# Defines all frontmatter fields per type — consulted by the save skill at ingestion.
-# Edit this file to evolve the schema without touching the skill.
-# schema_version: 1
+# Semantic guidance for the save skill — what each field means, how to fill it,
+# and behavioral instructions that cannot be expressed in schema alone.
 #
-# Format:
-#   field: <name>
-#   type: string | array | enum | boolean | datetime | object
-#   values: (for enum) pipe-separated valid values
-#   required: yes | no
-#   description: brief explanation
+# STRUCTURAL AUTHORITY: ontology.yaml
+# Field names, types, required/optional status, and enum values are defined in
+# ontology.yaml and enforced at runtime by the TypeRegistry.
+# This file does NOT define structure — it explains it.
+# If this file conflicts with ontology.yaml, ontology.yaml wins.
+#
+# What this file owns:
+#   - Human-readable descriptions of what each field means
+#   - Usage guidance (e.g. "consult tag-dictionary before adding new tags")
+#   - Behavioral instructions (e.g. "when updated, archive the old value")
+#   - Object schemas and examples for complex fields (affiliations, history)
+#   - Domain taxonomy with descriptions
 
 ---
 
@@ -199,7 +204,7 @@ description: target completion date
 ### task
 field: status
 type: enum
-values: todo | in-progress | done | cancelled
+values: todo | in-progress | done | cancelled | duplicate
 required: yes
 description: current state of the task
 
@@ -351,4 +356,109 @@ description: whether this topic is still being actively developed
 field: parent_topic
 type: string
 required: no
-description: UID of a broader parent topic if this is a sub-topic
+description: >
+  UID of the broader parent topic if this is a sub-topic.
+  When set, also add a relation of type child-of pointing to the parent topic UID —
+  parent_topic is a denormalized copy for human readability; the graph edge is the
+  authoritative link for traversal.
+
+---
+
+### asset
+field: subtype
+type: enum
+values: book | video | music | podcast | presentation | visual | physical
+required: yes
+description: >
+  What kind of asset this is.
+  book — ebook file (epub, pdf) or physical book on a shelf; distinct from article format: book which is a book you read and took notes on.
+  video — video file you own (mp4, mkv, etc.).
+  music — music album or track (flac, mp3, etc.).
+  podcast — downloaded podcast episode or series.
+  presentation — slide deck (pptx, keynote, pdf slides).
+  visual — image, artwork, photo, design file, screenshot.
+  physical — material object with no digital file (car, coin, furniture, etc.).
+
+field: storage
+type: enum
+values: digital | physical | both
+required: no
+description: >
+  Quick summary of how you have this asset. Avoids reading asset-registry
+  just to filter by possession type. Set to both when you own it in digital
+  and physical form simultaneously.
+
+field: acquired_at
+type: datetime
+required: no
+description: when you obtained the asset (purchase date, download date, gift date)
+
+field: highlights
+type: array
+required: no
+description: notable excerpts, timestamps, or notes you have made about this asset
+
+---
+
+## Asset-registry physical array
+
+The asset-registry YAML for a physical (or dual digital+physical) asset may include
+a `physical` array alongside `files`. Each entry in `physical` represents one
+physical instance you own.
+
+Schema per physical instance:
+  format      string   required — what kind of physical object: paperback, hardcover,
+                                  coin, vehicle, photo-album, print, instrument, etc.
+  location    string   required — where it is: "Bookshelf A3", "Home garage", "Safe, drawer 2"
+  condition   string   optional — freeform: new | mint | good | fair | poor | damaged;
+                                  use grading notation for collectibles (e.g. MS-65 for coins)
+  acquired_at string   optional — ISO 8601 date
+  quantity    integer  optional — how many; defaults to 1 (useful for coins, prints)
+  attributes  object   optional — freeform key-value dict for item-specific metadata
+  notes       string   optional — any other details
+
+Examples:
+
+  # Physical book
+  physical:
+    - format: paperback
+      location: "Bookshelf A3"
+      condition: good
+      acquired_at: '2019-04-01'
+      attributes:
+        edition: 3rd
+        isbn: "978-0-13-468599-1"
+
+  # Gold coins
+  physical:
+    - format: coin
+      location: "Safe, drawer 2"
+      condition: mint
+      quantity: 3
+      attributes:
+        metal: gold
+        weight_troy_oz: 1
+        mint: Royal Canadian Mint
+        year: 2019
+
+  # Car
+  physical:
+    - format: vehicle
+      location: "Home garage"
+      condition: good
+      acquired_at: '2021-03-15'
+      attributes:
+        make: Toyota
+        model: Camry
+        year: 2019
+        vin: 1HGCM82633A123456
+        color: Silver
+
+  # Picture album
+  physical:
+    - format: photo-album
+      location: "Living room cabinet"
+      condition: good
+      attributes:
+        period: "2005–2012"
+        contents: "Family photos, childhood"

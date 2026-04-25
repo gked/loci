@@ -1,0 +1,290 @@
+"""
+type_registry.py
+Loads the Loci type ontology and provides a runtime registry of valid types.
+
+At startup the server calls get_registry(vault_root) once. All tools that need
+to validate a type — write_file, vault_linter, check_duplicate — call this
+instead of referencing a hardcoded VALID_TYPES set.
+
+Two files feed the registry:
+  ontology.yaml        canonical types (reseeded on META_VERSION bumps)
+  ontology-user.yaml   user-defined extensions (never reseeded)
+
+User type safety rules (enforced at load time):
+  1. extends must name a canonical type — no new roots, no extending user types
+  2. name must not collide with any canonical type
+  3. additive only — no redefining inherited field names
+  4. one level deep — automatically guaranteed by rule 1
+
+Invalid user type definitions are skipped with a warning; the server
+continues with whatever is valid.
+"""
+
+import sys
+import yaml
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+
+REFERENCES_DIR = Path(__file__).parent.parent / "loci-skill" / "references"
+
+
+# ---------------------------------------------------------------------------
+# Data model
+# ---------------------------------------------------------------------------
+
+@dataclass
+class FieldDef:
+    name: str
+    type: str                          # string | array | datetime | enum | boolean
+    values: Optional[list[str]] = None # enum valid values; None for non-enum fields
+
+
+@dataclass
+class TypeDef:
+    name: str
+    extends: Optional[str]             # None for canonical roots
+    description: str
+    required_fields: list[FieldDef] = field(default_factory=list)
+    optional_fields: list[FieldDef] = field(default_factory=list)
+
+    def enum_constraints(self) -> dict[str, set[str]]:
+        """Return {field_name: valid_value_set} for all enum fields on this type."""
+        result = {}
+        for f in self.required_fields + self.optional_fields:
+            if f.type == "enum" and f.values:
+                result[f.name] = set(f.values)
+        return result
+
+    def required_names(self) -> set[str]:
+        return {f.name for f in self.required_fields}
+
+
+# ---------------------------------------------------------------------------
+# Registry
+# ---------------------------------------------------------------------------
+
+class TypeRegistry:
+    def __init__(self):
+        self._types: dict[str, TypeDef] = {}
+        self._warnings: list[str] = []
+
+    # ------------------------------------------------------------------
+    # Loading
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def load(
+        cls,
+        ontology_path: Path,
+        user_ontology_path: Optional[Path] = None,
+    ) -> "TypeRegistry":
+        registry = cls()
+        registry._load_canonical(ontology_path)
+        if user_ontology_path and user_ontology_path.exists():
+            registry._load_user(user_ontology_path)
+        return registry
+
+    def _load_canonical(self, path: Path) -> None:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        for entry in raw.get("types", []):
+            td = self._parse_type(entry)
+            self._types[td.name] = td
+
+    def _load_user(self, path: Path) -> None:
+        canonical_names = set(self._types.keys())
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        for entry in (raw.get("types") or []):
+            name = entry.get("name", "").strip()
+            extends = entry.get("extends")
+
+            # Rule 1: must extend a canonical type
+            if not extends:
+                self._warnings.append(
+                    f"User type '{name}' skipped: 'extends' must name a canonical type, not null"
+                )
+                continue
+            if extends not in canonical_names:
+                self._warnings.append(
+                    f"User type '{name}' skipped: parent '{extends}' is not a canonical type"
+                )
+                continue
+
+            # Rule 2: no name collision with canonical
+            if name in canonical_names:
+                self._warnings.append(
+                    f"User type '{name}' skipped: name collides with canonical type"
+                )
+                continue
+
+            # Rule 3: no redefining inherited field names
+            parent = self._types[extends]
+            inherited_names = {f.name for f in parent.required_fields + parent.optional_fields}
+            user_fields = self._parse_fields(entry.get("fields", {}))
+            all_user = user_fields["required"] + user_fields["optional"]
+            conflicts = [f.name for f in all_user if f.name in inherited_names]
+            if conflicts:
+                self._warnings.append(
+                    f"User type '{name}' skipped: fields {conflicts} redefine inherited fields"
+                )
+                continue
+
+            td = TypeDef(
+                name=name,
+                extends=extends,
+                description=entry.get("description", ""),
+                required_fields=parent.required_fields + user_fields["required"],
+                optional_fields=parent.optional_fields + user_fields["optional"],
+            )
+            self._types[name] = td
+
+    @staticmethod
+    def _parse_type(entry: dict) -> TypeDef:
+        fields = TypeRegistry._parse_fields(entry.get("fields", {}))
+        return TypeDef(
+            name=entry["name"],
+            extends=entry.get("extends"),
+            description=entry.get("description", ""),
+            required_fields=fields["required"],
+            optional_fields=fields["optional"],
+        )
+
+    @staticmethod
+    def _parse_fields(fields_block: dict) -> dict[str, list[FieldDef]]:
+        result: dict[str, list[FieldDef]] = {"required": [], "optional": []}
+        for bucket in ("required", "optional"):
+            for f in (fields_block.get(bucket) or []):
+                if isinstance(f, dict):
+                    result[bucket].append(FieldDef(
+                        name=f["name"],
+                        type=f.get("type", "string"),
+                        values=f.get("values"),
+                    ))
+        return result
+
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
+
+    def type_names(self) -> set[str]:
+        """All valid type names (canonical + accepted user types)."""
+        return set(self._types.keys())
+
+    def get(self, name: str) -> Optional[TypeDef]:
+        """Return the TypeDef for name, or None if unknown."""
+        return self._types.get(name)
+
+    def is_canonical(self, name: str) -> bool:
+        td = self._types.get(name)
+        return td is not None and td.extends is None
+
+    @property
+    def warnings(self) -> list[str]:
+        return list(self._warnings)
+
+    def validate_user_type(
+        self,
+        name: str,
+        extends: str,
+        fields: Optional[list[dict]] = None,
+    ) -> dict:
+        """
+        Validate a proposed user type definition without writing anything.
+        Returns {"valid": bool, "errors": [...], "resolved_fields": {...}}.
+        Call this before writing to ontology-user.yaml.
+        """
+        errors: list[str] = []
+        canonical_names = {n for n, td in self._types.items() if td.extends is None}
+
+        if not extends:
+            errors.append("'extends' is required and must name a canonical type")
+        elif extends not in canonical_names:
+            errors.append(
+                f"'{extends}' is not a canonical type. "
+                f"Valid parents: {sorted(canonical_names)}"
+            )
+
+        if name in canonical_names:
+            errors.append(f"'{name}' collides with an existing canonical type")
+        elif name in self._types:
+            errors.append(f"'{name}' collides with an existing user-defined type")
+
+        resolved: dict[str, list] = {"required": [], "optional": []}
+        if not errors and extends in self._types:
+            parent = self._types[extends]
+            inherited_names = {f.name for f in parent.required_fields + parent.optional_fields}
+
+            user_field_defs: list[FieldDef] = []
+            for f in (fields or []):
+                if f.get("name") in inherited_names:
+                    errors.append(
+                        f"Field '{f['name']}' redefines an inherited field from '{extends}'"
+                    )
+                else:
+                    user_field_defs.append(FieldDef(
+                        name=f["name"],
+                        type=f.get("type", "string"),
+                        values=f.get("values"),
+                    ))
+
+            if not errors:
+                resolved["required"] = [
+                    {"name": f.name, "type": f.type, "values": f.values}
+                    for f in parent.required_fields
+                ]
+                resolved["optional"] = [
+                    {"name": f.name, "type": f.type, "values": f.values}
+                    for f in parent.optional_fields + user_field_defs
+                ]
+
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "resolved_fields": resolved,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Module-level singleton
+# ---------------------------------------------------------------------------
+
+_registry: Optional[TypeRegistry] = None
+_registry_vault: Optional[Path] = None
+
+
+def get_registry(vault_root: Optional[Path] = None) -> TypeRegistry:
+    """
+    Return the shared TypeRegistry, loading it on first call.
+    Falls back to the references directory if ontology.yaml is not in the vault.
+    Pass vault_root=None to force a load from references (useful in tests).
+    """
+    global _registry, _registry_vault
+
+    if vault_root is not None:
+        ontology_path = vault_root / "meta" / "ontology.yaml"
+        user_path = vault_root / "meta" / "ontology-user.yaml"
+    else:
+        ontology_path = REFERENCES_DIR / "ontology.yaml"
+        user_path = None
+
+    # Fall back to references if vault copy not seeded yet
+    if not ontology_path.exists():
+        ontology_path = REFERENCES_DIR / "ontology.yaml"
+        user_path = None
+
+    if _registry is None or _registry_vault != vault_root:
+        _registry = TypeRegistry.load(
+            ontology_path,
+            user_path if (user_path and user_path.exists()) else None,
+        )
+        _registry_vault = vault_root
+
+    return _registry
+
+
+def reset_registry() -> None:
+    """Force the next get_registry() call to reload. Used in tests."""
+    global _registry, _registry_vault
+    _registry = None
+    _registry_vault = None
