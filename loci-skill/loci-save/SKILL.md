@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 5
+skill_version: 6
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, or topic — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 5`.
+This skill is at `skill_version: 6`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -67,14 +67,27 @@ If the result contains a `_notice` key, show it to the user as an FYI before pro
 
 ---
 
+### Step 0.5 — Handle ontology drift
+
+If the `_notice` from Step 0 mentions lint errors, surface it before proceeding with the save:
+
+```
+FYI: vault linter reports N errors (likely ontology drift from older saves).
+Want me to generate fix instructions before continuing? [yes / continue with save]
+```
+
+Don't auto-fix. Don't block the current save unless the user wants to detour. Just surface and ask.
+
+---
+
 ### Step 1 — Classify the content
 
-Call `loci__read_meta(file="type-dictionary")` to get the type vocabulary.
-Call `loci__read_meta(file="type-decision")` to get the classification guide. Follow it to determine the type and format tags.
+If the content type is not immediately obvious from context, call `loci__read_meta(file="type-dictionary")` and `loci__read_meta(file="type-decision")` to classify it. When the type is unambiguous (e.g. the user said "save this URL" → bookmark, or explicitly named a type), skip these calls and proceed directly.
 
 If `bookmark` is chosen, call `loci__fetch_url_metadata(url)` immediately to retrieve
 title, site name, and description. Use these to populate the title, site_name, and summary
-fields — do not ask the user for them unless the fetch fails.
+fields — do not ask the user for them unless the fetch fails. **The URL itself goes in the
+top-level `source_url` field (required), not in `extra_fields`.**
 
 ---
 
@@ -82,23 +95,19 @@ fields — do not ask the user for them unless the fetch fails.
 
 Call `loci__generate_uid` to get the UID.
 
-Call `loci__read_meta(file="tag-dictionary")` and prefer existing tags over
-synonyms. If a new tag is likely to recur, add it via `loci__write_meta`
-before writing the item.
+**Always** call `loci__read_meta(file="ontology")` before writing any vault item.
+This is the schema source of truth — it defines required fields, optional fields,
+and valid enum values for the chosen type. Skipping it causes silent write failures
+when required fields are missing or enum values are wrong.
 
-Call `loci__read_meta(file="ontology")` to get the structural definition for
-the chosen type: which fields are required, which are optional, and what the
-valid enum values are. This is the authoritative source for field structure.
-
-Call `loci__read_meta(file="field-dictionary")` for behavioral guidance: field
-descriptions, complex object schemas with examples (e.g. full `relations` and
-`references` shapes), entity archiving patterns, and temporal field rules. Do
-not use field-dictionary as a source for required/optional status or enum
-values — use ontology for that.
-
-Call `loci__read_meta(file="relation-dictionary")` to get the current relation
-type vocabulary. Use this when choosing the `type` field for any relation — pick
-the most specific type that fits rather than defaulting to `relates-to`.
+Call the following **only when needed**:
+- `loci__read_meta(file="tag-dictionary")` — when tags matter for findability; prefer
+  existing tags over synonyms. Add new recurrent tags via `loci__write_meta` first.
+- `loci__read_meta(file="field-dictionary")` — when working with complex objects:
+  `relations`, `references`, entity archiving patterns, or temporal field rules. Do not
+  use it as a source for required/optional status or enum values — use ontology for that.
+- `loci__read_meta(file="relation-dictionary")` — when choosing a non-default relation
+  type; pick the most specific type that fits rather than defaulting to `relates-to`.
 
 **User-defined types:**
 
