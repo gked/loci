@@ -86,10 +86,25 @@ Don't auto-fix. Don't block the current save unless the user wants to detour. Ju
 
 If the content type is not immediately obvious from context, call `loci__read_meta(file="type-dictionary")` and `loci__read_meta(file="type-decision")` to classify it. When the type is unambiguous (e.g. the user said "save this URL" → bookmark, or explicitly named a type), skip these calls and proceed directly.
 
-If `bookmark` is chosen, call `loci__fetch_url_metadata(url)` immediately to retrieve
-title, site name, and description. Use these to populate the title, site_name, and summary
-fields — do not ask the user for them unless the fetch fails. **The URL itself goes in the
-top-level `source_url` field (required), not in `extra_fields`.**
+**URL detection rule:** if the user shares a bare URL (with or without commentary)
+and does not explicitly ask to extract or read the content, default to `bookmark`.
+Only use `article` when the user asks to capture, summarise, or pull the content
+(e.g. "save this article", "read and save this", "summarize this page").
+When in doubt, ask: "Save as a bookmark, or pull the full content as an article?"
+
+If a `bookmark` is chosen, call `loci__fetch_url_metadata(url)` immediately to
+retrieve title, site name, and description. Use these to populate the title,
+site_name, and summary fields — do not ask the user for them unless the fetch fails.
+**The URL itself goes in the top-level `source_url` field (required), not in `extra_fields`.**
+
+If unsure between two other types, ask the user. Do not guess — type affects
+frontmatter fields.
+
+**Subtype tags to apply automatically:**
+- `article` → add format tag: #book, #blog-post, #whitepaper, #research-paper, #news, #magazine, #video, #podcast, or #article
+- `entity` → set `subtype` field to person | organization | place — do NOT add as a tag
+- `procedure` → add domain tag: #recipe, #workout, #protocol, #playbook, #tutorial
+- `document` → add format tag if applicable: #essay, #spec, #design-doc, #meeting-notes, #journal, #note
 
 ---
 
@@ -333,5 +348,7 @@ it's the right one, then ask the user explicitly before calling `loci__delete_va
 Deletion is permanent — there is no undo.
 
 **No clear title:** generate from first sentence or ask. Never leave blank.
+
+**Unknown type:** use `article` if the content has a citable source (URL, author, publication). Use `document` if there is no publication record to track. Ask only when genuinely ambiguous.
 
 **Very long content:** summarize in `summary`, keep full content in body.
