@@ -4,6 +4,18 @@ Your personal knowledge vault. Capture, organize, and retrieve everything you th
 
 ---
 
+## The Name
+
+*Loci* is the Latin plural of *locus* — "places" or "locations."
+
+The most relevant origin is the **method of loci**, an ancient mnemonic technique dating back to classical antiquity. To use it, you mentally place pieces of information at specific locations along a familiar route or building — a memory palace — then walk through it to retrieve them. It's one of the oldest and most effective memory systems ever described.
+
+The word carries the same spatial meaning across other domains: in mathematics, a *locus* is the set of all points satisfying a condition; in genetics, a *locus* is a fixed position on a chromosome where a gene lives; in Latin phrases like *locus classicus* (the authoritative passage on a topic), the root always points to a specific, defined place.
+
+That's the idea behind this project. Every note, article, task, and conversation you save gets a **fixed location** in a structured graph — a stable UID, typed relationships, semantic metadata. You (and your LLM agents) can navigate it the way a memory palace is navigated: by association, by position, by path.
+
+---
+
 ## What is Loci?
 
 Loci is a personal knowledge management system built on plain Markdown files with YAML frontmatter, organized as a traversable knowledge graph. It is designed to be accessed by both you and LLM agents (Claude Code, Claude.ai).
@@ -30,7 +42,7 @@ cd loci
 ### 2. Run the setup script
 
 ```bash
-python setup_docker.py
+uv run setup_docker.py
 ```
 
 The script will:
@@ -197,12 +209,13 @@ loci/
     loci-query/
       SKILL.md                    ← Claude's instructions for querying content
     references/
-      type-dictionary.md          ← seed: canonical type vocabulary
-      field-dictionary.md         ← seed: field definitions per type
+      ontology.yaml               ← machine-readable type system (TypeRegistry source)
+      ontology-user.yaml          ← user-defined type extensions (never reseeded)
+      type-dictionary.md          ← type selection guide (semantic; structure in ontology.yaml)
+      field-dictionary.md         ← field guidance (semantic; structure in ontology.yaml)
       tag-dictionary.md           ← seed: initial tag vocabulary
       relation-dictionary.md      ← seed: typed edge vocabulary
       foreign-definitions.md      ← seed: external source schemas
-      type-fields.md              ← human-readable field reference by type
   loci_mcp/
     server.py                     ← MCP server (stdio or SSE via LOCI_TRANSPORT)
                                     env vars: LOCI_TRANSPORT=stdio|sse
@@ -296,6 +309,30 @@ The vault meta files are user-owned — they accumulate customizations (new tags
 
 ---
 
+## Vault Topology Visualization
+
+`viz_vault.py` renders a graph of all vault nodes and their relationships as a PNG.
+
+```bash
+uv run python viz_vault.py
+```
+
+Output is saved to `/tmp/loci_topology.png`. Open it with:
+
+```bash
+open /tmp/loci_topology.png
+```
+
+**What it shows:**
+- Each node is a vault item, colored by type (see legend)
+- Edges are typed relations (e.g. `belongs-to`, `parent-of`, `about`)
+- Arrows show direction (source → target)
+- Isolated nodes (no links) are visible on the periphery
+
+**Dependencies** are installed automatically by `uv` on first run (`networkx`, `matplotlib`). No manual install needed.
+
+---
+
 ## Roadmap
 
 ### Done
@@ -336,6 +373,12 @@ The vault meta files are user-owned — they accumulate customizations (new tags
 ## Design Decisions
 
 Key decisions are documented in the Loci vault at `notes/2026-03-21-locus-requirements.md`. If you are contributing or extending Loci, read that first.
+
+---
+
+## Testing
+
+See [docs/testing.md](docs/testing.md) for how to run tests, add cases, and understand the fixture vault.
 
 ---
 

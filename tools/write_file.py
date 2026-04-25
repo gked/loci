@@ -27,20 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from uid_generator import generate_uid
 from slug import filename as make_filename
 from vault_init import load_config
-
-
-VALID_TYPES = {
-    "document",
-    "article",
-    "bookmark",
-    "conversation",
-    "project",
-    "task",
-    "event",
-    "entity",
-    "procedure",
-    "topic",
-}
+from type_registry import get_registry
 
 
 def serialize_frontmatter(fields: dict) -> str:
@@ -79,6 +66,38 @@ def check_duplicate(vault_root: Path, title: str, url: str = None) -> Optional[P
     return None
 
 
+def validate_required_fields(type_def, extra_fields: dict) -> list[str]:
+    """
+    Validate type-specific required fields and enum constraints.
+
+    Checks that every required field for the type is present and non-null in
+    extra_fields, and that enum fields contain only valid values.
+
+    Args:
+        type_def: TypeDef from the registry
+        extra_fields: Type-specific frontmatter fields provided by the caller
+
+    Returns:
+        List of error strings; empty list means valid.
+    """
+    ef = extra_fields or {}
+    errors: list[str] = []
+
+    for field_name in type_def.required_names():
+        if field_name not in ef or ef[field_name] is None:
+            errors.append(f"Required field '{field_name}' is missing or null for type '{type_def.name}'")
+
+    for field_name, valid_values in type_def.enum_constraints().items():
+        if field_name in ef and ef[field_name] is not None:
+            if ef[field_name] not in valid_values:
+                errors.append(
+                    f"Invalid value '{ef[field_name]}' for field '{field_name}'. "
+                    f"Must be one of: {sorted(valid_values)}"
+                )
+
+    return errors
+
+
 def write_item(
     type: str,
     title: str,
@@ -109,12 +128,21 @@ def write_item(
         skip_duplicate_check: Skip duplicate detection
 
     Returns:
-        Dict with saved item metadata: uid, path, type, title
+        Dict with saved item metadata: uid, path, type, title.
+        Returns {"errors": [...]} if required field validation fails.
     """
-    if type not in VALID_TYPES:
-        raise ValueError(f"Unknown type '{type}'. Must be one of: {sorted(VALID_TYPES)}")
-
     vault_root = resolve_vault_root()
+    registry = get_registry(vault_root)
+    if type not in registry.type_names():
+        raise ValueError(
+            f"Unknown type '{type}'. Must be one of: {sorted(registry.type_names())}"
+        )
+
+    type_def = registry.get(type)
+    validation_errors = validate_required_fields(type_def, extra_fields)
+    if validation_errors:
+        return {"errors": validation_errors}
+
     vault_root.mkdir(parents=True, exist_ok=True)
 
     # Duplicate check
@@ -230,7 +258,7 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
     }
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     # Quick smoke test
     result = write_item(
         type="document",

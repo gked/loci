@@ -65,7 +65,7 @@ def filename(title: str) -> str:
     return f"{slugify(title)}.md"
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     # Usage: python slug.py "Why I Left Twitter"
     # Output: why-i-left-twitter.md
     if len(sys.argv) < 2:

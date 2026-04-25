@@ -25,9 +25,10 @@ from write_file import (
     write_item as _write_item,
     patch_item as _patch_item,
     check_duplicate as _check_duplicate,
-    VALID_TYPES,
 )
+from type_registry import get_registry
 import nx_graph as graph
+from vault_linter import lint_vault as _lint_vault
 import asset_registry as ar
 
 
@@ -89,7 +90,7 @@ def save(
             extra_fields=extra_fields,
             skip_duplicate_check=True,
         )
-    if result:
+    if result and "uid" in result:
         graph.index_node(
             result["uid"],
             type=type,
@@ -158,8 +159,11 @@ def check_duplicate(type: str, title: str, url: str = None) -> dict:
     Check whether a similar vault item already exists.
     Returns {"duplicate": False} or {"duplicate": True, "path": str, "name": str}.
     """
-    if type not in VALID_TYPES:
-        raise ValueError(f"Unknown type: {type!r}. Must be one of: {sorted(VALID_TYPES)}")
+    registry = get_registry(_vault_root())
+    if type not in registry.type_names():
+        raise ValueError(
+            f"Unknown type: {type!r}. Must be one of: {sorted(registry.type_names())}"
+        )
     dup = _check_duplicate(_vault_root(), title, url)
     if dup:
         return {"duplicate": True, "path": str(dup), "name": dup.name}
@@ -290,7 +294,7 @@ def save_asset(
             domains=domains,
             summary=summary,
             relations=relations,
-            extra_fields={"uid": uid, "has_asset": True},
+            extra_fields={"uid": uid, "has_asset": True, "status": "evergreen"},
             skip_duplicate_check=True,
         )
     graph.index_node(
@@ -341,13 +345,14 @@ def _app_version() -> str:
     for line in p.read_text(encoding="utf-8").splitlines():
         if line.startswith("version"):
             return line.split("=")[1].strip().strip('"')
-    return "unknown"
+    return "unknown"  # pragma: no cover
 
 
 def read_meta(file: str) -> str:
     """
     Read a vault meta file.
-    file: type-dictionary | tag-dictionary | foreign-definitions | config
+    file: type-dictionary | tag-dictionary | field-dictionary | relation-dictionary |
+          foreign-definitions | ontology | ontology-user | config
     """
     if file == "config":
         cfg = load_config() or {}
@@ -360,6 +365,8 @@ def read_meta(file: str) -> str:
         "field-dictionary":     vault_root / "meta" / "field-dictionary.md",
         "relation-dictionary":  vault_root / "meta" / "relation-dictionary.md",
         "foreign-definitions":  vault_root / "meta" / "foreign-definitions.md",
+        "ontology":             vault_root / "meta" / "ontology.yaml",
+        "ontology-user":        vault_root / "meta" / "ontology-user.yaml",
     }
     p = file_map.get(file)
     if not p:
@@ -435,6 +442,22 @@ def read_skill() -> str:
     return p.read_text(encoding="utf-8")
 
 
+def validate_type(name: str, extends: str, fields: list[dict] = None) -> dict:
+    """
+    Validate a proposed user type definition without writing anything.
+    Returns {"valid": bool, "errors": [...], "resolved_fields": {...}}.
+    """
+    return get_registry(_vault_root()).validate_user_type(name, extends, fields)
+
+
+def lint_vault() -> dict:
+    """
+    Run the vault linter over all vault files.
+    Returns {"errors": [...], "warnings": [...], "stats": {...}}.
+    """
+    return _lint_vault(_vault_root())
+
+
 def write_skill(content: str) -> str:
     """
     Overwrite the Loci skill instructions (skill/SKILL.md). Returns the path written.
@@ -451,19 +474,20 @@ def write_skill(content: str) -> str:
 def write_meta(file: str, content: str) -> str:
     """
     Overwrite a vault meta file. Returns the path written.
-    file: tag-dictionary | foreign-definitions
-    (type-dictionary and config are read-only via this API)
+    file: tag-dictionary | foreign-definitions | ontology-user
+    (type-dictionary, ontology, and config are read-only via this API)
     """
     vault_root = _vault_root()
     file_map = {
         "tag-dictionary":      vault_root / "meta" / "tag-dictionary.md",
         "foreign-definitions": vault_root / "meta" / "foreign-definitions.md",
+        "ontology-user":       vault_root / "meta" / "ontology-user.yaml",
     }
     p = file_map.get(file)
     if not p:
         raise ValueError(
             f"Unknown or read-only meta file: {file!r}. "
-            f"Writable files: tag-dictionary, foreign-definitions"
+            f"Writable files: tag-dictionary, foreign-definitions, ontology-user"
         )
     p.write_text(content, encoding="utf-8")
     return str(p)

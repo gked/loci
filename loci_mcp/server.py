@@ -1,10 +1,17 @@
 """
 loci_mcp/server.py
-Loci MCP server for Claude Desktop — stdio transport.
+Loci MCP server — stdio (Claude Code / Claude Desktop) or SSE (Docker / remote).
 
 Thin wrapper over api.py. All vault logic lives there.
 
-Registration (~/Library/Application Support/Claude/claude_desktop_config.json):
+Transport is selected by the LOCI_TRANSPORT environment variable:
+  stdio (default) — spawned as a subprocess by Claude Code or Claude Desktop
+  sse             — long-running HTTP server (uvicorn, used in Docker)
+
+Claude Code registration (~/.claude.json, via CLI):
+  claude mcp add --scope user loci uv -- run --directory /absolute/path/to/loci python loci_mcp/server.py
+
+Claude Desktop registration (~/Library/Application Support/Claude/claude_desktop_config.json):
   {
     "mcpServers": {
       "loci": {
@@ -14,7 +21,7 @@ Registration (~/Library/Application Support/Claude/claude_desktop_config.json):
     }
   }
 
-Run setup.py to register automatically. Restart Claude Desktop after any config change.
+Run setup.py to register automatically. Restart Claude Code / Claude Desktop after any config change.
 """
 
 import os
@@ -30,15 +37,37 @@ import asset_registry as ar
 from mcp.server.fastmcp import FastMCP
 from vault_init import check_meta_version
 
-check_meta_version()
+_startup_notice: str | None = check_meta_version()
+
+# Run linter at startup to catch manual edits made outside MCP.
+# Only errors (not warnings) are surfaced — warnings are available via lint_vault tool.
+try:
+    import api as _api_lint
+    _lint_result = _api_lint.lint_vault()
+    _lint_errors = _lint_result.get("errors", [])
+    if _lint_errors:
+        _error_summary = "; ".join(
+            f"{e['path']}: [{e['code']}] {e['message']}"
+            for e in _lint_errors[:5]
+        )
+        _overflow = f" (+{len(_lint_errors) - 5} more)" if len(_lint_errors) > 5 else ""
+        _lint_notice = (
+            f"Vault linter found {len(_lint_errors)} error(s) — "
+            f"call lint_vault for the full report. "
+            f"First errors: {_error_summary}{_overflow}"
+        )
+        _startup_notice = "\n".join(filter(None, [_startup_notice, _lint_notice]))
+except Exception as _lint_exc:
+    import sys as _sys
+    print(f"[loci] Startup linter failed (skipped): {_lint_exc}", file=_sys.stderr)
 
 # Recover any interrupted asset saves from previous runs
-try:
+try:  # pragma: no cover
     import contextlib as _contextlib
     import io as _io
     from write_file import write_item as _write_item
 
-    def _write_vault_proxy(vault_root, uid, vault_node):
+    def _write_vault_proxy(vault_root, uid, vault_node):  # pragma: no cover
         with _contextlib.redirect_stdout(_io.StringIO()):
             result = _write_item(
                 type="document",
@@ -57,9 +86,9 @@ try:
     if _recovered:
         import sys as _sys
         print(f"[loci] Recovered {len(_recovered)} interrupted asset write(s): {_recovered}", file=_sys.stderr)
-except Exception as _e:
+except Exception as _e:  # pragma: no cover
     import sys as _sys
-    print(f"[loci] Asset recovery skipped: {_e}", file=_sys.stderr)
+    print(f"[loci] Asset recovery skipped: {_e}", file=_sys.stderr)  # pragma: no cover
 
 mcp = FastMCP("loci")
 
@@ -99,7 +128,7 @@ def write_vault(
     Run check_duplicate first unless the user has already confirmed they want to save.
 
     Args:
-        type: document | article | bookmark | conversation | project | task | event | entity | procedure | topic | reference
+        type: document | article | bookmark | conversation | project | task | event | entity | procedure | topic
         title: Concise descriptive title
         body: Main content body (markdown)
         tags: 3-6 freeform lowercase hyphenated tags
@@ -182,15 +211,29 @@ def list_vault(type: str = None) -> dict:
     """
     List items in a vault type folder. Omit type to list all folders.
     Returns {type_name: [filename, ...], ...}.
+    If meta files were auto-updated at startup, result includes a "_notice" key.
     """
-    return loci.list_items(type)
+    global _startup_notice
+    result = loci.list_items(type)
+    if _startup_notice:
+        result["_notice"] = _startup_notice
+        _startup_notice = None  # show once, then clear
+    return result
 
 
 @mcp.tool()
 def read_meta(file: str) -> str:
     """
     Read a vault meta file.
-    file: type-dictionary | tag-dictionary | field-dictionary | relation-dictionary | foreign-definitions | config
+    file: type-dictionary | tag-dictionary | field-dictionary | relation-dictionary |
+          foreign-definitions | ontology | ontology-user | config
+
+    ontology        — machine-readable canonical type definitions (required fields,
+                      optional fields, enum values). Source of truth for structure.
+    ontology-user   — user-defined type extensions. Read before writing a node of a
+                      user-defined type to confirm the type is registered.
+    field-dictionary — behavioral guidance: field descriptions, complex object schemas,
+                       archiving patterns, temporal field rules (LLM-readable).
     """
     try:
         return loci.read_meta(file)
@@ -231,10 +274,41 @@ def write_skill(content: str) -> str:
 
 
 @mcp.tool()
+def validate_type(name: str, extends: str, fields: list[dict] = None) -> dict:
+    """
+    Validate a proposed user-defined type before writing it to ontology-user.yaml.
+    Returns {"valid": bool, "errors": [...], "resolved_fields": {...}}.
+
+    Args:
+        name:    Proposed type name — must not collide with any canonical type.
+        extends: A canonical type to inherit from (e.g. "procedure", "task").
+        fields:  Optional list of additional fields: [{name, type, values?}].
+                 'type' is one of: string | array | datetime | enum | boolean.
+                 For enum fields, include 'values': [...].
+    """
+    return loci.validate_type(name, extends, fields)
+
+
+@mcp.tool()
+def lint_vault() -> dict:
+    """
+    Lint all vault files against the Loci schema.
+    Returns errors (schema violations, unknown types, bad uids, duplicate uids)
+    and warnings (dangling relations, orphaned nodes, empty summaries).
+    Run this after manual vault edits or when debugging unexpected behavior.
+    """
+    return loci.lint_vault()
+
+
+@mcp.tool()
 def write_meta(file: str, content: str) -> str:
     """
     Overwrite a vault meta file.
-    file: tag-dictionary | foreign-definitions
+    file: tag-dictionary | foreign-definitions | ontology-user
+
+    ontology-user — write updated YAML to register a new user-defined type.
+                    Read the current content first with read_meta(file="ontology-user"),
+                    append the new type entry, then write the full updated content here.
     """
     try:
         return loci.write_meta(file, content)
@@ -258,7 +332,7 @@ def query_related(uid: str, depth: int = 2) -> list[dict]:
     """
     Return all vault nodes within `depth` hops of the given uid.
     Results include distance from the origin node, sorted nearest-first.
-    Each entry: {uid, title, type, distance}.
+    Each entry: {uid, title, type, distance, summary}.
     """
     graph.get(loci._vault_root())
     return graph.related(uid, depth)
@@ -276,14 +350,44 @@ def query_path(uid_from: str, uid_to: str) -> list[dict]:
 
 
 @mcp.tool()
-def find_nodes(type: str = None, tag: str = None) -> list[dict]:
+def find_nodes(
+    type: str = None,
+    tag: str = None,
+    status: str = None,
+    due_before: str = None,
+    due_after: str = None,
+    created_after: str = None,
+    updated_after: str = None,
+    related_to: str = None,
+    language: str = None,
+) -> list[dict]:
     """
-    Find vault nodes by type and/or tag.
-    At least one filter should be provided.
-    Each entry: {uid, title, type, path}.
+    Find vault nodes matching any combination of filters. At least one should be provided.
+    Each entry: {uid, title, type, path, status, due_date, language}.
+
+    Args:
+        type: Node type (task, book, project, note, …)
+        tag: Tag value — node must include this tag
+        status: Exact status match (open, done, archived, …)
+        due_before: ISO date (YYYY-MM-DD) — nodes whose due_date <= this value
+        due_after:  ISO date (YYYY-MM-DD) — nodes whose due_date >= this value
+        created_after:  ISO date — nodes created on or after this date
+        updated_after:  ISO date — nodes updated on or after this date
+        related_to: UID — only return nodes connected to this node by any edge
+        language: Language code (en, ru, de, …)
     """
     graph.get(loci._vault_root())
-    return graph.find(node_type=type, tag=tag)
+    return graph.find(
+        node_type=type,
+        tag=tag,
+        status=status,
+        due_before=due_before,
+        due_after=due_after,
+        created_after=created_after,
+        updated_after=updated_after,
+        related_to=related_to,
+        language=language,
+    )
 
 
 @mcp.tool()
@@ -308,6 +412,36 @@ def resolve_asset(uid: str, format: str = None) -> dict:
         return loci.resolve_asset(uid, format)
     except (FileNotFoundError, ValueError) as e:
         return {"error": str(e)}
+
+
+@mcp.tool()
+def query_recent(days: int = 30, limit: int = 20) -> list[dict]:
+    """
+    Return the most recently updated vault nodes.
+    Use for "what have I been thinking about lately?" queries.
+    Each entry: {uid, title, type, path, updated_at, status}.
+
+    Args:
+        days: Look-back window in days (default 30)
+        limit: Maximum number of results to return (default 20)
+    """
+    graph.get(loci._vault_root())
+    return graph.recent(days, limit)
+
+
+@mcp.tool()
+def query_insights(limit: int = 10) -> list[dict]:
+    """
+    Surface vault nodes that bridge different domains.
+    Finds nodes connected to items from domains outside their own — these are
+    the unexpected cross-domain links that reveal non-obvious patterns.
+    Each entry: {uid, title, type, domains, connects_to_domains, degree}.
+
+    Args:
+        limit: Maximum number of bridge nodes to return (default 10)
+    """
+    graph.get(loci._vault_root())
+    return graph.insights(limit)
 
 
 @mcp.tool()
@@ -397,7 +531,7 @@ def _make_auth_app(asgi_app):
     return auth_middleware
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     transport = os.environ.get("LOCI_TRANSPORT", "stdio")
     if transport == "sse":
         import uvicorn

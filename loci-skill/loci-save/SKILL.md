@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 4
+skill_version: 6
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, or topic — into the Loci personal
@@ -18,9 +18,19 @@ frontmatter, via the Loci MCP tools.
 
 ---
 
+## Ground rule
+
+**When in doubt, ask. Never guess on anything that requires user intent.**
+
+This applies everywhere in the workflow: type classification, project or entity linkage,
+duplicate resolution, ambiguous matches. If there are multiple candidates, surface them
+and let the user choose. One focused question is better than a wrong assumption.
+
+---
+
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 4`.
+This skill is at `skill_version: 6`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -52,12 +62,29 @@ Then restart Claude Code / Claude Desktop.
 
 Do not proceed until the vault is reachable.
 
+If the result contains a `_notice` key and it does **not** mention lint errors, show it as an FYI before proceeding — e.g.:
+> FYI: Vault meta files were automatically updated to v2 (language and aliases fields added).
+
+If it mentions lint errors, skip the plain FYI — Step 0.5 handles it with a prompt instead.
+
+---
+
+### Step 0.5 — Handle ontology drift
+
+If the `_notice` from Step 0 mentions lint errors, surface it before proceeding with the save (interpolate the actual error count from the notice):
+
+```
+FYI: vault linter reports <N> errors (likely ontology drift from older saves).
+Want me to generate fix instructions before continuing? [yes / continue with save]
+```
+
+Don't auto-fix. Don't block the current save unless the user wants to detour. Just surface and ask.
+
 ---
 
 ### Step 1 — Classify the content
 
-Call `loci__read_meta(file="type-dictionary")` to get the current type vocabulary.
-The file is the source of truth — fall back to asking the user only if the file is unreachable.
+If the content type is not immediately obvious from context, call `loci__read_meta(file="type-dictionary")` and `loci__read_meta(file="type-decision")` to classify it. When the type is unambiguous (e.g. the user said "save this URL" → bookmark, or explicitly named a type), skip these calls and proceed directly.
 
 **URL detection rule:** if the user shares a bare URL (with or without commentary)
 and does not explicitly ask to extract or read the content, default to `bookmark`.
@@ -68,7 +95,7 @@ When in doubt, ask: "Save as a bookmark, or pull the full content as an article?
 If a `bookmark` is chosen, call `loci__fetch_url_metadata(url)` immediately to
 retrieve title, site name, and description. Use these to populate the title,
 site_name, and summary fields — do not ask the user for them unless the fetch fails.
-The summary should be a concise high-level description of what the page is about.
+**The URL itself goes in the top-level `source_url` field (required), not in `extra_fields`.**
 
 If unsure between two other types, ask the user. Do not guess — type affects
 frontmatter fields.
@@ -85,17 +112,53 @@ frontmatter fields.
 
 Call `loci__generate_uid` to get the UID.
 
-Call `loci__read_meta(file="tag-dictionary")` and prefer existing tags over
-synonyms. If a new tag is likely to recur, add it via `loci__write_meta`
-before writing the item.
+**Always** call `loci__read_meta(file="ontology")` before writing any vault item.
+This is the schema source of truth — it defines required fields, optional fields,
+and valid enum values for the chosen type. Skipping it causes silent write failures
+when required fields are missing or enum values are wrong.
 
-Call `loci__read_meta(file="field-dictionary")` to get the current field
-definitions for all types. Use this as the authoritative source for which
-fields to include, their types, valid enum values, and whether they are required.
+Call the following **only when needed**:
+- `loci__read_meta(file="tag-dictionary")` — when tags matter for findability; prefer
+  existing tags over synonyms. Add new recurrent tags via `loci__write_meta` first.
+- `loci__read_meta(file="field-dictionary")` — when working with complex objects:
+  `relations`, `references`, entity archiving patterns, or temporal field rules. Do not
+  use it as a source for required/optional status or enum values — use ontology for that.
+- `loci__read_meta(file="relation-dictionary")` — when choosing a non-default relation
+  type; pick the most specific type that fits rather than defaulting to `relates-to`.
 
-Call `loci__read_meta(file="relation-dictionary")` to get the current relation
-type vocabulary. Use this when choosing the `type` field for any relation — pick
-the most specific type that fits rather than defaulting to `relates-to`.
+**User-defined types:**
+
+If the user asks to save content with a type that is not a canonical type (canonical types are defined in the ontology registry — call `loci__read_meta(file="ontology")` to check):
+
+1. Call `loci__read_meta(file="ontology-user")` to check if the type is already
+   registered as a user extension.
+2. If found: proceed normally — the type is valid.
+3. If not found: call `loci__validate_type(name=<type>, extends=<canonical_parent>)`
+   to pre-flight the definition. Surface any errors to the user.
+   If valid, ask the user to confirm before writing the new type to
+   `ontology-user.yaml` via `loci__write_meta(file="ontology-user", content=<updated yaml>)`.
+   Then proceed with the save.
+
+**Language rule:**
+- `summary` is **always written in English** regardless of the body's language — it is the search bridge.
+- `title` is the canonical name in the content's original language (e.g. `Чёрная луна` for a Russian book).
+- Set `language: <ISO 639-1 code>` (e.g. `ru`, `de`, `zh`) **only** when the body is not in English. Omit for English content.
+
+**Aliases rule:**
+- When `title` or an entity name is non-English, always populate `aliases` with the English transliteration or translation.
+- Also include common abbreviations or alternate spellings if applicable.
+- Examples:
+  ```yaml
+  # Entity: Russian author
+  title: Маркеев Олег
+  aliases:
+    - Oleg Markeev
+
+  # Article: Russian book
+  title: Чёрная луна
+  aliases:
+    - Black Moon
+  ```
 
 **Relations format:**
 ```yaml
@@ -131,6 +194,19 @@ On confirmation, add the UID to `relations` with the appropriate relation type.
 On "create node", save that node first then link back.
 
 **Do not auto-link without confirmation.**
+
+**Topic-specific handling (when type = topic):**
+
+1. If `parent_topic` is set, resolve the parent by calling `loci__search_vault(query=<parent_topic_title>)`, then:
+   - If exactly one result: use its UID directly.
+   - If multiple results: present them to the user ("Which did you mean?") with title and a one-line summary for each, and wait for confirmation before proceeding.
+   - If no results: inform the user the parent topic wasn't found and ask whether to create it first or save without a parent.
+   - Once resolved, set `parent_topic` to that UID and add a `child-of` relation pointing to it.
+2. After the file is saved (Step 6), offer a follow-on scan:
+   ```
+   Want me to scan existing vault content for items to link to this topic?
+   ```
+   If yes, call `loci__search_vault(query=<topic title>)` to find candidates, present them grouped by type, and let the user choose which to link. For each confirmed link, patch the topic node to add the relation (use the appropriate relation type — e.g. `contains`, `relates-to`).
 
 ---
 

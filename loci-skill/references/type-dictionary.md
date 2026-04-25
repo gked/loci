@@ -1,7 +1,16 @@
 # Loci Type Dictionary
-# Canonical type vocabulary — edit with care.
-# The save skill reads this file at runtime.
-# schema_version: 1
+# Human-readable type selection guide for the save skill.
+#
+# STRUCTURAL AUTHORITY: ontology.yaml
+# Canonical type names, inheritance, required/optional fields, and enum values
+# are defined in ontology.yaml and enforced at runtime by the TypeRegistry.
+# This file does NOT define which types exist — it explains when to use each one.
+# If this file conflicts with ontology.yaml, ontology.yaml wins.
+#
+# What this file owns:
+#   - One-line descriptions of each type's purpose
+#   - Guidance on when to use one type vs another
+#   - Notes on tags as an alternative to new types
 #
 # Rule: a separate type is justified only when variants have different required fields.
 # Descriptive differences (format, category, style) belong in tags, not types.
@@ -15,5 +24,5 @@ task         — discrete actionable item with due date and status
 event        — point-in-time or period occurrence
 entity       — real-world actor: person, organization, or place (subtype: person | organization | place — only type with a structural subtype; changes which fields apply)
 procedure    — repeatable process with ordered steps and expected outcome (use tags for process category: #recipe, #workout, #protocol, #playbook, #tutorial)
-topic        — organizing hub for a subject area
-reference    — pointer to external content (hybrid ownership model)
+topic        — organizing hub for a subject area; first-class graph node for a concept you'd navigate to and see linked content from (use a tag instead if it's purely a filter label)
+asset        — a thing you own or possess: digital file in the asset vault, physical object, or both (subtype: book | video | music | podcast | presentation | visual | physical; storage: digital | physical | both)

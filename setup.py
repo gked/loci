@@ -66,7 +66,7 @@ def register_mcp_claude_code() -> None:
         print(f"  Warning: registration failed — {result.stderr.strip()}")
 
 
-def register_mcp_desktop(config_path: Path) -> None:
+def register_mcp_claude_desktop(config_path: Path) -> None:
     """Add or update the loci MCP server entry in claude_desktop_config.json."""
     config = {}
     if config_path.exists():
@@ -138,7 +138,7 @@ def main() -> None:
     print()
 
     print("Step 3 — Claude Desktop MCP registration")
-    register_mcp_desktop(CLAUDE_DESKTOP_CONFIG)
+    register_mcp_claude_desktop(CLAUDE_DESKTOP_CONFIG)
     print()
 
     print("Step 4 — Skill symlink")

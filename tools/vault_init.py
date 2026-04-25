@@ -17,18 +17,25 @@ from typing import Optional
 CONFIG_PATH = Path(__file__).parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "loci-skill" / "references"
 
-META_VERSION = 1
+META_VERSION = 4
 
 VAULT_FOLDERS = [
     "meta",
 ]
 
+# Reseeded on every META_VERSION bump.
 META_FILES = [
     "type-dictionary.md",
     "tag-dictionary.md",
     "field-dictionary.md",
     "relation-dictionary.md",
     "foreign-definitions.md",
+    "ontology.yaml",
+]
+
+# Seeded once on first setup, never overwritten — user owns these.
+USER_META_FILES = [
+    "ontology-user.yaml",
 ]
 
 
@@ -68,10 +75,27 @@ def create_vault_structure(vault_root: Path) -> None:
 
     for filename in META_FILES:
         dest = vault_root / "meta" / filename
+        src = REFERENCES_DIR / filename
         if not dest.exists():
-            src = REFERENCES_DIR / filename
             dest.write_text(src.read_text())
             print(f"  Seeded: {dest}")
+
+    for filename in USER_META_FILES:
+        dest = vault_root / "meta" / filename
+        src = REFERENCES_DIR / filename
+        if not dest.exists():
+            dest.write_text(src.read_text())
+            print(f"  Seeded (user): {dest}")
+
+
+def reseed_meta(vault_root: Path) -> None:
+    """Force overwrite canonical meta files from loci-skill/references/.
+    USER_META_FILES are never touched — the user owns those."""
+    for filename in META_FILES:
+        dest = vault_root / "meta" / filename
+        src = REFERENCES_DIR / filename
+        dest.write_text(src.read_text())
+        print(f"  Re-seeded: {dest}")
 
 
 def setup_interactive() -> dict:
@@ -99,26 +123,31 @@ def setup_interactive() -> dict:
     return config
 
 
-def check_meta_version() -> None:
+def check_meta_version() -> str | None:
     """
-    Warn at startup if the vault's meta_version is older than META_VERSION.
-    Skipped silently when running via LOCI_VAULT_ROOT (Docker), since there
-    is no config.yml to read meta_version from.
+    Auto-reseed meta files at server startup if vault meta_version is older
+    than META_VERSION. Returns a notice string if reseeding occurred so the
+    caller can surface it to the user; returns None otherwise.
+    Skipped silently when running via LOCI_VAULT_ROOT (Docker).
     """
     if os.environ.get("LOCI_VAULT_ROOT"):
-        return  # Docker / env-var mode: no config.yml to inspect
+        return None  # Docker / env-var mode: no config.yml to inspect
     if not CONFIG_PATH.exists():
-        return
+        return None
     with open(CONFIG_PATH) as f:
         config = yaml.safe_load(f) or {}
     vault_meta_version = config.get("meta_version")
-    if vault_meta_version is not None and vault_meta_version < META_VERSION:
-        print(
-            f"WARNING: vault meta_version={vault_meta_version} is older than "
-            f"server META_VERSION={META_VERSION}. "
-            "Run `python tools/vault_init.py --force` to re-seed meta files.",
-            file=sys.stderr,
+    if vault_meta_version is None or vault_meta_version < META_VERSION:
+        vault_root = Path(config["vault_root"])
+        reseed_meta(vault_root)
+        config["meta_version"] = META_VERSION
+        save_config(config)
+        from_version = f"v{vault_meta_version}" if vault_meta_version is not None else "unversioned"
+        return (
+            f"Vault meta files were automatically updated from {from_version} "
+            f"to v{META_VERSION}. No action needed."
         )
+    return None
 
 
 def init(force: bool = False) -> dict:
@@ -126,9 +155,19 @@ def init(force: bool = False) -> dict:
     Initialize Loci. Returns the active config.
 
     Args:
-        force: If True, re-run setup even if config exists.
+        force: If True, re-seed all meta files from references/ and bump
+               meta_version in config. Does not re-run interactive setup.
     """
     existing = load_config()
+
+    if existing and force:
+        vault_root = Path(existing["vault_root"])
+        print(f"Re-seeding meta files at {vault_root / 'meta'}...")
+        reseed_meta(vault_root)
+        existing["meta_version"] = META_VERSION
+        save_config(existing)
+        print("Done.")
+        return existing
 
     if existing and not force:
         print(f"Loci already configured. Vault root: {existing['vault_root']}")
@@ -149,6 +188,6 @@ def init(force: bool = False) -> dict:
     return config
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     force = "--force" in sys.argv
     init(force=force)
