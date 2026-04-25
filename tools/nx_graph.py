@@ -14,6 +14,7 @@ The vault markdown files are the source of truth.
 from __future__ import annotations
 
 import threading
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -333,7 +334,6 @@ def recent(days: int = 30, limit: int = 20) -> list[dict]:
     Sorted by updated_at descending. Nodes without updated_at are excluded.
     Returns list of {uid, title, type, path, updated_at, status}.
     """
-    from datetime import datetime, timezone, timedelta
     g = _graph
     if g is None:
         return []
@@ -375,6 +375,7 @@ def insights(limit: int = 10) -> list[dict]:
         for nb in list(g.successors(uid)) + list(g.predecessors(uid)):
             neighbor_domains.update(g.nodes[nb].get("domains") or [])
 
+        # Nodes with multiple own domains require a neighbor outside ALL of them to qualify.
         cross = neighbor_domains - own_domains
         if cross:
             result.append({

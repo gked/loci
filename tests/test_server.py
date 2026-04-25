@@ -332,9 +332,10 @@ def test_search_vault_returns_results(tmp_vault):
 
 def test_query_recent_returns_list(tmp_vault):
     nodes = [{"uid": "r001", "title": "Fresh", "type": "task", "path": "/p", "updated_at": "2026-04-20T00:00:00Z", "status": "todo"}]
-    with patch("loci_mcp.server.graph.get"), \
+    with patch("loci_mcp.server.graph.get") as mock_get, \
          patch("loci_mcp.server.graph.recent", return_value=nodes):
         result = query_recent(days=30)
+    mock_get.assert_called_once()
     assert result[0]["uid"] == "r001"
     assert result[0]["updated_at"] == "2026-04-20T00:00:00Z"
 
@@ -342,9 +343,10 @@ def test_query_recent_returns_list(tmp_vault):
 def test_query_insights_returns_list(tmp_vault):
     nodes = [{"uid": "i001", "title": "Bridge", "type": "document", "domains": ["technology-engineering"],
               "connects_to_domains": ["personal-development"], "degree": 3}]
-    with patch("loci_mcp.server.graph.get"), \
+    with patch("loci_mcp.server.graph.get") as mock_get, \
          patch("loci_mcp.server.graph.insights", return_value=nodes):
         result = query_insights()
+    mock_get.assert_called_once()
     assert result[0]["uid"] == "i001"
     assert "personal-development" in result[0]["connects_to_domains"]
 

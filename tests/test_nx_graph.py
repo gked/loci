@@ -516,6 +516,16 @@ def test_recent_return_shape(monkeypatch):
     assert result[0]["status"] == "todo"
 
 
+def test_recent_days_zero_includes_today(monkeypatch):
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    dg = nx.DiGraph()
+    dg.add_node("r007", **_node_attrs(title="Today", updated_at=today))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.recent(days=0)
+    assert any(r["uid"] == "r007" for r in result)
+
+
 # ---------------------------------------------------------------------------
 # insights
 # ---------------------------------------------------------------------------
