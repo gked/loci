@@ -28,6 +28,7 @@ from uid_generator import generate_uid
 from slug import filename as make_filename
 from vault_init import load_config
 from type_registry import get_registry
+from relation_registry import get_relation_registry
 
 
 def serialize_frontmatter(fields: dict) -> str:
@@ -143,6 +144,18 @@ def write_item(
     if validation_errors:
         return {"errors": validation_errors}
 
+    relation_registry = get_relation_registry(vault_root)
+    relation_errors = []
+    for rel in (relations or []):
+        rel_type = rel.get("type")
+        if rel_type and not relation_registry.is_valid(rel_type):
+            relation_errors.append(
+                f"Unknown relation type '{rel_type}'. "
+                f"Call read_meta(file='relation-dictionary') to see valid types."
+            )
+    if relation_errors:
+        return {"errors": relation_errors}
+
     vault_root.mkdir(parents=True, exist_ok=True)
 
     # Duplicate check
@@ -223,6 +236,18 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
     if not p.exists():
         raise FileNotFoundError(f"Vault file not found: {p}")
 
+    relation_warnings: list[str] = []
+    if "relations" in updates:
+        vault_root = resolve_vault_root()
+        relation_registry = get_relation_registry(vault_root)
+        for rel in (updates.get("relations") or []):
+            rel_type = rel.get("type")
+            if rel_type and not relation_registry.is_valid(rel_type):
+                relation_warnings.append(
+                    f"Unknown relation type '{rel_type}'. "
+                    f"Call read_meta(file='relation-dictionary') to see valid types."
+                )
+
     raw = p.read_text(encoding="utf-8")
 
     # Split frontmatter from body
@@ -246,7 +271,7 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
     content = serialize_frontmatter(fm) + "\n" + final_body
     p.write_text(content, encoding="utf-8")
 
-    return {
+    result = {
         "uid": fm.get("uid"),
         "path": str(p),
         "type": fm.get("type"),
@@ -256,6 +281,9 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
         "domains": fm.get("domains") or [],
         "summary": fm.get("summary", ""),
     }
+    if relation_warnings:
+        result["relation_warnings"] = relation_warnings
+    return result
 
 
 if __name__ == "__main__":  # pragma: no cover

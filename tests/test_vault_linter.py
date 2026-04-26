@@ -9,11 +9,17 @@ from pathlib import Path
 
 from vault_linter import lint_file, lint_vault, LintIssue
 from type_registry import TypeRegistry, REFERENCES_DIR
+from relation_registry import RelationRegistry
 
 
 @pytest.fixture(scope="module")
 def registry():
     return TypeRegistry.load(REFERENCES_DIR / "ontology.yaml")
+
+
+@pytest.fixture(scope="module")
+def relation_registry():
+    return RelationRegistry.load(REFERENCES_DIR / "relation-dictionary.yaml")
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +237,30 @@ def test_valid_relation_no_warning(tmp_path, registry):
     p = _write(tmp_path, "f.md", fm)
     issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
     assert "dangling-relation" not in _codes(issues)
+
+
+def test_invalid_relation_type_warning(tmp_path, registry, relation_registry):
+    fm = _valid_task()
+    fm["relations"] = [{"uid": "deadbeef", "type": "invented-type"}]
+    p = _write(tmp_path, "f.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry, relation_registry)
+    assert "invalid-relation-type" in _codes(issues)
+
+
+def test_valid_relation_type_no_invalid_warning(tmp_path, registry, relation_registry):
+    fm = _valid_task()
+    fm["relations"] = [{"uid": "deadbeef", "type": "belongs-to"}]
+    p = _write(tmp_path, "f.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry, relation_registry)
+    assert "invalid-relation-type" not in _codes(issues)
+
+
+def test_no_relation_registry_skips_type_check(tmp_path, registry):
+    fm = _valid_task()
+    fm["relations"] = [{"uid": "deadbeef", "type": "invented-type"}]
+    p = _write(tmp_path, "f.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)  # no relation_registry
+    assert "invalid-relation-type" not in _codes(issues)
 
 
 # ---------------------------------------------------------------------------

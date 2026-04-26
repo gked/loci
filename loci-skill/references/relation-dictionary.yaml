@@ -1,0 +1,186 @@
+schema_version: 1
+# Canonical vocabulary for typed edges between vault nodes.
+# Machine-readable source of truth for RelationRegistry.
+# Seeded to vault/meta/ on every META_VERSION bump.
+# To add custom relation types, use relation-dictionary-user.yaml.
+
+relations:
+
+  # Dependency / Sequencing
+
+  - name: depends-on
+    group: dependency-sequencing
+    description: >
+      This item cannot start until the linked item is complete; use for
+      prerequisite ordering (task → blocking task, milestone → dependency).
+    inverse_of: enables
+
+  - name: enables
+    group: dependency-sequencing
+    description: >
+      Inverse of depends-on; the current node must be completed before the
+      linked node can proceed.
+    inverse_of: depends-on
+
+  # Structural / Ownership
+
+  - name: belongs-to
+    group: structural-ownership
+    description: >
+      This item is owned by or lives inside a larger whole
+      (task → project, note → topic).
+    inverse_of: parent-of
+
+  - name: parent-of
+    group: structural-ownership
+    description: >
+      Inverse of belongs-to; the current node is the owner or container of
+      the linked node (project → task, topic → note).
+    inverse_of: belongs-to
+
+  - name: is-part-of
+    group: structural-ownership
+    description: >
+      This item is a structural sub-component of another (chapter inside a
+      book, section inside a document); prefer over belongs-to for content
+      hierarchy.
+    inverse_of: has-part
+
+  - name: has-part
+    group: structural-ownership
+    description: >
+      Inverse of is-part-of; the current node contains the linked node as
+      a component.
+    inverse_of: is-part-of
+
+  # Provenance / Derivation
+
+  - name: is-based-on
+    group: provenance-derivation
+    description: >
+      This item was derived from or builds directly on another (a note
+      summarising an article; a draft based on a source).
+
+  - name: same-work-as
+    group: provenance-derivation
+    description: >
+      Both nodes are different manifestations of the same underlying work
+      (preprint + published version, original + translation).
+
+  - name: supersedes
+    group: provenance-derivation
+    description: >
+      This item replaces or updates an older node; the older node remains
+      but is deprecated.
+
+  - name: version-of
+    group: provenance-derivation
+    description: >
+      This item is a revision or variant of another without fully replacing it.
+
+  - name: implements
+    group: provenance-derivation
+    description: >
+      This item is a concrete implementation of a design, specification, or
+      plan described in the linked node.
+
+  # Semantic
+
+  - name: about
+    group: semantic
+    description: >
+      This node is primarily about another node (especially: article or
+      note → topic node).
+
+  - name: mentions
+    group: semantic
+    description: >
+      This node references another in passing, without being primarily about
+      it; lighter than about.
+
+  - name: influences
+    group: semantic
+    description: >
+      One node shapes, informs, or has affected the direction of another.
+
+  - name: supports
+    group: semantic
+    description: >
+      Provides evidence, reasoning, or examples for a claim in another node.
+
+  - name: contradicts
+    group: semantic
+    description: >
+      Challenges, refutes, or conflicts with the content of another node.
+
+  - name: inspired-by
+    group: semantic
+    description: >
+      Conceptually sparked by another node, but not a direct derivation.
+
+  - name: informs
+    group: semantic
+    description: >
+      This node provides background knowledge, data, or context that informs
+      the linked node; lighter than influences — no directional impact implied.
+    inverse_of: informed-by
+
+  - name: informed-by
+    group: semantic
+    description: >
+      Inverse of informs; this node draws background knowledge or context
+      from the linked node.
+    inverse_of: informs
+
+  - name: references
+    group: semantic
+    description: >
+      This node explicitly cites or links to the linked node as a source or
+      further reading; stronger than mentions, does not imply derivation.
+
+  - name: involves
+    group: semantic
+    description: >
+      This node (typically a conversation, event, or project) includes or
+      concerns the linked entity or node as a participant or subject.
+
+  - name: instance-of
+    group: semantic
+    description: >
+      This node is a specific occurrence or example of the concept, type, or
+      template described in the linked node.
+
+  - name: used-in
+    group: semantic
+    description: >
+      This node (a tool, skill, procedure, or resource) is used within or
+      applied to the context described in the linked node.
+    inverse_of: uses
+
+  - name: uses
+    group: semantic
+    description: >
+      Inverse of used-in; the current node makes use of the linked tool,
+      skill, procedure, or resource.
+    inverse_of: used-in
+
+  # Entity
+
+  - name: works-at
+    group: entity
+    description: >
+      This entity node is affiliated with or employed by the linked
+      organisation or project node.
+
+  - name: follows
+    group: entity
+    description: >
+      This entity node follows the linked person or organisation
+      (social or professional following).
+
+  # Generic
+
+  - name: relates-to
+    group: generic
+    description: >
+      Unspecified bidirectional connection; use only when no other type fits.

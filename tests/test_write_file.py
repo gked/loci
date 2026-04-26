@@ -398,3 +398,72 @@ def test_write_item_no_file_written_on_validation_error(tmp_vault):
     )
     after = list(tmp_vault.glob("*.md"))
     assert len(after) == len(before)
+
+
+# ---------------------------------------------------------------------------
+# write_item — relation type validation
+# ---------------------------------------------------------------------------
+
+def test_write_item_blocked_by_unknown_relation_type(tmp_vault):
+    result = write_item(
+        type="document",
+        title="Doc with Bad Relation",
+        body="",
+        extra_fields={"status": "draft"},
+        relations=[{"uid": "deadbeef", "type": "invented-type"}],
+        skip_duplicate_check=True,
+    )
+    assert "errors" in result
+    assert any("invented-type" in e for e in result["errors"])
+
+
+def test_write_item_no_file_written_on_bad_relation_type(tmp_vault):
+    before = list(tmp_vault.glob("*.md"))
+    write_item(
+        type="document",
+        title="Bad Relation Doc",
+        body="",
+        extra_fields={"status": "draft"},
+        relations=[{"uid": "deadbeef", "type": "invented-type"}],
+        skip_duplicate_check=True,
+    )
+    after = list(tmp_vault.glob("*.md"))
+    assert len(after) == len(before)
+
+
+def test_write_item_succeeds_with_valid_relation_type(tmp_vault):
+    result = write_item(
+        type="document",
+        title="Doc with Valid Relation",
+        body="",
+        extra_fields={"status": "draft"},
+        relations=[{"uid": "deadbeef", "type": "belongs-to"}],
+        skip_duplicate_check=True,
+    )
+    assert "errors" not in result
+    assert result.get("uid") is not None
+
+
+# ---------------------------------------------------------------------------
+# patch_item — relation type validation
+# ---------------------------------------------------------------------------
+
+def test_patch_item_warns_on_unknown_relation_type(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"relations": [{"uid": "deadbeef", "type": "invented-type"}]})
+    assert "relation_warnings" in result
+    assert any("invented-type" in w for w in result["relation_warnings"])
+
+
+def test_patch_item_still_writes_on_unknown_relation_type(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"relations": [{"uid": "deadbeef", "type": "invented-type"}]})
+    assert result.get("uid") == "test0001"
+    raw = p.read_text(encoding="utf-8")
+    assert "invented-type" in raw
+
+
+def test_patch_item_no_relation_warnings_for_valid_type(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"relations": [{"uid": "deadbeef", "type": "belongs-to"}]})
+    assert "relation_warnings" not in result

@@ -1,0 +1,15 @@
+# User-defined relation types for the Loci vault.
+# Seeded once on first setup; never overwritten by meta updates.
+#
+# Rules:
+#   - name must not collide with any canonical relation type
+#   - additive only — canonical relation definitions cannot be changed here
+#
+# Example:
+#   relations:
+#     - name: assigned-to
+#       group: entity
+#       description: >
+#         This task or item is assigned to the linked person or entity node.
+
+relations: []

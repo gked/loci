@@ -17,7 +17,7 @@ from typing import Optional
 CONFIG_PATH = Path(__file__).parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "loci-skill" / "references"
 
-META_VERSION = 4
+META_VERSION = 5
 
 VAULT_FOLDERS = [
     "meta",
@@ -28,7 +28,8 @@ META_FILES = [
     "type-dictionary.md",
     "tag-dictionary.md",
     "field-dictionary.md",
-    "relation-dictionary.md",
+    "relation-dictionary.md",    # human-readable reference; kept alongside the machine-readable registry
+    "relation-dictionary.yaml",
     "foreign-definitions.md",
     "ontology.yaml",
 ]
@@ -36,6 +37,7 @@ META_FILES = [
 # Seeded once on first setup, never overwritten — user owns these.
 USER_META_FILES = [
     "ontology-user.yaml",
+    "relation-dictionary-user.yaml",
 ]
 
 

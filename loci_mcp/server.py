@@ -225,15 +225,20 @@ def list_vault(type: str = None) -> dict:
 def read_meta(file: str) -> str:
     """
     Read a vault meta file.
-    file: type-dictionary | tag-dictionary | field-dictionary | relation-dictionary |
+    file: type-dictionary | tag-dictionary | field-dictionary |
+          relation-dictionary | relation-dictionary-user |
           foreign-definitions | ontology | ontology-user | config
 
-    ontology        — machine-readable canonical type definitions (required fields,
-                      optional fields, enum values). Source of truth for structure.
-    ontology-user   — user-defined type extensions. Read before writing a node of a
-                      user-defined type to confirm the type is registered.
-    field-dictionary — behavioral guidance: field descriptions, complex object schemas,
-                       archiving patterns, temporal field rules (LLM-readable).
+    ontology              — machine-readable canonical type definitions (required fields,
+                            optional fields, enum values). Source of truth for structure.
+    ontology-user         — user-defined type extensions. Read before writing a node of a
+                            user-defined type to confirm the type is registered.
+    relation-dictionary   — machine-readable canonical relation types (name, group,
+                            description, inverse). Source of truth for relation types.
+    relation-dictionary-user — user-defined relation additions. Read to include custom
+                            relation types alongside canonical ones.
+    field-dictionary      — behavioral guidance: field descriptions, complex object schemas,
+                            archiving patterns, temporal field rules (LLM-readable).
     """
     try:
         return loci.read_meta(file)

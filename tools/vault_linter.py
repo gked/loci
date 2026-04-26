@@ -34,6 +34,7 @@ from typing import Literal, Optional
 sys.path.insert(0, str(Path(__file__).parent))
 from vault_init import load_config
 from type_registry import TypeRegistry, get_registry, REFERENCES_DIR
+from relation_registry import RelationRegistry, get_relation_registry
 
 BASE_REQUIRED = [
     "uid", "type", "title", "author",
@@ -74,6 +75,7 @@ def lint_file(
     path: Path,
     all_uids: set[str],
     registry: TypeRegistry,
+    relation_registry: Optional[RelationRegistry] = None,
 ) -> list[LintIssue]:
     """Lint a single vault file against the type registry."""
     issues: list[LintIssue] = []
@@ -134,7 +136,7 @@ def lint_file(
                 f"'{field_name}' value '{val}' is not valid — "
                 f"expected one of: {sorted(valid_values)}"))
 
-    # dangling relations
+    # dangling relations and invalid relation types
     for rel in (fm.get("relations") or []):
         if not isinstance(rel, dict):
             continue
@@ -142,6 +144,10 @@ def lint_file(
         if rel_uid and str(rel_uid) not in all_uids:
             issues.append(LintIssue(name, "warning", "dangling-relation",
                 f"Relation uid '{rel_uid}' does not exist in the vault"))
+        rel_type = rel.get("type")
+        if rel_type and relation_registry and not relation_registry.is_valid(rel_type):
+            issues.append(LintIssue(name, "warning", "invalid-relation-type",
+                f"Relation type '{rel_type}' is not in the relation registry"))
 
     # orphaned node
     if not (fm.get("relations") or []):
@@ -166,6 +172,7 @@ def lint_vault(vault_root: Path) -> dict:
     Returns {"errors": [...], "warnings": [...], "stats": {...}}.
     """
     registry = get_registry(vault_root)
+    relation_registry = get_relation_registry(vault_root)
     md_files = sorted(f for f in vault_root.glob("*.md"))
 
     # Pass 1: collect all uids and detect duplicates
@@ -197,7 +204,7 @@ def lint_vault(vault_root: Path) -> dict:
     # Pass 2: lint each file
     all_issues: list[LintIssue] = list(dup_issues)
     for path in md_files:
-        all_issues.extend(lint_file(path, all_uids, registry))
+        all_issues.extend(lint_file(path, all_uids, registry, relation_registry))
 
     errors = [i for i in all_issues if i.severity == "error"]
     warnings = [i for i in all_issues if i.severity == "warning"]

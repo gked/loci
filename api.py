@@ -360,13 +360,14 @@ def read_meta(file: str) -> str:
 
     vault_root = _vault_root()
     file_map = {
-        "type-dictionary":      vault_root / "meta" / "type-dictionary.md",
-        "tag-dictionary":       vault_root / "meta" / "tag-dictionary.md",
-        "field-dictionary":     vault_root / "meta" / "field-dictionary.md",
-        "relation-dictionary":  vault_root / "meta" / "relation-dictionary.md",
-        "foreign-definitions":  vault_root / "meta" / "foreign-definitions.md",
-        "ontology":             vault_root / "meta" / "ontology.yaml",
-        "ontology-user":        vault_root / "meta" / "ontology-user.yaml",
+        "type-dictionary":           vault_root / "meta" / "type-dictionary.md",
+        "tag-dictionary":            vault_root / "meta" / "tag-dictionary.md",
+        "field-dictionary":          vault_root / "meta" / "field-dictionary.md",
+        "relation-dictionary":       vault_root / "meta" / "relation-dictionary.yaml",
+        "relation-dictionary-user":  vault_root / "meta" / "relation-dictionary-user.yaml",
+        "foreign-definitions":       vault_root / "meta" / "foreign-definitions.md",
+        "ontology":                  vault_root / "meta" / "ontology.yaml",
+        "ontology-user":             vault_root / "meta" / "ontology-user.yaml",
     }
     p = file_map.get(file)
     if not p:

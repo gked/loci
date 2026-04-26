@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 6
+skill_version: 7
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, or topic — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 6`.
+This skill is at `skill_version: 7`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -124,6 +124,8 @@ Call the following **only when needed**:
   use it as a source for required/optional status or enum values — use ontology for that.
 - `loci__read_meta(file="relation-dictionary")` — when choosing a non-default relation
   type; pick the most specific type that fits rather than defaulting to `relates-to`.
+  Also call `loci__read_meta(file="relation-dictionary-user")` to include any
+  user-defined relation types alongside the canonical ones.
 
 **User-defined types:**
 

@@ -19,6 +19,8 @@ FIXTURE_VAULT = Path(__file__).parent / "fixtures" / "vault"
 sys.path.insert(0, str(PROJECT_ROOT / "tools"))
 
 import nx_graph as _nx_graph  # noqa: E402  (must follow sys.path insert)
+from type_registry import reset_registry as _reset_type_registry  # noqa: E402
+from relation_registry import reset_relation_registry as _reset_relation_registry  # noqa: E402
 
 
 @pytest.fixture
@@ -34,12 +36,16 @@ def tmp_vault(tmp_path):
 
     _nx_graph._graph = None   # force rebuild from the temp vault
     _nx_graph._built_at = 0.0
+    _reset_type_registry()
+    _reset_relation_registry()
 
     yield vault_path
 
     del os.environ["LOCI_VAULT_ROOT"]
-    _nx_graph._graph = None   # clean up so the next test starts fresh
+    _nx_graph._graph = None
     _nx_graph._built_at = 0.0
+    _reset_type_registry()
+    _reset_relation_registry()
 
 
 @pytest.fixture
