@@ -20,6 +20,7 @@ Invalid user type definitions are skipped with a warning; the server
 continues with whatever is valid.
 """
 
+import re
 import sys
 import yaml
 from dataclasses import dataclass, field
@@ -183,6 +184,9 @@ class TypeRegistry:
     def warnings(self) -> list[str]:
         return list(self._warnings)
 
+    _VALID_FIELD_TYPES = frozenset({"string", "array", "datetime", "enum", "boolean"})
+    _NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+
     def validate_user_type(
         self,
         name: str,
@@ -196,6 +200,15 @@ class TypeRegistry:
         """
         errors: list[str] = []
         canonical_names = {n for n, td in self._types.items() if td.extends is None}
+
+        name = (name or "").strip()
+        if not name:
+            errors.append("'name' is required and must not be empty")
+            return {"valid": False, "errors": errors, "resolved_fields": {"required": [], "optional": []}}
+        if not self._NAME_RE.match(name):
+            errors.append(
+                f"'{name}' is not a valid type name — use lowercase letters, digits, and hyphens only"
+            )
 
         if not extends:
             errors.append("'extends' is required and must name a canonical type")
@@ -217,14 +230,20 @@ class TypeRegistry:
 
             user_field_defs: list[FieldDef] = []
             for f in (fields or []):
-                if f.get("name") in inherited_names:
+                field_type = f.get("type", "string")
+                if field_type not in self._VALID_FIELD_TYPES:
+                    errors.append(
+                        f"Field '{f['name']}': invalid type '{field_type}'. "
+                        f"Must be one of: {sorted(self._VALID_FIELD_TYPES)}"
+                    )
+                elif f.get("name") in inherited_names:
                     errors.append(
                         f"Field '{f['name']}' redefines an inherited field from '{extends}'"
                     )
                 else:
                     user_field_defs.append(FieldDef(
                         name=f["name"],
-                        type=f.get("type", "string"),
+                        type=field_type,
                         values=f.get("values"),
                     ))
 

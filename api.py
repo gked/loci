@@ -341,7 +341,8 @@ def list_items(type: str = None) -> dict:
 
 
 def _append_yaml_entry(path: Path, list_key: str, entry: dict) -> None:
-    """Append an entry to a YAML list file, preserving the comment header."""
+    """Append an entry to a YAML list file, preserving the comment header.
+    Assumes all leading comment/blank lines form the header; inline comments are not preserved."""
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
     header_end = 0

@@ -3,6 +3,7 @@ tests/test_define_type.py
 Tests for api.define_type — validate + write to ontology-user.yaml.
 """
 
+import os
 import shutil
 import yaml
 import pytest
@@ -147,8 +148,34 @@ def test_define_type_inherited_field_redefinition(vault_with_meta):
     assert any("steps" in e for e in result["errors"])
 
 
+def test_define_type_empty_name(vault_with_meta):
+    import api
+    result = api.define_type(name="", extends="procedure", description="No name.")
+    assert result["defined"] is False
+    assert result["errors"]
+
+
+def test_define_type_invalid_name_format(vault_with_meta):
+    import api
+    result = api.define_type(name="My Type!", extends="procedure", description="Bad name.")
+    assert result["defined"] is False
+    assert any("valid type name" in e for e in result["errors"])
+
+
+def test_define_type_invalid_field_type(vault_with_meta):
+    import api
+    result = api.define_type(
+        name="recipe",
+        extends="procedure",
+        description="A cooking procedure.",
+        fields=[{"name": "difficulty", "type": "badtype"}],
+    )
+    assert result["defined"] is False
+    assert any("badtype" in e for e in result["errors"])
+
+
 def test_define_type_no_file_raises(tmp_path):
-    import os, api
+    import api
     vault = tmp_path / "vault"
     vault.mkdir()
     os.environ["LOCI_VAULT_ROOT"] = str(vault)

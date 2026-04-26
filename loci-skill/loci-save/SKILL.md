@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 7
+skill_version: 8
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, or topic — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 7`.
+This skill is at `skill_version: 8`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -134,11 +134,24 @@ If the user asks to save content with a type that is not a canonical type (canon
 1. Call `loci__read_meta(file="ontology-user")` to check if the type is already
    registered as a user extension.
 2. If found: proceed normally — the type is valid.
-3. If not found: call `loci__validate_type(name=<type>, extends=<canonical_parent>)`
-   to pre-flight the definition. Surface any errors to the user.
-   If valid, ask the user to confirm before writing the new type to
-   `ontology-user.yaml` via `loci__write_meta(file="ontology-user", content=<updated yaml>)`.
-   Then proceed with the save.
+3. If not found: ask the user which canonical type it extends and confirm the
+   description, then call `loci__define_type(name=<type>, extends=<canonical_parent>,
+   description=<description>)`. Surface any errors to the user.
+   On success, proceed with the save — the registry is updated automatically.
+
+**User-defined relations:**
+
+If the user wants to use a relation name that does not appear in the canonical or
+user relation dictionaries (call `loci__read_meta(file="relation-dictionary")` and
+`loci__read_meta(file="relation-dictionary-user")` to check):
+
+1. Ask the user to confirm the description and optionally a group label and inverse
+   relation name.
+2. Call `loci__define_relation(name=<relation>, description=<description>)` (add
+   `group` and `inverse_of` if provided). Surface any errors; treat warnings as
+   informational.
+3. On success, use the new relation name immediately — the registry is updated
+   automatically.
 
 **Language rule:**
 - `summary` is **always written in English** regardless of the body's language — it is the search bridge.

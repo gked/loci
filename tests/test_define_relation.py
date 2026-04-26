@@ -3,6 +3,7 @@ tests/test_define_relation.py
 Tests for api.define_relation — validate + write to relation-dictionary-user.yaml.
 """
 
+import os
 import shutil
 import yaml
 import pytest
@@ -153,7 +154,7 @@ def test_define_relation_asymmetric_inverse_warning(vault_with_meta):
 
 
 def test_define_relation_no_file_raises(tmp_path):
-    import os, api
+    import api
     vault = tmp_path / "vault"
     vault.mkdir()
     os.environ["LOCI_VAULT_ROOT"] = str(vault)
