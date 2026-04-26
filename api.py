@@ -27,6 +27,7 @@ from write_file import (
     check_duplicate as _check_duplicate,
 )
 from type_registry import get_registry
+from relation_registry import get_relation_registry
 import nx_graph as graph
 from vault_linter import lint_vault as _lint_vault
 import asset_registry as ar
@@ -337,6 +338,102 @@ def list_items(type: str = None) -> dict:
             continue
         result.setdefault(node_type, []).append(path.name)
     return result
+
+
+def _append_yaml_entry(path: Path, list_key: str, entry: dict) -> None:
+    """Append an entry to a YAML list file, preserving the comment header."""
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    header_end = 0
+    for i, line in enumerate(lines):
+        if line.startswith("#") or not line.strip():
+            header_end = i + 1
+        else:
+            break
+    header = "".join(lines[:header_end])
+    data = yaml.safe_load(text) or {list_key: []}
+    entries = list(data.get(list_key) or [])
+    entries.append(entry)
+    dumped = yaml.dump(
+        {list_key: entries},
+        default_flow_style=False,
+        allow_unicode=True,
+        sort_keys=False,
+    )
+    path.write_text(header + dumped, encoding="utf-8")
+
+
+def define_type(
+    name: str,
+    extends: str,
+    description: str,
+    fields: list[dict] = None,
+) -> dict:
+    """
+    Validate and append a new user-defined type to ontology-user.yaml.
+    Returns {"defined": True, "name": str, "extends": str} on success,
+    or {"defined": False, "errors": [...]} on validation failure.
+    """
+    from type_registry import reset_registry
+    vault_root = _vault_root()
+    result = get_registry(vault_root).validate_user_type(name, extends, fields)
+    if not result["valid"]:
+        return {"defined": False, "errors": result["errors"]}
+
+    user_path = vault_root / "meta" / "ontology-user.yaml"
+    if not user_path.exists():
+        raise FileNotFoundError(f"User ontology not found: {user_path}")
+
+    entry: dict = {"name": name, "extends": extends, "description": description}
+    if fields:
+        field_list = [
+            {k: v for k, v in {
+                "name": f["name"],
+                "type": f.get("type", "string"),
+                "values": f.get("values"),
+            }.items() if v is not None}
+            for f in fields
+        ]
+        if field_list:
+            entry["fields"] = {"optional": field_list}
+
+    _append_yaml_entry(user_path, "types", entry)
+    reset_registry()
+    return {"defined": True, "name": name, "extends": extends}
+
+
+def define_relation(
+    name: str,
+    description: str,
+    group: str = "",
+    inverse_of: str = None,
+) -> dict:
+    """
+    Validate and append a new user-defined relation to relation-dictionary-user.yaml.
+    Returns {"defined": True, "name": str, "warnings": [...]} on success,
+    or {"defined": False, "errors": [...], "warnings": [...]} on failure.
+    """
+    from relation_registry import reset_relation_registry
+    vault_root = _vault_root()
+    result = get_relation_registry(vault_root).validate_user_relation(
+        name, group=group, description=description, inverse_of=inverse_of
+    )
+    if not result["valid"]:
+        return {"defined": False, "errors": result["errors"], "warnings": result["warnings"]}
+
+    user_path = vault_root / "meta" / "relation-dictionary-user.yaml"
+    if not user_path.exists():
+        raise FileNotFoundError(f"User relation dictionary not found: {user_path}")
+
+    entry: dict = {"name": name, "description": description}
+    if group:
+        entry["group"] = group
+    if inverse_of:
+        entry["inverse_of"] = inverse_of
+
+    _append_yaml_entry(user_path, "relations", entry)
+    reset_relation_registry()
+    return {"defined": True, "name": name, "warnings": result["warnings"]}
 
 
 def _app_version() -> str:

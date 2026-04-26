@@ -295,6 +295,67 @@ def validate_type(name: str, extends: str, fields: list[dict] = None) -> dict:
 
 
 @mcp.tool()
+def define_type(
+    name: str,
+    extends: str,
+    description: str,
+    fields: list[dict] = None,
+) -> dict:
+    """
+    Define a new user type and append it to ontology-user.yaml.
+    Returns {"defined": true, "name": str, "extends": str} on success,
+    or {"defined": false, "errors": [...]} if validation fails.
+
+    Rules enforced before writing:
+      - name must not collide with any canonical or existing user type
+      - extends must name a canonical type (one level only — no extending user types)
+      - all user-defined fields are optional; inherited fields cannot be redefined
+      - field type must be one of: string | array | datetime | enum | boolean
+
+    Args:
+        name:        New type name (lowercase, hyphenated)
+        extends:     Canonical parent type (document, article, task, procedure, etc.)
+        description: Short description of what this type represents
+        fields:      Optional extra fields: [{name, type, values?}].
+                     Omit 'values' for non-enum fields.
+    """
+    try:
+        return loci.define_type(name, extends, description, fields)
+    except (FileNotFoundError, ValueError) as e:
+        return {"defined": False, "errors": [str(e)]}
+
+
+@mcp.tool()
+def define_relation(
+    name: str,
+    description: str,
+    group: str = "",
+    inverse_of: str = None,
+) -> dict:
+    """
+    Define a new user relation and append it to relation-dictionary-user.yaml.
+    Returns {"defined": true, "name": str, "warnings": [...]} on success,
+    or {"defined": false, "errors": [...], "warnings": [...]} if validation fails.
+
+    Rules enforced before writing:
+      - name must not collide with any canonical or existing user relation
+
+    If inverse_of is provided and names an unknown relation, a warning is returned
+    (not an error) — the inverse may be defined in a subsequent call.
+
+    Args:
+        name:        New relation name (lowercase, hyphenated)
+        description: What this relation means; include directionality in the wording
+        group:       Optional group label (e.g. "entity", "semantic", "custom")
+        inverse_of:  Optional name of the inverse relation
+    """
+    try:
+        return loci.define_relation(name, description, group, inverse_of)
+    except (FileNotFoundError, ValueError) as e:
+        return {"defined": False, "errors": [str(e)], "warnings": []}
+
+
+@mcp.tool()
 def lint_vault() -> dict:
     """
     Lint all vault files against the Loci schema.

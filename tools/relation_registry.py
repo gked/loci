@@ -120,6 +120,45 @@ class RelationRegistry:
     def warnings(self) -> list[str]:
         return list(self._warnings)
 
+    def validate_user_relation(
+        self,
+        name: str,
+        group: str = "",
+        description: str = "",
+        inverse_of: Optional[str] = None,
+    ) -> dict:
+        """
+        Validate a proposed user relation definition without writing anything.
+        Returns {"valid": bool, "errors": [...], "warnings": [...]}.
+        """
+        errors: list[str] = []
+        warnings: list[str] = []
+
+        name = (name or "").strip()
+        if not name:
+            errors.append("'name' is required and must not be empty")
+            return {"valid": False, "errors": errors, "warnings": warnings}
+
+        if name in self._canonical_names:
+            errors.append(f"'{name}' collides with a canonical relation")
+        elif name in self._relations:
+            errors.append(f"'{name}' collides with an existing user-defined relation")
+
+        if inverse_of is not None:
+            if inverse_of not in self._relations:
+                warnings.append(
+                    f"'inverse_of' names '{inverse_of}' which is not yet a known relation"
+                )
+            else:
+                inv_def = self._relations[inverse_of]
+                if inv_def.inverse_of and inv_def.inverse_of != name:
+                    warnings.append(
+                        f"'{inverse_of}' declares inverse_of='{inv_def.inverse_of}', "
+                        f"not '{name}' — inverse pair is asymmetric"
+                    )
+
+        return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
