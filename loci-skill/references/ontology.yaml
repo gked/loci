@@ -16,6 +16,7 @@ base_fields:
     - type
     - title
     - author
+    - state
     - created_at
     - updated_at
     - archived_at

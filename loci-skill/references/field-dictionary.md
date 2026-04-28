@@ -57,6 +57,18 @@ description: >
   ["Black Moon"] for an article titled "Чёрная луна".
   Also used for abbreviations and alternate spellings.
 
+field: state
+type: enum
+values: active | archived
+required: yes
+description: >
+  Lifecycle state of the node. active nodes appear in all graph queries and
+  searches by default. archived nodes are invisible to the graphing layer
+  unless the user explicitly requests them (e.g. "show archived tasks").
+  Defaults to active on creation. To archive: patch state to archived and
+  set archived_at to the current timestamp. To unarchive: patch state to
+  active and set archived_at to null.
+
 field: created_at
 type: datetime
 required: yes

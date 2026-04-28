@@ -38,11 +38,15 @@ from relation_registry import RelationRegistry, get_relation_registry
 
 BASE_REQUIRED = [
     "uid", "type", "title", "author",
+    "state",
     "created_at", "updated_at",
     "archived_at",
     "tags", "domains", "summary",
     "relations", "references",
 ]
+
+# TODO: derive BASE_STATE_VALUES from ontology.yaml once the loader supports enum extraction
+BASE_STATE_VALUES = {"active", "archived"}
 
 UID_RE = re.compile(r"^[0-9a-f]{8}$")
 
@@ -121,6 +125,19 @@ def lint_file(
         if f not in fm:
             issues.append(LintIssue(name, "error", "missing-field",
                 f"Missing required field '{f}'"))
+
+    # base state enum check
+    state_val = fm.get("state")
+    if state_val is not None and state_val not in BASE_STATE_VALUES:
+        issues.append(LintIssue(name, "error", "invalid-enum",
+            f"'state' value '{state_val}' is not valid — "
+            f"expected one of: {sorted(BASE_STATE_VALUES)}"))
+
+    # archived_at consistency: archived nodes should record when they were archived
+    if state_val == "archived" and not fm.get("archived_at"):
+        issues.append(LintIssue(name, "warning", "missing-archived-at",
+            "Node has 'state: archived' but 'archived_at' is not set — "
+            "set archived_at to an ISO 8601 timestamp when archiving"))
 
     # type-specific required fields
     for field_def in type_def.required_fields:

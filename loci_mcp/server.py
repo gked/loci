@@ -420,6 +420,7 @@ def find_nodes(
     type: str = None,
     tag: str = None,
     status: str = None,
+    state: str | None = "active",
     due_before: str = None,
     due_after: str = None,
     created_after: str = None,
@@ -429,12 +430,14 @@ def find_nodes(
 ) -> list[dict]:
     """
     Find vault nodes matching any combination of filters. At least one should be provided.
-    Each entry: {uid, title, type, path, status, due_date, language}.
+    Each entry: {uid, title, type, path, state, status, due_date, language}.
 
     Args:
         type: Node type (task, book, project, note, …)
         tag: Tag value — node must include this tag
         status: Exact status match (open, done, archived, …)
+        state: Lifecycle state filter — "active" (default) excludes archived nodes;
+               pass "archived" to see only archived nodes, or None to see all.
         due_before: ISO date (YYYY-MM-DD) — nodes whose due_date <= this value
         due_after:  ISO date (YYYY-MM-DD) — nodes whose due_date >= this value
         created_after:  ISO date — nodes created on or after this date
@@ -447,6 +450,7 @@ def find_nodes(
         node_type=type,
         tag=tag,
         status=status,
+        state=state,
         due_before=due_before,
         due_after=due_after,
         created_after=created_after,
@@ -457,14 +461,19 @@ def find_nodes(
 
 
 @mcp.tool()
-def search_vault(query: str) -> list[dict]:
+def search_vault(query: str, state: str | None = "active") -> list[dict]:
     """
     Search vault nodes by title and summary text (case-insensitive substring match).
     Use this to find a node when you know a keyword but not the exact title or uid.
     Each entry: {uid, title, type, path, summary}.
+
+    Args:
+        query: Keyword to search for (case-insensitive substring match)
+        state: Lifecycle state filter — "active" (default) excludes archived nodes;
+               pass "archived" to search only archived nodes, or None to search all.
     """
     graph.get(loci._vault_root())
-    return graph.search(query)
+    return graph.search(query, state=state)
 
 
 @mcp.tool()
@@ -481,7 +490,7 @@ def resolve_asset(uid: str, format: str = None) -> dict:
 
 
 @mcp.tool()
-def query_recent(days: int = 30, limit: int = 20) -> list[dict]:
+def query_recent(days: int = 30, limit: int = 20, state: str | None = "active") -> list[dict]:
     """
     Return the most recently updated vault nodes.
     Use for "what have I been thinking about lately?" queries.
@@ -490,9 +499,11 @@ def query_recent(days: int = 30, limit: int = 20) -> list[dict]:
     Args:
         days: Look-back window in days (default 30)
         limit: Maximum number of results to return (default 20)
+        state: Lifecycle state filter — "active" (default) excludes archived nodes;
+               pass "archived" to see only archived nodes, or None to see all.
     """
     graph.get(loci._vault_root())
-    return graph.recent(days, limit)
+    return graph.recent(days, limit, state=state)
 
 
 @mcp.tool()

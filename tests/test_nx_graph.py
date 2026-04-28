@@ -20,7 +20,7 @@ import nx_graph as g
 def _node_attrs(**overrides) -> dict:
     base = dict(
         type="document", title="", tags=[], domains=[], summary="",
-        language="", aliases=[], path="", status="",
+        language="", aliases=[], path="", state="active", status="",
         due_date="", created_at="", updated_at="",
     )
     base.update(overrides)
@@ -426,7 +426,44 @@ def test_find_updated_after_filter(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# search — alias match, null graph
+# find — state filter
+# ---------------------------------------------------------------------------
+
+def test_find_default_excludes_archived(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("s001", **_node_attrs(title="Active Doc", state="active"))
+    dg.add_node("s002", **_node_attrs(title="Old Doc", state="archived"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.find(node_type="document")
+    uids = [r["uid"] for r in result]
+    assert "s001" in uids
+    assert "s002" not in uids
+
+
+def test_find_state_archived_returns_only_archived(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("s001", **_node_attrs(title="Active Doc", state="active"))
+    dg.add_node("s002", **_node_attrs(title="Old Doc", state="archived"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.find(state="archived")
+    uids = [r["uid"] for r in result]
+    assert "s002" in uids
+    assert "s001" not in uids
+
+
+def test_find_state_none_returns_all(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("s001", **_node_attrs(title="Active Doc", state="active"))
+    dg.add_node("s002", **_node_attrs(title="Old Doc", state="archived"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.find(state=None)
+    uids = [r["uid"] for r in result]
+    assert "s001" in uids
+    assert "s002" in uids
+
+
+# ---------------------------------------------------------------------------
+# search — alias match, null graph, state filter
 # ---------------------------------------------------------------------------
 
 def test_search_null_graph_returns_empty(null_graph):
@@ -443,6 +480,39 @@ def test_search_alias_match(monkeypatch):
     monkeypatch.setattr(g, "_graph", dg)
     result = g.search("deep learning")
     assert any(r["uid"] == "a001" for r in result)
+
+
+def test_search_excludes_archived_by_default(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("q001", **_node_attrs(title="Active Note", state="active"))
+    dg.add_node("q002", **_node_attrs(title="Archived Note", state="archived"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.search("note")
+    uids = [r["uid"] for r in result]
+    assert "q001" in uids
+    assert "q002" not in uids
+
+
+def test_search_state_archived_returns_only_archived(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("q001", **_node_attrs(title="Active Note", state="active"))
+    dg.add_node("q002", **_node_attrs(title="Archived Note", state="archived"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.search("note", state="archived")
+    uids = [r["uid"] for r in result]
+    assert "q002" in uids
+    assert "q001" not in uids
+
+
+def test_search_state_none_returns_all(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("q001", **_node_attrs(title="Active Note", state="active"))
+    dg.add_node("q002", **_node_attrs(title="Archived Note", state="archived"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.search("note", state=None)
+    uids = [r["uid"] for r in result]
+    assert "q001" in uids
+    assert "q002" in uids
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +596,32 @@ def test_recent_days_zero_includes_today(monkeypatch):
     assert any(r["uid"] == "r007" for r in result)
 
 
+def test_recent_excludes_archived_by_default(monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    recent_date = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    dg = nx.DiGraph()
+    dg.add_node("r008", **_node_attrs(title="Active Node", updated_at=recent_date, state="active"))
+    dg.add_node("r009", **_node_attrs(title="Archived Node", updated_at=recent_date, state="archived"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.recent(days=30)
+    uids = [r["uid"] for r in result]
+    assert "r008" in uids
+    assert "r009" not in uids
+
+
+def test_recent_state_none_returns_all(monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    recent_date = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    dg = nx.DiGraph()
+    dg.add_node("r010", **_node_attrs(title="Active Node", updated_at=recent_date, state="active"))
+    dg.add_node("r011", **_node_attrs(title="Archived Node", updated_at=recent_date, state="archived"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.recent(days=30, state=None)
+    uids = [r["uid"] for r in result]
+    assert "r010" in uids
+    assert "r011" in uids
+
+
 # ---------------------------------------------------------------------------
 # insights
 # ---------------------------------------------------------------------------
@@ -588,3 +684,17 @@ def test_insights_respects_limit(monkeypatch):
     monkeypatch.setattr(g, "_graph", dg)
     result = g.insights(limit=3)
     assert len(result) == 3
+
+
+def test_insights_excludes_archived_nodes(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("i009", **_node_attrs(title="Active Bridge", domains=["technology-engineering"], state="active"))
+    dg.add_node("i010", **_node_attrs(title="Archived Bridge", domains=["technology-engineering"], state="archived"))
+    dg.add_node("i011", **_node_attrs(title="Other", domains=["personal-development"]))
+    dg.add_edge("i009", "i011", rel_type="relates-to")
+    dg.add_edge("i010", "i011", rel_type="relates-to")
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.insights()
+    uids = [r["uid"] for r in result]
+    assert "i009" in uids
+    assert "i010" not in uids

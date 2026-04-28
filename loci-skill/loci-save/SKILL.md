@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 8
+skill_version: 9
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, or topic — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 8`.
+This skill is at `skill_version: 9`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -375,6 +375,36 @@ Confirm to the user:
 Updated: <path>
 Changed: <list of field names>
 ```
+
+---
+
+### Archiving and unarchiving
+
+**To archive a node** (hide it from graph queries and search by default):
+
+```python
+loci__patch_vault(path=<path>, updates={
+    "state": "archived",
+    "archived_at": "<ISO 8601 timestamp>",
+})
+```
+
+Archived nodes are invisible to `loci__find_nodes` (which defaults to `state="active"`)
+and to `loci__search_vault`. The user must explicitly ask to see archived content.
+
+**To unarchive a node** (restore it to the active graph):
+
+```python
+loci__patch_vault(path=<path>, updates={
+    "state": "active",
+    "archived_at": None,
+})
+```
+
+**Note:** `state` is distinct from type-specific `status` fields (e.g. `document.status`,
+`task.status`). A task can be `status: done` and `state: active` (visible but finished),
+or `state: archived` (hidden from the graph entirely). Archive when the node is no longer
+relevant to day-to-day use, not just when its workflow is complete.
 
 ---
 

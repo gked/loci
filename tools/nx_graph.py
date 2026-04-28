@@ -93,6 +93,7 @@ def _build(vault_root: Path) -> nx.DiGraph:
             language=fm.get("language", ""),
             aliases=fm.get("aliases") or [],
             path=str(md_file),
+            state=fm.get("state", "active"),
             status=fm.get("status", ""),
             due_date=_date_str(fm.get("due_date")),
             created_at=_date_str(fm.get("created_at")),
@@ -262,6 +263,7 @@ def find(
     node_type: str = None,
     tag: str = None,
     status: str = None,
+    state: str = "active",
     due_before: str = None,
     due_after: str = None,
     created_after: str = None,
@@ -272,8 +274,10 @@ def find(
     """
     Filter nodes by any combination of supported attributes.
     All parameters are optional; at least one should be provided.
-    Returns list of {uid, title, type, path, status, due_date, language}.
+    Returns list of {uid, title, type, path, state, status, due_date, language}.
 
+    state defaults to "active" — archived nodes are excluded unless state="archived"
+    is passed explicitly. Pass state=None to include all nodes regardless of state.
     Date parameters accept ISO date strings (YYYY-MM-DD).
     related_to: uid — only return nodes connected to this uid by any edge.
     """
@@ -296,6 +300,8 @@ def find(
         if tag and tag not in (attrs.get("tags") or []):
             continue
         if status and attrs.get("status") != status:
+            continue
+        if state is not None and attrs.get("state", "active") != state:
             continue
         if language and attrs.get("language") != language:
             continue
@@ -321,6 +327,7 @@ def find(
             "title": attrs.get("title", ""),
             "type": attrs.get("type", ""),
             "path": attrs.get("path", ""),
+            "state": attrs.get("state", "active"),
             "status": attrs.get("status", ""),
             "due_date": attrs.get("due_date", ""),
             "language": attrs.get("language", ""),
@@ -328,11 +335,14 @@ def find(
     return sorted(result, key=lambda x: x["title"])
 
 
-def recent(days: int = 30, limit: int = 20) -> list[dict]:
+def recent(days: int = 30, limit: int = 20, state: str = "active") -> list[dict]:
     """
     Return the most recently updated vault nodes within the last N days.
     Sorted by updated_at descending. Nodes without updated_at are excluded.
     Returns list of {uid, title, type, path, updated_at, status}.
+
+    state defaults to "active" — archived nodes are excluded unless state="archived"
+    is passed explicitly. Pass state=None to include all nodes regardless of state.
     """
     g = _graph
     if g is None:
@@ -341,6 +351,8 @@ def recent(days: int = 30, limit: int = 20) -> list[dict]:
     cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     result = []
     for uid, attrs in g.nodes(data=True):
+        if state is not None and attrs.get("state", "active") != state:
+            continue
         updated = attrs.get("updated_at", "")
         if updated and updated[:10] >= cutoff_date:
             result.append({
@@ -367,6 +379,8 @@ def insights(limit: int = 10) -> list[dict]:
 
     result = []
     for uid, attrs in g.nodes(data=True):
+        if attrs.get("state", "active") != "active":
+            continue
         own_domains = set(attrs.get("domains") or [])
         if not own_domains:
             continue
@@ -391,10 +405,13 @@ def insights(limit: int = 10) -> list[dict]:
     return result[:limit]
 
 
-def search(query: str) -> list[dict]:
+def search(query: str, state: str = "active") -> list[dict]:
     """
     Case-insensitive substring search across node titles and summaries.
     Returns list of {uid, title, type, path, summary}.
+
+    state defaults to "active" — archived nodes are excluded unless state="archived"
+    is passed explicitly. Pass state=None to include all nodes regardless of state.
     """
     g = _graph
     if g is None:
@@ -403,6 +420,8 @@ def search(query: str) -> list[dict]:
     q = query.lower()
     result = []
     for uid, attrs in g.nodes(data=True):
+        if state is not None and attrs.get("state", "active") != state:
+            continue
         title = attrs.get("title", "")
         summary = attrs.get("summary", "") or ""
         aliases = attrs.get("aliases") or []

@@ -109,6 +109,19 @@ def test_write_item_invalid_type_raises(tmp_vault):
         write_item(type="banana", title="T", body="", skip_duplicate_check=True)
 
 
+def test_write_item_sets_state_active(tmp_vault):
+    result = write_item(
+        type="document",
+        title="State Test",
+        body="",
+        extra_fields={"status": "draft"},
+        skip_duplicate_check=True,
+    )
+    raw = Path(result["path"]).read_text(encoding="utf-8")
+    fm = yaml.safe_load(raw.split("---", 2)[1])
+    assert fm["state"] == "active"
+
+
 # ---------------------------------------------------------------------------
 # patch_item
 # ---------------------------------------------------------------------------
@@ -195,6 +208,23 @@ def test_patch_item_returns_metadata(tmp_vault):
     assert result["title"] == "New Title"
     assert result["type"] == "document"
     assert result["path"] == str(p)
+
+
+def test_patch_item_datetime_strings_preserved(tmp_vault):
+    """yaml.safe_load parses bare datetime values as Python datetime objects;
+    patch_item must convert them back to ISO strings before writing."""
+    p = tmp_vault / "datetime-test.md"
+    # Write timestamps without quotes so yaml.safe_load will parse them as datetime objects
+    p.write_text(
+        "---\nuid: dt000001\ntype: document\ntitle: DT Test\n"
+        "created_at: 2026-01-01T00:00:00Z\nupdated_at: 2026-01-01T00:00:00Z\n---\n\nBody.",
+        encoding="utf-8",
+    )
+    patch_item(str(p), {"title": "Patched"})
+    raw = p.read_text(encoding="utf-8")
+    fm = yaml.safe_load(raw.split("---", 2)[1])
+    assert isinstance(fm["created_at"], str), "created_at should be a string, not a datetime object"
+    assert fm["created_at"] == "2026-01-01T00:00:00Z"
 
 
 # ---------------------------------------------------------------------------

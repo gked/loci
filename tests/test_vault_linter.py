@@ -41,6 +41,7 @@ def _valid_task(uid: str = "aabb1122") -> dict:
         "type": "task",
         "title": "Do something",
         "author": "self",
+        "state": "active",
         "created_at": "2026-01-01T00:00:00Z",
         "updated_at": "2026-01-01T00:00:00Z",
         "archived_at": None,
@@ -204,6 +205,7 @@ def test_invalid_entity_subtype(tmp_path, registry):
         "type": "entity",
         "title": "Someone",
         "author": "self",
+        "state": "active",
         "created_at": "2026-01-01T00:00:00Z",
         "updated_at": "2026-01-01T00:00:00Z",
         "archived_at": None,
@@ -330,3 +332,67 @@ def test_lint_vault_counts_files_without_frontmatter(tmp_path):
     result = lint_vault(tmp_path)
     assert result["stats"]["files_checked"] == 1
     assert any(i["code"] == "no-frontmatter" for i in result["errors"])
+
+
+# ---------------------------------------------------------------------------
+# lint_file — state field checks
+# ---------------------------------------------------------------------------
+
+def test_missing_state_field(tmp_path, registry):
+    fm = _valid_task()
+    del fm["state"]
+    p = _write(tmp_path, "f.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    errors = [i for i in issues if i.code == "missing-field"]
+    assert any("state" in i.message for i in errors)
+
+
+def test_valid_state_active(tmp_path, registry):
+    fm = _valid_task()
+    fm["state"] = "active"
+    p = _write(tmp_path, "f.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    assert not any(i.code == "invalid-enum" and "state" in i.message for i in issues)
+
+
+def test_valid_state_archived(tmp_path, registry):
+    fm = _valid_task()
+    fm["state"] = "archived"
+    p = _write(tmp_path, "f.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    assert not any(i.code == "invalid-enum" and "state" in i.message for i in issues)
+
+
+def test_invalid_state_value(tmp_path, registry):
+    fm = _valid_task()
+    fm["state"] = "deleted"
+    p = _write(tmp_path, "f.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    assert any(i.code == "invalid-enum" and "state" in i.message for i in issues)
+
+
+def test_archived_without_archived_at_warns(tmp_path, registry):
+    fm = _valid_task()
+    fm["state"] = "archived"
+    fm["archived_at"] = None
+    p = _write(tmp_path, "f.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    assert any(i.code == "missing-archived-at" for i in issues)
+
+
+def test_archived_with_archived_at_no_warn(tmp_path, registry):
+    fm = _valid_task()
+    fm["state"] = "archived"
+    fm["archived_at"] = "2026-01-01T00:00:00Z"
+    p = _write(tmp_path, "f.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    assert not any(i.code == "missing-archived-at" for i in issues)
+
+
+def test_active_state_no_archived_at_warn(tmp_path, registry):
+    fm = _valid_task()
+    fm["state"] = "active"
+    fm["archived_at"] = None
+    p = _write(tmp_path, "f.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    assert not any(i.code == "missing-archived-at" for i in issues)

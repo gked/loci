@@ -41,7 +41,9 @@ Identify which mode fits the user's request, then follow that workflow.
 
 Use when the user names a specific topic, person, project, or concept.
 
-1. Call `loci__search_vault(query=<keyword>)` to find matching nodes.
+1. Call `loci__search_vault(query=<keyword>)` to find matching nodes. By default this
+   searches only active nodes; pass `state="archived"` to search archived content or
+   `state=None` to search everything.
 2. If multiple results: present the list and ask which one (or "all of them").
 3. For each target node: call `loci__read_vault(path=<path>)` to read the full content.
 4. Call `loci__query_neighbors(uid=<uid>)` to surface direct connections with their relation types and directions.
@@ -61,6 +63,9 @@ Use when the user wants a list filtered by one or more attributes.
 - `type` — node type (task, book, note, project, …)
 - `tag` — node must include this tag
 - `status` — exact match (open, done, archived, …)
+- `state` — lifecycle visibility; defaults to `"active"` (archived nodes are excluded
+  automatically). Pass `state="archived"` to show only archived nodes. Pass `state=None`
+  to include all nodes regardless of state.
 - `due_before` / `due_after` — ISO date strings (YYYY-MM-DD)
 - `created_after` / `updated_after` — ISO date strings
 - `related_to` — UID; only return nodes connected to this node by any edge

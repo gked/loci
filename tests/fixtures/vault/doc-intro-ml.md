@@ -3,19 +3,21 @@ uid: srch0002
 type: document
 title: Introduction to Machine Learning
 author: self
-created_at: 2026-01-05T00:00:00Z
-updated_at: 2026-01-05T00:00:00Z
+state: active
+created_at: '2026-01-05T00:00:00Z'
+updated_at: '2026-01-05T00:00:00Z'
 archived_at: null
 tags:
-  - ml
+- ml
 domains:
-  - technology-engineering
+- technology-engineering
 summary: |
   A gentle introduction to machine learning concepts, covering supervised
   learning, feature engineering, model evaluation, and bias-variance trade-off.
 relations: []
 references: []
 ---
+
 
 ## Introduction to Machine Learning
 

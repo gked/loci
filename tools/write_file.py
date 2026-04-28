@@ -184,6 +184,7 @@ def write_item(
         "type": type,
         "title": title,
         "author": author,
+        "state": "active",
         "created_at": now,
         "updated_at": now,
         "archived_at": None,
@@ -267,6 +268,12 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
     fm.update(updates)
     fm["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    # yaml.safe_load converts datetime strings to Python datetime objects; convert
+    # them back to strings so yaml.dump preserves the canonical YYYY-MM-DDTHH:MM:SSZ format.
+    for key, val in fm.items():
+        if isinstance(val, datetime):
+            fm[key] = val.strftime("%Y-%m-%dT%H:%M:%SZ")
+
     final_body = body if body is not None else existing_body
     content = serialize_frontmatter(fm) + "\n" + final_body
     p.write_text(content, encoding="utf-8")
@@ -276,6 +283,7 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
         "path": str(p),
         "type": fm.get("type"),
         "title": fm.get("title"),
+        "state": fm.get("state", "active"),
         "relations": fm.get("relations") or [],
         "tags": fm.get("tags") or [],
         "domains": fm.get("domains") or [],

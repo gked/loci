@@ -3,18 +3,20 @@ uid: dup00002
 type: document
 title: Knowledge Graph Design Patterns
 author: self
-created_at: 2026-01-08T00:00:00Z
-updated_at: 2026-01-08T00:00:00Z
+state: active
+created_at: '2026-01-08T00:00:00Z'
+updated_at: '2026-01-08T00:00:00Z'
 archived_at: null
 tags: []
 domains:
-  - technology-engineering
+- technology-engineering
 summary: |
   Design patterns and best practices for building knowledge graph systems,
   including reification, named graphs, and versioning strategies.
 relations: []
 references: []
 ---
+
 
 ## Knowledge Graph Design Patterns
 

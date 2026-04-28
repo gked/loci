@@ -99,6 +99,7 @@ def save(
             tags=tags or [],
             domains=domains or [],
             summary=summary or "",
+            state="active",
             path=result["path"],
         )
         graph.index_edges(result["uid"], relations or [])
@@ -149,6 +150,7 @@ def patch(path: str, updates: dict, body: str = None) -> dict:
             tags=result.get("tags", []),
             domains=result.get("domains", []),
             summary=result.get("summary", ""),
+            state=result.get("state", "active"),
             path=str(p),
         )
         graph.index_edges(result["uid"], result.get("relations", []))
@@ -305,6 +307,7 @@ def save_asset(
         tags=tags or [],
         domains=domains or [],
         summary=summary or "",
+        state="active",
         path=result["path"],
     )
     graph.index_edges(uid, relations or [])

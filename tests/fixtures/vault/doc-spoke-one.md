@@ -3,8 +3,9 @@ uid: spoke001
 type: document
 title: Spoke Document One
 author: self
-created_at: 2026-01-01T00:00:00Z
-updated_at: 2026-01-01T00:00:00Z
+state: active
+created_at: '2026-01-01T00:00:00Z'
+updated_at: '2026-01-01T00:00:00Z'
 archived_at: null
 tags: []
 domains: []
@@ -14,6 +15,7 @@ summary: |
 relations: []
 references: []
 ---
+
 
 ## Spoke Document One
 
