@@ -36,9 +36,9 @@ def scan_stage(stage_root: Path) -> dict:
     files_dir = stage_root / "files"
     unresolved_dir = stage_root / "unresolved"
 
-    # --- Scan loci-stage/files/ ---
+    # --- Scan loci-stage/files/ (recurses into subdirectories) ---
     if files_dir.exists() and files_dir.is_dir():
-        for f in sorted(files_dir.iterdir()):
+        for f in sorted(files_dir.rglob("*")):
             if not f.is_file():
                 continue
             if f.name.startswith("."):

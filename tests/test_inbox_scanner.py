@@ -183,3 +183,18 @@ def test_azw3_classifies_as_ebook(stage_root):
     result = scanner.scan_stage(stage_root)
     assert len(result["items"]) == 1
     assert result["items"][0]["subtype"] == "book"
+
+
+def test_nested_folders_in_files_dir_are_scanned(stage_root):
+    """Books in subdirectories of loci-stage/files/ are discovered recursively."""
+    subdir = stage_root / "files" / "Fantasy"
+    subdir.mkdir()
+    (subdir / "book.epub").write_bytes(b"fake epub")
+    deep = subdir / "Series"
+    deep.mkdir()
+    (deep / "part2.epub").write_bytes(b"fake epub")
+    result = scanner.scan_stage(stage_root)
+    paths = [it["path"] for it in result["items"]]
+    assert "files/Fantasy/book.epub" in paths
+    assert "files/Fantasy/Series/part2.epub" in paths
+    assert len(result["items"]) == 2
