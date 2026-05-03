@@ -138,10 +138,12 @@ Pull the vault from the remote on first setup:
 ```
 
 
-### 4. Install the Loci skill in Claude Code
+### 4. Install the Loci skills in Claude Code
 
 ```bash
 cp -r loci-skill/loci-save/ ~/.claude/skills/loci-save/
+cp -r loci-skill/loci-query/ ~/.claude/skills/loci-query/
+cp -r loci-skill/loci-inbox/ ~/.claude/skills/loci-inbox/
 ```
 
 ### 5. Restart the MCP server
@@ -196,6 +198,26 @@ Save this entity: John Smith, CEO at Acme Corp
 
 Claude will classify the type, generate frontmatter, suggest entity links, and write the file.
 
+### Library
+
+Track your ebook library as a knowledge graph. Books are saved as `asset` nodes; each time you read one, a `reading-log` captures your notes, highlights, and rating — separately per reading, so re-reads are tracked independently.
+
+```
+Save this ebook to my library: Thinking, Fast and Slow by Kahneman
+Log a reading: I finished The Name of the Rose — 5/5, started March 1st
+What do I know about stoicism? (finds books, reading logs, and connected topics)
+```
+
+### Inbox
+
+Drop files into `loci-stage/` and run the inbox skill to process them in batches:
+
+```
+Process my inbox
+```
+
+The agent scans the staging folder, presents a plan with cost/time estimates, waits for your approval, then ingests files in configurable batch sizes (default: 50 ebooks per run, 10 text items per run — adjust `DEFAULT_BUDGET_FILES` / `DEFAULT_BUDGET_CONTENT` in `tools/inbox_plan.py`). Progress is saved to `.inbox-plan.yaml` so sessions can be interrupted and resumed.
+
 ---
 
 ## Project Structure
@@ -208,9 +230,12 @@ loci/
       SKILL.md                    ← Claude's instructions for saving content
     loci-query/
       SKILL.md                    ← Claude's instructions for querying content
+    loci-inbox/
+      SKILL.md                    ← Claude's instructions for processing loci-stage/
     references/
       ontology.yaml               ← machine-readable type system (TypeRegistry source)
-      ontology-user.yaml          ← user-defined type extensions (never reseeded)
+      ontology-user.yaml          ← user-defined type extensions (seeded once, user-owned)
+                                    includes: reading-log (extends document)
       type-dictionary.md          ← type selection guide (semantic; structure in ontology.yaml)
       field-dictionary.md         ← field guidance (semantic; structure in ontology.yaml)
       tag-dictionary.md           ← seed: initial tag vocabulary
@@ -228,6 +253,9 @@ loci/
     vault_init.py
     write_file.py
     asset_registry.py              ← asset resolve, register, find-unregistered, crash recovery
+    metadata_extractor.py          ← epub OPF parsing, PDF metadata, filename fallback
+    inbox_scanner.py               ← classify files in loci-stage/ by extension and location
+    inbox_plan.py                  ← read/write/update .inbox-plan.yaml work queue
   sync/
     rclone.conf.sample            ← rclone remote config template
     sync.sh                       ← push/pull/bisync wrapper
@@ -271,6 +299,7 @@ loci/
       tag-dictionary.md         ← freeform tag vocabulary         (schema_version: N)
       relation-dictionary.md    ← typed edge vocabulary           (schema_version: N)
       foreign-definitions.md    ← external source schemas         (schema_version: N)
+      ontology-user.yaml        ← user-defined type extensions    (user-owned)
 
   assets/                       ← binary/rich files (HTML, PDF, PNG, etc.)
     <uid>.<ext>                 ← one file per asset, named by vault node UID
@@ -279,6 +308,11 @@ loci/
     <uid>.yaml                  ← one registry entry per asset (format, mime, locations)
     manifest.txt                ← flat list of all registered asset paths (one per line)
     .pending/                   ← intent files for crash recovery during writes
+
+  loci-stage/                   ← staging inbox — drop files here for batch ingestion
+    files/                      ← binary files (ebooks, PDFs) → ingested as asset nodes
+    unresolved/                 ← files the inbox agent couldn't classify automatically
+    .inbox-plan.yaml            ← work queue written by scan_inbox, consumed by execution
 ```
 
 Vault nodes reference assets by setting `has_asset: true`. The registry maps UIDs to physical
@@ -350,9 +384,10 @@ open /tmp/loci_topology.png
 - [x] Graph layer — NetworkX in-memory index for traversal and relationship queries
 - [x] loci-query skill — retrieve, relate, and summarize knowledge across vault nodes
 - [x] Asset registry — binary/rich file storage (HTML, PDF, PNG, etc.) with crash-safe write sequence, resolver, and startup recovery
+- [x] Library support — `asset` nodes with `subtype: book`; `reading-log` user type (one per reading, supports re-reads); Library topic structure
+- [x] Inbox — `loci-stage/` staging folder with two-phase scan → execute workflow, per-category budgets, resumable plan file
 
 ### Next
-- [ ] Testing suite — vault_init correctness, schema validation, duplicate detection, ingestion edge cases
 - [ ] Streamable HTTP transport (SSE is deprecated in MCP spec)
 
 ### Later

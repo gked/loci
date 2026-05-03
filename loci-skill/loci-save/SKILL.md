@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 9
+skill_version: 10
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, or topic — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 9`.
+This skill is at `skill_version: 10`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -104,6 +104,11 @@ frontmatter fields.
 - `entity` → set `subtype` field to person | organization | place — do NOT add as a tag
 - `procedure` → add domain tag: #recipe, #workout, #protocol, #playbook, #tutorial
 - `document` → add format tag if applicable: #essay, #spec, #design-doc, #meeting-notes, #journal, #note
+
+**Book & Library pattern:**
+- **Saving an ebook or book you own** → `asset`, `subtype: book`. Always add `#book` tag for findability. Add genre/subject tags as appropriate (e.g. `#fiction`, `#philosophy`, `#technical`).
+- **Recording a reading** → `reading-log` (user-defined type extending `document`). Required: `read_status` (in-progress | finished | abandoned). Link to the book asset via `is-based-on` relation. Set `source_url` only when the source is not already an asset in the vault (e.g. a web read or a file not yet ingested). One `reading-log` per reading — create a new one for re-reads.
+- **Library container** → a `topic` node titled "Library"; book assets use `belongs-to` → Library. Shelf subtopics (e.g. "To Read", "Philosophy") are optional children of Library linked the same way.
 
 ---
 

@@ -573,6 +573,120 @@ def save_asset(
         return {"error": str(e)}
 
 
+@mcp.tool()
+def scan_inbox() -> dict:
+    """
+    Phase 1 of the inbox workflow: scan loci-stage/, classify all files,
+    and write .inbox-plan.yaml. Read-only — no files are moved or vault nodes created.
+
+    Returns a summary: {status, total_files, total_content, total_unresolved,
+    runs_estimated, unresolved_items, plan_path}.
+
+    Call this before approve_inbox_plan(). If a plan already exists with pending
+    items, this overwrites it.
+    """
+    try:
+        return loci.scan_inbox()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def get_inbox_plan() -> dict:
+    """
+    Return the current inbox plan and progress.
+    Returns {status: 'no-plan'} if no plan exists.
+    Includes: status, budget_per_run, progress, next items in each category.
+    """
+    try:
+        return loci.get_inbox_plan()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def approve_inbox_plan() -> dict:
+    """
+    Approve the pending inbox plan to enable execution.
+    Must be called after scan_inbox() and before execute_inbox_file_batch()
+    or get_inbox_content_batch().
+    Returns the approved plan summary.
+    """
+    try:
+        return loci.approve_inbox_plan()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def execute_inbox_file_batch() -> dict:
+    """
+    Execute the next batch of file-category items from the approved plan.
+    Processes up to budget_per_run.files items. Each item: reads file from
+    loci-stage/files/, saves as an asset vault node (type=asset, subtype=book),
+    deletes the staging file, updates plan status.
+
+    Returns {processed: [{path, uid, title}], failed: [{path, error}], remaining: int}.
+    Plan must be approved before calling.
+    """
+    try:
+        return loci.execute_inbox_file_batch()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def get_inbox_content_batch() -> dict:
+    """
+    Return the next batch of content-category items for Claude to process.
+    Includes file content for text files. Claude should classify, summarize,
+    and call loci__write_vault for each, then call update_inbox_item() to
+    mark each as done.
+
+    Returns {items: [{path, type, content, ...}], remaining: int}.
+    Plan must be approved before calling.
+    """
+    try:
+        return loci.get_inbox_content_batch()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def update_inbox_item(path: str, status: str, uid: str = None) -> dict:
+    """
+    Update a content-category item's status after Claude processes it.
+    Call this after writing a vault node for a content item.
+
+    Args:
+        path: Relative path of the item within loci-stage (as it appears in the plan)
+        status: 'done' | 'failed' | 'skipped'
+        uid: UID of the created vault node (required when status='done')
+    """
+    try:
+        return loci.update_inbox_item(path, status, uid)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def resolve_inbox_item(path: str, action: str, type: str, subtype: str = None) -> dict:
+    """
+    Resolve an ambiguous/unresolved item in the inbox plan.
+    Moves it from the unresolved list to the items queue with the specified classification.
+
+    Args:
+        path: Relative path within loci-stage (as shown in unresolved list)
+        action: 'ingest-asset' | 'save-document' | 'save-content' | 'skip'
+        type: Vault node type (asset, document, article, bookmark, ...)
+        subtype: For asset nodes: book, visual, music, etc.
+    """
+    try:
+        return loci.resolve_inbox_item(path, action, type, subtype)
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def _make_auth_app(asgi_app):
     """
     Wrap an ASGI app with Bearer token auth when LOCI_TOKEN is set.

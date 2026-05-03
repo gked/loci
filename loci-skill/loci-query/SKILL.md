@@ -77,6 +77,12 @@ Use when the user wants a list filtered by one or more attributes.
 
 If the request is ambiguous (e.g. no type or tag inferable), ask before calling.
 
+**Library queries:**
+- All books: `find_nodes(type="asset", tag="book")`
+- All reading logs: `find_nodes(type="reading-log")`
+- Reading logs for a specific book: `query_neighbors(uid=<book_uid>)` — look for `reading-log` neighbors via `is-based-on` relation
+- In-progress reads: `find_nodes(type="reading-log")` then read each node to check `read_status` — `find_nodes` does not filter on custom fields like `read_status`
+
 ---
 
 ### Mode 3 — Neighborhood: "what's connected to X?" / "show me everything around Y"

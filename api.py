@@ -48,6 +48,11 @@ def _loci_root() -> Path:
     return _vault_root().parent
 
 
+def _stage_root() -> Path:
+    """Stage root is a sibling of vault root's parent — loci-stage/."""
+    return _vault_root().parent / "loci-stage"
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -241,10 +246,22 @@ def save_asset(
     tags: list = None,
     domains: list = None,
     relations: list = None,
+    node_type: str = "document",
+    subtype: str = None,
+    author: str = None,
+    published_at: str = None,
+    language: str = None,
 ) -> dict:
     """
     Save a new asset with its vault proxy node using the crash-safe write sequence.
     Returns {uid, asset_path, vault_path}.
+
+    Args:
+        node_type: Vault node type for the proxy node ('document' or 'asset').
+        subtype: For asset nodes — subtype field (e.g. 'book').
+        author: Author name (included in extra_fields for asset nodes).
+        published_at: Publication date string.
+        language: ISO 639-1 language code.
     """
     from slug import filename as make_filename
 
@@ -288,21 +305,39 @@ def save_asset(
     ar.append_manifest(loci_root, asset_rel_path)
 
     # Step 6: Write vault proxy node
+    extra_fields: dict = {"uid": uid, "has_asset": True, "status": "evergreen"}
+    if node_type == "asset":
+        if subtype:
+            extra_fields["subtype"] = subtype
+        extra_fields["storage"] = "digital"
+        if author:
+            extra_fields["author"] = author
+        if published_at:
+            extra_fields["published_at"] = published_at
+        if language:
+            extra_fields["language"] = language
+    else:
+        # For non-asset types, include author/language if provided
+        if author:
+            extra_fields["author"] = author
+        if language:
+            extra_fields["language"] = language
+
     with contextlib.redirect_stdout(io.StringIO()):
         result = _write_item(
-            type="document",
+            type=node_type,
             title=title,
             body=f"# {title}\n",
             tags=tags,
             domains=domains,
             summary=summary,
             relations=relations,
-            extra_fields={"uid": uid, "has_asset": True, "status": "evergreen"},
+            extra_fields=extra_fields,
             skip_duplicate_check=True,
         )
     graph.index_node(
         uid,
-        type="document",
+        type=node_type,
         title=title,
         tags=tags or [],
         domains=domains or [],
@@ -316,6 +351,274 @@ def save_asset(
     intent_path.unlink()
 
     return {"uid": uid, "asset_path": str(asset_final), "vault_path": result["path"]}
+
+
+# ---------------------------------------------------------------------------
+# Inbox API
+# ---------------------------------------------------------------------------
+
+def scan_inbox() -> dict:
+    """
+    Scan loci-stage/, classify files, write .inbox-plan.yaml.
+    Returns plan summary.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).parent / "tools"))
+    from inbox_scanner import scan_stage
+    from inbox_plan import write_plan
+
+    stage_root = _stage_root()
+    vault_root = _vault_root()
+
+    scan_result = scan_stage(stage_root)
+    items = scan_result["items"]
+    unresolved = scan_result["unresolved"]
+    summary = scan_result["summary"]
+    extraction_warnings = scan_result["extraction_warnings"]
+
+    plan = write_plan(stage_root, vault_root, items, unresolved)
+
+    result = {
+        "status": "pending",
+        "total_files": summary["total_files"],
+        "total_content": summary["total_content"],
+        "total_unresolved": summary["total_unresolved"],
+        "runs_estimated": summary["runs_estimated"],
+        "unresolved_items": unresolved,
+        "plan_path": str(stage_root / ".inbox-plan.yaml"),
+    }
+    if extraction_warnings:
+        result["extraction_warnings"] = extraction_warnings
+    return result
+
+
+def get_inbox_plan() -> dict:
+    """
+    Return current plan dict, or {'status': 'no-plan'} if none exists.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).parent / "tools"))
+    from inbox_plan import read_plan, get_pending_batch
+
+    stage_root = _stage_root()
+    plan = read_plan(stage_root)
+    if plan is None:
+        return {"status": "no-plan"}
+
+    budget = plan.get("budget_per_run", {})
+    file_batch = get_pending_batch(plan, "file", budget.get("files", 50))
+    content_batch = get_pending_batch(plan, "content", budget.get("content", 10))
+
+    return {
+        "status": plan.get("status"),
+        "budget_per_run": budget,
+        "progress": plan.get("progress"),
+        "next_file_items": file_batch[:3],   # preview only
+        "next_content_items": content_batch[:3],  # preview only
+        "total_unresolved": len(plan.get("unresolved", [])),
+    }
+
+
+def approve_inbox_plan() -> dict:
+    """
+    Set plan status to approved.
+    Raises ValueError if no plan or already in-progress/done.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).parent / "tools"))
+    from inbox_plan import approve_plan
+
+    stage_root = _stage_root()
+    return approve_plan(stage_root)
+
+
+def execute_inbox_file_batch() -> dict:
+    """
+    Process next file-category batch from approved plan.
+    For each item: read file from staging, save as asset node, delete staging file,
+    update plan item to done.
+    Returns {processed: [...], failed: [...], remaining: int}.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).parent / "tools"))
+    from inbox_plan import read_plan, get_pending_batch, update_item_status
+
+    stage_root = _stage_root()
+    vault_root = _vault_root()
+
+    plan = read_plan(stage_root)
+    if plan is None:
+        raise ValueError("No plan file found. Run scan_inbox first.")
+    if plan.get("status") not in ("approved", "in-progress"):
+        raise ValueError(
+            f"Plan is not approved. Current status: {plan.get('status')!r}. "
+            "Call approve_inbox_plan() first."
+        )
+
+    budget = plan.get("budget_per_run", {}).get("files", 50)
+    batch = get_pending_batch(plan, "file", budget)
+
+    # Check if a "Library" topic node exists
+    library_uid = None
+    try:
+        results = graph.search("Library")
+        for node in results:
+            if node.get("type") == "topic" and node.get("title", "").strip() == "Library":
+                library_uid = node.get("uid")
+                break
+    except Exception:
+        pass
+
+    processed = []
+    failed = []
+
+    for item in batch:
+        item_path = item.get("path", "")
+        file_path = stage_root / item_path
+
+        try:
+            if not file_path.exists():
+                raise FileNotFoundError(f"Staging file not found: {file_path}")
+
+            content = file_path.read_bytes()
+            title = item.get("title", file_path.stem)
+
+            tags = [item.get("subtype", "book")] if item.get("subtype") else ["book"]
+            domains = ["personal-library"]
+
+            relations = []
+            if library_uid:
+                relations = [{"uid": library_uid, "type": "belongs-to"}]
+
+            result = save_asset(
+                content=content,
+                format=item["format"],
+                mime_type=item["mime_type"],
+                title=title,
+                node_type="asset",
+                subtype=item.get("subtype", "book"),
+                author=item.get("author"),
+                language=item.get("language"),
+                tags=tags,
+                domains=domains,
+                relations=relations,
+            )
+
+            update_item_status(
+                stage_root,
+                item_path,
+                "done",
+                {"uid": result["uid"], "vault_path": result["vault_path"], "asset_path": result["asset_path"]},
+            )
+            # Delete staging file after plan is updated; if unlink fails the
+            # item is already marked done so a retry won't re-process it.
+            try:
+                file_path.unlink()
+            except OSError:
+                pass
+            processed.append({"path": item_path, "uid": result["uid"], "title": title})
+
+        except Exception as e:
+            try:
+                update_item_status(stage_root, item_path, "failed", {"error": str(e)})
+            except Exception:
+                pass
+            failed.append({"path": item_path, "error": str(e)})
+
+    # Count remaining
+    plan = read_plan(stage_root)
+    remaining = plan["progress"]["files"]["pending"] if plan else 0
+
+    return {"processed": processed, "failed": failed, "remaining": remaining}
+
+
+def get_inbox_content_batch() -> dict:
+    """
+    Return next content-category batch for Claude to process.
+    Reads each file's content (text files only).
+    Does NOT update plan status.
+    Returns {items: [...], remaining: int}.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).parent / "tools"))
+    from inbox_plan import read_plan, get_pending_batch
+
+    stage_root = _stage_root()
+
+    plan = read_plan(stage_root)
+    if plan is None:
+        raise ValueError("No plan file found. Run scan_inbox first.")
+    if plan.get("status") not in ("approved", "in-progress"):
+        raise ValueError(
+            f"Plan is not approved. Current status: {plan.get('status')!r}. "
+            "Call approve_inbox_plan() first."
+        )
+
+    budget = plan.get("budget_per_run", {}).get("content", 10)
+    batch = get_pending_batch(plan, "content", budget)
+
+    items_with_content = []
+    for item in batch:
+        item_path = item.get("path", "")
+        file_path = stage_root / item_path
+
+        item_copy = dict(item)
+        try:
+            if file_path.exists():
+                item_copy["content"] = file_path.read_text(encoding="utf-8", errors="replace")
+            else:
+                item_copy["content"] = None
+                item_copy["content_error"] = f"File not found: {file_path}"
+        except Exception as e:
+            item_copy["content"] = None
+            item_copy["content_error"] = str(e)
+
+        items_with_content.append(item_copy)
+
+    remaining = plan["progress"]["content"]["pending"]
+
+    return {"items": items_with_content, "remaining": remaining}
+
+
+def update_inbox_item(path: str, status: str, uid: str = None) -> dict:
+    """Update a content item's status after Claude processes it."""
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).parent / "tools"))
+    from inbox_plan import update_item_status, read_plan
+
+    stage_root = _stage_root()
+    result_data = {"uid": uid} if uid else None
+    update_item_status(stage_root, path, status, result_data)
+
+    plan = read_plan(stage_root)
+    return {
+        "updated": True,
+        "path": path,
+        "status": status,
+        "progress": plan.get("progress") if plan else None,
+    }
+
+
+def resolve_inbox_item(path: str, action: str, type: str, subtype: str = None) -> dict:
+    """
+    Resolve an unresolved item by specifying its action and type.
+    Moves it from unresolved to items queue.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).parent / "tools"))
+    from inbox_plan import resolve_unresolved_item
+
+    stage_root = _stage_root()
+    plan = resolve_unresolved_item(stage_root, path, action, type, subtype)
+    return {
+        "resolved": True,
+        "path": path,
+        "action": action,
+        "type": type,
+        "subtype": subtype,
+        "total_items": len(plan.get("items", [])),
+        "total_unresolved": len(plan.get("unresolved", [])),
+    }
 
 
 def list_items(type: str = None) -> dict:

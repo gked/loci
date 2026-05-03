@@ -75,6 +75,12 @@ def create_vault_structure(vault_root: Path) -> None:
         p.mkdir(parents=True, exist_ok=True)
         print(f"  Created: {p}")
 
+    # Staging folder lives alongside vault/, not inside it
+    stage_root = loci_root / "loci-stage"
+    for stage_folder in [stage_root, stage_root / "files", stage_root / "unresolved"]:
+        stage_folder.mkdir(parents=True, exist_ok=True)
+        print(f"  Created: {stage_folder}")
+
     for filename in META_FILES:
         dest = vault_root / "meta" / filename
         src = REFERENCES_DIR / filename
