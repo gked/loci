@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Optional
 
 
-CONFIG_PATH = Path(__file__).parent.parent / "config.yml"
-REFERENCES_DIR = Path(__file__).parent.parent / "loci-skill" / "references"
+CONFIG_PATH = Path(__file__).parent.parent.parent / "config.yml"
+REFERENCES_DIR = Path(__file__).parent.parent / "skills" / "references"
 
 META_VERSION = 5
 

@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css"><style>
+html,body{margin:0;padding:0;background:var(--vault-bg);overflow:hidden}
+.wrap{width:700px;padding:18px 28px;box-sizing:border-box;display:flex;flex-wrap:wrap;gap:6px;font-family:var(--font-sans);align-items:center}
+.tag{font-weight:600;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--vault-fg-muted);width:100%;margin-bottom:4px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:500;background:var(--vault-sunken);border:1px solid var(--vault-rule);color:var(--vault-fg)}
+.chip .dot{width:8px;height:8px;border-radius:50%}
+.rel{font-family:var(--font-mono);font-size:11px;padding:3px 8px;background:#fff;border:1px solid var(--vault-rule);border-radius:3px;color:var(--vault-fg-muted)}
+.tagchip{font-size:11px;color:var(--vault-fg-muted);font-family:var(--font-mono);padding:2px 6px;background:var(--vault-sunken);border-radius:2px}
+</style></head><body><div class="wrap inner-shell">
+<span class="tag">chips · type, relation, tag</span>
+<span class="chip"><span class="dot" style="background:#2f6fc4"></span>project</span>
+<span class="chip"><span class="dot" style="background:#ff8a00"></span>task</span>
+<span class="chip"><span class="dot" style="background:#1fa050"></span>document</span>
+<span class="chip"><span class="dot" style="background:#e63946"></span>entity</span>
+<span class="chip"><span class="dot" style="background:#a4421f"></span>topic</span>
+<span class="rel">belongs-to</span>
+<span class="rel">depends-on</span>
+<span class="rel">about</span>
+<span class="rel">influences</span>
+<span class="tagchip">#whitepaper</span>
+<span class="tagchip">#protocol</span>
+<span class="tagchip">#journal</span>
+</div></body></html>

@@ -3,24 +3,28 @@
 ## Project layout
 
 ```
-api.py                      Public facade used by the MCP server
-loci_mcp/server.py          MCP tool definitions and docstrings
-tools/                      Core business logic (registries, linting, writing)
-loci-skill/
-  references/               Canonical meta files seeded to vault/meta/ on init
-    ontology.yaml           Type registry source
-    relation-dictionary.yaml  Relation registry source
-    ontology-user.yaml      User type extensions stub
-    relation-dictionary-user.yaml  User relation extensions stub
-  loci-save/SKILL.md        Save skill instructions (versioned)
-  loci-query/SKILL.md       Query skill instructions (versioned)
+app/                        React frontend
+  design/                   Design system (tokens, assets, UI kit components)
+server/
+  api.py                    Public facade used by the MCP server
+  loci_mcp/server.py        MCP tool definitions and docstrings
+  tools/                    Core business logic (registries, linting, writing)
+  skills/
+    references/             Canonical meta files seeded to vault/meta/ on init
+      ontology.yaml         Type registry source
+      relation-dictionary.yaml  Relation registry source
+      ontology-user.yaml    User type extensions stub
+      relation-dictionary-user.yaml  User relation extensions stub
+    loci-save/SKILL.md      Save skill instructions (versioned)
+    loci-query/SKILL.md     Query skill instructions (versioned)
+  tests/                    Python test suite
 ```
 
 ## Skill ↔ Tool sync rule
 
 **Always check both directions when touching either side.**
 
-### When modifying Python tools (`tools/`, `api.py`, `loci_mcp/server.py`)
+### When modifying Python tools (`server/tools/`, `server/api.py`, `server/loci_mcp/server.py`)
 
 Ask: do the skill files need to reflect this change?
 
@@ -30,7 +34,7 @@ Ask: do the skill files need to reflect this change?
 - New registry or validation added → check if skills need to read the new file or follow new rules
 - Tool parameter or return shape changes → update skill steps that depend on that shape
 
-### When modifying skill files (`loci-skill/`)
+### When modifying skill files (`server/skills/`)
 
 Ask: do the Python tools need to reflect this change?
 
@@ -52,10 +56,10 @@ This skill is at `skill_version: 7`.   ← body check line
 
 ### Meta file sync
 
-`loci-skill/references/` is the source of truth. Files listed in `META_FILES` in `tools/vault_init.py` are reseeded to `vault/meta/` on every `META_VERSION` bump. Files in `USER_META_FILES` are seeded once and never overwritten.
+`server/skills/references/` is the source of truth. Files listed in `META_FILES` in `server/tools/vault_init.py` are reseeded to `vault/meta/` on every `META_VERSION` bump. Files in `USER_META_FILES` are seeded once and never overwritten.
 
 When adding a new meta file:
-1. Create it in `loci-skill/references/`
+1. Create it in `server/skills/references/`
 2. Add it to `META_FILES` or `USER_META_FILES` in `vault_init.py`
 3. Bump `META_VERSION`
 4. Add the key to the `file_map` in `api.py` → `read_meta()`
@@ -66,13 +70,13 @@ When adding a new meta file:
 
 ```
 make test                        # install dev deps + run full suite
-uv run pytest tests/ -v          # same, verbose
-uv run pytest tests/test_foo.py  # single file
+uv run pytest server/tests/ -v          # same, verbose
+uv run pytest server/tests/test_foo.py  # single file
 make test-cov                    # with coverage report
 ```
 
 Tests use `LOCI_VAULT_ROOT` env var (set by the `tmp_vault` fixture in `conftest.py`)
-to point registries and api calls at a temporary copy of `tests/fixtures/vault/`.
+to point registries and api calls at a temporary copy of `server/tests/fixtures/vault/`.
 
 ## Registry singleton pattern
 
@@ -98,8 +102,8 @@ the same pattern when writing tests for any registry-backed module.
 
 ## Fixture vault has no `meta/` directory
 
-`tests/fixtures/vault/` contains only node files — no `meta/` subdirectory.
-This is intentional: registries fall back to `loci-skill/references/` when
+`server/tests/fixtures/vault/` contains only node files — no `meta/` subdirectory.
+This is intentional: registries fall back to `server/skills/references/` when
 `vault/meta/<file>` is not found, so tests automatically use the canonical
 source files without extra setup.
 
@@ -112,10 +116,10 @@ falling back, which silently breaks other tests.
 
 When a new registry is needed (parallel to `TypeRegistry` / `RelationRegistry`):
 
-1. Define the YAML schema in `loci-skill/references/<name>.yaml`
-2. Create `tools/<name>_registry.py` with a `<Name>Registry` class and
+1. Define the YAML schema in `server/skills/references/<name>.yaml`
+2. Create `server/tools/<name>_registry.py` with a `<Name>Registry` class and
    `get_<name>_registry()` / `reset_<name>_registry()` singleton functions,
-   mirroring the pattern in `tools/relation_registry.py`
+   mirroring the pattern in `server/tools/relation_registry.py`
 3. Add the YAML to `META_FILES` in `vault_init.py` and bump `META_VERSION`
 4. Add the `read_meta` key in `api.py` and update the `server.py` docstring
 5. Wire validation into `write_file.py` (block on write, warn on patch)

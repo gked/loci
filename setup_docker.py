@@ -233,7 +233,7 @@ def install_skill() -> None:
     skills_root.mkdir(parents=True, exist_ok=True)
 
     for skill_name in ("loci-save", "loci-query"):
-        skill_src = PROJECT_ROOT / "loci-skill" / skill_name
+        skill_src = PROJECT_ROOT / "server" / "skills" / skill_name
         if not skill_src.exists():
             print(f"  Skill source not found at {skill_src} — skipping {skill_name}.")
             continue
@@ -261,14 +261,14 @@ def register_mcp_claude_code() -> None:
     claude = shutil.which("claude")
     if not claude:
         print("  Warning: `claude` CLI not found — skipping Claude Code registration.")
-        print("  Run manually: claude mcp add --scope user loci <uv-path> -- run --directory <project> python loci_mcp/server.py")
+        print("  Run manually: claude mcp add --scope user loci <uv-path> -- run --directory <project> python server/loci_mcp/server.py")
         return
 
     result = subprocess.run(
         [
             claude, "mcp", "add", "--scope", "user",
             "loci", uv,
-            "--", "run", "--directory", str(PROJECT_ROOT), "python", "loci_mcp/server.py",
+            "--", "run", "--directory", str(PROJECT_ROOT), "python", "server/loci_mcp/server.py",
         ],
         capture_output=True,
         text=True,

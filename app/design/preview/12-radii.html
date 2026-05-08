@@ -1,0 +1,17 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css"><style>
+html,body{margin:0;padding:0;background:var(--vault-bg);overflow:hidden}
+.wrap{width:700px;padding:24px 28px;box-sizing:border-box;display:grid;grid-template-columns:repeat(4,1fr);gap:14px;font-family:var(--font-sans);color:var(--vault-fg)}
+.cell{display:flex;flex-direction:column;align-items:center;gap:8px}
+.box{width:84px;height:60px;background:var(--vault-surface);border:1px solid var(--vault-rule);box-shadow:var(--shadow-card)}
+.r0{border-radius:0}.r2{border-radius:2px}.r6{border-radius:6px}.r12{border-radius:12px}
+.r999{border-radius:999px;width:120px;height:30px}
+.lbl{font-size:11px;font-weight:600}
+.sub{font-family:var(--font-mono);font-size:10px;color:var(--vault-fg-muted)}
+.tag{font-family:var(--font-sans);font-weight:600;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--vault-fg-muted);grid-column:1/-1;margin-bottom:0}
+</style></head><body><div class="wrap inner-shell">
+<span class="tag">radii · stone 0 → pill ∞</span>
+<div class="cell"><div class="box r0"></div><span class="lbl">stone</span><span class="sub">0 px · outer</span></div>
+<div class="cell"><div class="box r2"></div><span class="lbl">tag</span><span class="sub">2 px</span></div>
+<div class="cell"><div class="box r6"></div><span class="lbl">card</span><span class="sub">6 px</span></div>
+<div class="cell"><div class="box r12"></div><span class="lbl">panel</span><span class="sub">12 px</span></div>
+</div></body></html>

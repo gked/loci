@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  
+  <defs>
+    <path id="seal-arc-top" d="M 100,100 m -78,0 a 78,78 0 0,1 156,0"></path>
+    <path id="seal-arc-bot" d="M 100,100 m -78,0 a 78,78 0 0,0 156,0"></path>
+  </defs>
+  <circle cx="100" cy="100" r="92" fill="none" stroke="#a4421f" stroke-width="1.5"></circle>
+  <circle cx="100" cy="100" r="78" fill="none" stroke="#a4421f" stroke-width="1"></circle>
+  <circle cx="100" cy="100" r="48" fill="none" stroke="#a4421f" stroke-width="1"></circle>
+  <text font-family="EB Garamond, Georgia, serif" font-size="11" fill="#a4421f" letter-spacing="6">
+    <textPath href="#seal-arc-top" startOffset="50%" text-anchor="middle">LOCI · MEMORIA · LOCORVM</textPath>
+  </text>
+  <text font-family="EB Garamond, Georgia, serif" font-size="9" fill="#a4421f" letter-spacing="4">
+    <textPath href="#seal-arc-bot" startOffset="50%" text-anchor="middle">VAULT · GRAPH · VID·CF·QV</textPath>
+  </text>
+  <text x="100" y="115" text-anchor="middle" font-family="Cormorant Garamond, EB Garamond, Georgia, serif" font-weight="500" font-size="56" fill="#a4421f">L</text>
+  <circle cx="118" cy="112" r="2.5" fill="#a4421f"></circle>
+  
+  <g fill="#a4421f">
+    <circle cx="100" cy="22" r="2"></circle>
+    <circle cx="100" cy="178" r="2"></circle>
+    <circle cx="22" cy="100" r="2"></circle>
+    <circle cx="178" cy="100" r="2"></circle>
+  </g>
+</svg>

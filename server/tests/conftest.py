@@ -10,13 +10,13 @@ from pathlib import Path
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).parent.parent
+SERVER_ROOT = Path(__file__).parent.parent
 FIXTURE_VAULT = Path(__file__).parent / "fixtures" / "vault"
 
-# Put tools/ on sys.path so nx_graph can be imported directly.
-# api.py does the same at import time; doing it here ensures the module
-# is available before any test file imports api.
-sys.path.insert(0, str(PROJECT_ROOT / "tools"))
+# Put server/ and server/tools/ on sys.path so api, loci_mcp, and tools
+# modules can be imported directly by test files.
+sys.path.insert(0, str(SERVER_ROOT))
+sys.path.insert(0, str(SERVER_ROOT / "tools"))
 
 import nx_graph as _nx_graph  # noqa: E402  (must follow sys.path insert)
 from type_registry import reset_registry as _reset_type_registry  # noqa: E402

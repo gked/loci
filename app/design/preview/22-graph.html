@@ -1,0 +1,185 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css"><style>
+html,body{margin:0;padding:0;background:#0d1424;overflow:hidden;font-family:var(--font-sans);color:#f5efe2}
+.wrap{width:700px;height:380px;box-sizing:border-box;position:relative;display:flex;flex-direction:column}
+.head{display:flex;align-items:baseline;gap:10px;padding:10px 16px 6px;border-bottom:1px solid #2a3450;background:#0a1020;z-index:3}
+.head h2{font-family:var(--font-display);font-weight:500;font-size:16px;margin:0;color:#f5efe2;letter-spacing:0.02em}
+.head .meta{font-family:var(--font-mono);font-size:10px;color:#8896b8}
+.head .latin{margin-left:auto;font-family:var(--font-display);font-style:italic;font-size:11px;color:#c9a86a;letter-spacing:0.04em}
+.canvas{flex:1;position:relative;background:
+  radial-gradient(ellipse at center, #15203a 0%, #0a1020 75%);
+  overflow:hidden;
+}
+.canvas::before{
+  content:"";position:absolute;inset:0;
+  background-image:
+    linear-gradient(to right, rgba(245,239,226,0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(245,239,226,0.03) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events:none;
+}
+.corner{position:absolute;font-family:var(--font-mono);font-size:8.5px;color:#c9a86a;letter-spacing:0.08em;text-transform:lowercase;z-index:2;pointer-events:none}
+.corner.tl{top:8px;left:14px}
+.corner.tr{top:8px;right:14px;text-align:right}
+.corner.bl{bottom:10px;left:14px}
+.corner.br{bottom:10px;right:14px;text-align:right}
+.corner i{display:block;color:#8896b8;font-style:normal}
+.corner b{font-weight:400;color:#f5efe2}
+text.lbl{font-family:var(--font-mono);font-size:8.5px;fill:#d6cdb6;letter-spacing:0.04em;text-transform:lowercase}
+text.uid{font-family:var(--font-mono);font-size:7px;fill:#8896b8}
+text.sel-lbl{font-family:var(--font-mono);font-size:9px;fill:#f5efe2;font-weight:600;letter-spacing:0.04em}
+text.bezel{font-family:var(--font-display);font-style:italic;font-size:9px;fill:#c9a86a;letter-spacing:0.18em;text-transform:lowercase}
+text.bezel-num{font-family:var(--font-display);font-size:9px;fill:#c9a86a;letter-spacing:0.05em}
+@keyframes flow { to { stroke-dashoffset: -16; } }
+.edge-active{stroke-dasharray:3 4;animation:flow 3s linear infinite}
+</style></head><body><div class="wrap inner-shell">
+<div class="head">
+  <h2>Topology</h2>
+  <span class="meta">14 nodes · 23 edges · 1-hop visible</span>
+  <span class="latin">— locorvm chartæ —</span>
+</div>
+<div class="canvas">
+
+<!-- corner annotations -->
+<div class="corner tl"><i>nodi</i><b>xiv</b></div>
+<div class="corner tr"><i>nexus</i><b>xxiii</b></div>
+<div class="corner bl"><i>focus · loci</i><b>a1b2c3d4</b></div>
+<div class="corner br"><i>via</i><b>i · gradus</b></div>
+
+<svg viewBox="0 0 700 318" preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%;display:block">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <radialGradient id="halo-blue" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#2f6fc4" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#2f6fc4" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="ar-orange" viewBox="0 -3 6 6" refX="6" refY="0" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,-3L6,0L0,3" fill="#ff8a00" opacity="0.8"/></marker>
+    <marker id="ar-green" viewBox="0 -3 6 6" refX="6" refY="0" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,-3L6,0L0,3" fill="#1fa050" opacity="0.8"/></marker>
+    <marker id="ar-teal" viewBox="0 -3 6 6" refX="6" refY="0" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,-3L6,0L0,3" fill="#2dbfb6" opacity="0.8"/></marker>
+    <marker id="ar-umber" viewBox="0 -3 6 6" refX="6" refY="0" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,-3L6,0L0,3" fill="#a4421f" opacity="0.8"/></marker>
+    <marker id="ar-ochre" viewBox="0 -3 6 6" refX="6" refY="0" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,-3L6,0L0,3" fill="#f4c430" opacity="0.8"/></marker>
+    <marker id="ar-mauve" viewBox="0 -3 6 6" refX="6" refY="0" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,-3L6,0L0,3" fill="#c062b8" opacity="0.8"/></marker>
+    <marker id="ar-coral" viewBox="0 -3 6 6" refX="6" refY="0" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,-3L6,0L0,3" fill="#ff6b8a" opacity="0.8"/></marker>
+  </defs>
+
+  <!-- bezel: bronze ring engraved with Latin type names + Roman degree marks -->
+  <g transform="translate(350 159)">
+    <circle r="142" fill="none" stroke="#7a5a2e" stroke-width="0.6" opacity="0.7"/>
+    <circle r="138" fill="none" stroke="#7a5a2e" stroke-width="0.4" opacity="0.5"/>
+    <!-- engraved Latin around bezel (curved via path) -->
+    <path id="bezel-top" d="M -130,0 A 130,130 0 0,1 130,0" fill="none"/>
+    <path id="bezel-bot" d="M 130,0 A 130,130 0 0,1 -130,0" fill="none"/>
+    <text class="bezel"><textPath href="#bezel-top" startOffset="50%" text-anchor="middle">documentum · negotium · personae · colloquium · articulus</textPath></text>
+    <text class="bezel"><textPath href="#bezel-bot" startOffset="50%" text-anchor="middle">notatio · ratio · argumentum · res · eventus · topica</textPath></text>
+    <!-- Roman numeral cardinal marks -->
+    <g font-family="var(--font-display)" font-size="10" fill="#c9a86a">
+      <text y="-148" text-anchor="middle">N</text>
+      <text x="148" y="3">E</text>
+      <text y="156" text-anchor="middle">S</text>
+      <text x="-148" y="3" text-anchor="end">W</text>
+    </g>
+    <!-- meridian hairlines (futurism: HUD overlay) -->
+    <line x1="0" y1="-138" x2="0" y2="138" stroke="#c9a86a" stroke-width="0.4" stroke-dasharray="1 4" opacity="0.5"/>
+    <line x1="-138" y1="0" x2="138" y2="0" stroke="#c9a86a" stroke-width="0.4" stroke-dasharray="1 4" opacity="0.5"/>
+    <!-- 30° tick marks -->
+    <g stroke="#7a5a2e" stroke-width="0.6">
+      <line x1="0" y1="-138" x2="0" y2="-132"/>
+      <line x1="119.5" y1="-69" x2="114.3" y2="-66"/>
+      <line x1="119.5" y1="69" x2="114.3" y2="66"/>
+      <line x1="0" y1="138" x2="0" y2="132"/>
+      <line x1="-119.5" y1="69" x2="-114.3" y2="66"/>
+      <line x1="-119.5" y1="-69" x2="-114.3" y2="-66"/>
+    </g>
+  </g>
+
+  <!-- inert (non-selected) edges — faint bronze hairlines -->
+  <g stroke="#5a4520" stroke-width="0.5" fill="none" opacity="0.5">
+    <line x1="510" y1="115" x2="600" y2="60"/>
+    <line x1="510" y1="115" x2="610" y2="180"/>
+    <line x1="430" y1="70"  x2="510" y2="115"/>
+    <line x1="180" y1="170" x2="100" y2="240"/>
+    <line x1="180" y1="170" x2="60"  y2="170"/>
+    <line x1="190" y1="80"  x2="260" y2="60"/>
+    <line x1="430" y1="240" x2="500" y2="270"/>
+  </g>
+
+  <!-- selected-neighborhood edges: thin glowing colored beams with flow -->
+  <g fill="none" stroke-width="1.2" filter="url(#glow)" opacity="0.85">
+    <line x1="350" y1="160" x2="190" y2="80"  stroke="#1fa050" class="edge-active" marker-end="url(#ar-green)"/>
+    <line x1="350" y1="160" x2="260" y2="60"  stroke="#ff8a00" class="edge-active" marker-end="url(#ar-orange)"/>
+    <line x1="350" y1="160" x2="430" y2="70"  stroke="#2dbfb6" class="edge-active" marker-end="url(#ar-teal)"/>
+    <line x1="350" y1="160" x2="510" y2="115" stroke="#a4421f" class="edge-active" marker-end="url(#ar-umber)"/>
+    <line x1="350" y1="160" x2="430" y2="240" stroke="#f4c430" class="edge-active" marker-end="url(#ar-ochre)"/>
+    <line x1="350" y1="160" x2="260" y2="240" stroke="#c062b8" class="edge-active" marker-end="url(#ar-mauve)"/>
+    <line x1="350" y1="160" x2="180" y2="170" stroke="#ff6b8a" class="edge-active" marker-end="url(#ar-coral)"/>
+  </g>
+
+  <!-- relation label, sample (parchment chip) -->
+  <g>
+    <rect x="278" y="103" width="50" height="13" rx="2" fill="#1a2236" stroke="#c9a86a" stroke-width="0.4"/>
+    <text x="303" y="112" text-anchor="middle" font-family="var(--font-mono)" font-size="8" fill="#c9a86a" letter-spacing="0.05em">has-part</text>
+  </g>
+
+  <!-- 2-hop, dimmed -->
+  <g opacity="0.22">
+    <circle cx="600" cy="60"  r="5" fill="#a4421f"/>
+    <circle cx="610" cy="180" r="5" fill="#f4c430"/>
+    <circle cx="100" cy="240" r="5" fill="#e63946"/>
+    <circle cx="60"  cy="170" r="5" fill="#7a5cc1"/>
+    <circle cx="500" cy="270" r="5" fill="#1fa050"/>
+    <text x="600" y="50" class="lbl" text-anchor="middle" opacity="0.5">transformers</text>
+    <text x="610" y="195" class="lbl" text-anchor="middle" opacity="0.5">meditations</text>
+  </g>
+
+  <!-- 1-hop neighbours -->
+  <g>
+    <circle cx="190" cy="80"  r="9" fill="url(#halo-blue)"/>
+    <circle cx="190" cy="80"  r="4.5" fill="#1fa050" stroke="#0a1020" stroke-width="1"/>
+    <text x="190" y="98" text-anchor="middle" class="lbl">asset registry</text>
+
+    <circle cx="260" cy="60"  r="4.5" fill="#ff8a00" stroke="#0a1020" stroke-width="1"/>
+    <text x="260" y="50" text-anchor="middle" class="lbl">networkx task</text>
+
+    <circle cx="430" cy="70"  r="4.5" fill="#2dbfb6" stroke="#0a1020" stroke-width="1"/>
+    <text x="430" y="58" text-anchor="middle" class="lbl">topology disc.</text>
+
+    <circle cx="510" cy="115" r="4.5" fill="#a4421f" stroke="#0a1020" stroke-width="1"/>
+    <text x="510" y="103" text-anchor="middle" class="lbl">graph databases</text>
+
+    <circle cx="430" cy="240" r="4.5" fill="#f4c430" stroke="#0a1020" stroke-width="1"/>
+    <text x="430" y="258" text-anchor="middle" class="lbl">attention paper</text>
+
+    <circle cx="260" cy="240" r="4.5" fill="#c062b8" stroke="#0a1020" stroke-width="1"/>
+    <text x="260" y="258" text-anchor="middle" class="lbl">method of loci</text>
+
+    <circle cx="180" cy="170" r="4.5" fill="#ff6b8a" stroke="#0a1020" stroke-width="1"/>
+    <text x="180" y="188" text-anchor="middle" class="lbl">daily review</text>
+  </g>
+
+  <!-- selected: Loci hub — double ring (bronze + lapis) + viewfinder reticle brackets -->
+  <g transform="translate(350 160)">
+    <!-- halo glow -->
+    <circle r="22" fill="#2f6fc4" opacity="0.18" filter="url(#glow)"/>
+    <!-- outer bronze ring -->
+    <circle r="14" fill="none" stroke="#c9a86a" stroke-width="0.7"/>
+    <!-- inner type ring -->
+    <circle r="9.5" fill="none" stroke="#2f6fc4" stroke-width="1.2" opacity="0.85"/>
+    <!-- core -->
+    <circle r="5.5" fill="#2f6fc4" stroke="#0a1020" stroke-width="1"/>
+    <!-- reticle brackets -->
+    <g stroke="#c9a86a" stroke-width="0.7" fill="none" opacity="0.85">
+      <path d="M -20,-14 L -20,-20 L -14,-20"/>
+      <path d="M  20,-14 L  20,-20 L  14,-20"/>
+      <path d="M -20, 14 L -20, 20 L -14, 20"/>
+      <path d="M  20, 14 L  20, 20 L  14, 20"/>
+    </g>
+    <!-- label below -->
+    <text y="32" text-anchor="middle" class="sel-lbl">LOCI</text>
+    <text y="42" text-anchor="middle" class="uid" fill="#c9a86a">a1b2c3d4</text>
+  </g>
+
+</svg>
+</div>
+</div></body></html>

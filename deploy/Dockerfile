@@ -11,10 +11,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 # Copy application code
-COPY api.py ./
-COPY loci_mcp/ ./loci_mcp/
-COPY tools/ ./tools/
-COPY loci-skill/ ./loci-skill/
+COPY server/ ./server/
 COPY deploy/entrypoint.sh ./entrypoint.sh
 
 ENV LOCI_TRANSPORT=sse

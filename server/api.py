@@ -745,7 +745,7 @@ def define_relation(
 
 def _app_version() -> str:
     """Read the app version from pyproject.toml."""
-    p = Path(__file__).parent / "pyproject.toml"
+    p = Path(__file__).parent.parent / "pyproject.toml"
     for line in p.read_text(encoding="utf-8").splitlines():
         if line.startswith("version"):
             return line.split("=")[1].strip().strip('"')
