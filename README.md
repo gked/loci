@@ -294,7 +294,6 @@ loci/
 
   setup.py                        ← local setup wizard
   setup_docker.py                 ← Docker setup wizard
-  viz_vault.py                    ← render vault graph as PNG
   run_server.sh
   config.yml                      ← local config (gitignored — see config.sample.yml)
   config.sample.yml
@@ -371,28 +370,6 @@ Breaking changes require an explicit migration script (`tools/migrate_v1_to_v2.p
 The vault meta files are user-owned — they accumulate customizations (new tags, local schema tweaks) that the project seeds don't have. The `loci-skill/references/` files are the initial template only. Non-breaking additions can be auto-applied by a future `vault_upgrade.py`; breaking changes always require explicit migration.
 
 ---
-
-## Vault Topology Visualization
-
-`viz_vault.py` renders a graph of all vault nodes and their relationships as a PNG.
-
-```bash
-uv run python viz_vault.py
-```
-
-Output is saved to `/tmp/loci_topology.png`. Open it with:
-
-```bash
-open /tmp/loci_topology.png
-```
-
-**What it shows:**
-- Each node is a vault item, colored by type (see legend)
-- Edges are typed relations (e.g. `belongs-to`, `parent-of`, `about`)
-- Arrows show direction (source → target)
-- Isolated nodes (no links) are visible on the periphery
-
-**Dependencies** are installed automatically by `uv` on first run (`networkx`, `matplotlib`). No manual install needed.
 
 ---
 
