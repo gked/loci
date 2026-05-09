@@ -197,8 +197,10 @@ def patch_vault(path: str, updates: dict, body: str = None) -> dict:
 @mcp.tool()
 def read_vault(path: str) -> str:
     """
-    Read a vault file. Accepts an absolute path or a path relative to vault_root.
-    Examples: "notes/my-note.md"  or  "/Users/me/Nextcloud/loci/notes/..."
+    Read a vault file.
+    Accepts an 8-character hex UID (e.g. "0b74b77c"), an absolute path,
+    or a path relative to vault_root (e.g. "my-note--0b74b77c.md").
+    Prefer passing the UID when you have it — the path will be resolved automatically.
     """
     try:
         return loci.get(path)

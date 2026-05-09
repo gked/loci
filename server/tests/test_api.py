@@ -178,6 +178,19 @@ def test_get_missing_file_raises(tmp_vault):
         api.get(str(tmp_vault / "ghost.md"))
 
 
+def test_get_by_uid(tmp_vault):
+    result = api.save(type="document", title="UID Lookup", body="found by uid", extra_fields={"status": "draft"})
+    uid = result["uid"]
+    text = api.get(uid)
+    assert "found by uid" in text
+    assert "UID Lookup" in text
+
+
+def test_get_by_uid_unknown_raises(tmp_vault):
+    with pytest.raises(FileNotFoundError):
+        api.get("deadbeef")
+
+
 def test_get_appends_asset_path_for_large_asset(tmp_vault):
     """When has_asset is True and asset is large/binary, path reference is appended."""
     loci_root = tmp_vault.parent

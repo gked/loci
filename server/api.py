@@ -11,6 +11,7 @@ Internal implementation lives in tools/. This module is the public facade.
 
 import contextlib
 import io
+import re
 import sys
 from pathlib import Path
 
@@ -180,7 +181,8 @@ def check_duplicate(type: str, title: str, url: str = None) -> dict:
 
 def get(path: str) -> str:
     """
-    Read a vault file. Accepts an absolute path or a path relative to vault_root.
+    Read a vault file. Accepts an absolute path, a path relative to vault_root,
+    or an 8-character hex UID.
     Raises FileNotFoundError if the file does not exist.
     When the node has has_asset: true, asset content is appended inline (text files
     under the size threshold) or as a path reference (binary/large files).
@@ -188,6 +190,16 @@ def get(path: str) -> str:
     p = Path(path)
     if not p.is_absolute():
         p = _vault_root() / path
+    if not p.exists() and re.fullmatch(r"[0-9a-f]{8}", path.strip()):
+        # Treat input as a UID and look up the file path via the graph index.
+        _uid = path.strip()
+        g = graph.get(_vault_root())
+        if g.has_node(_uid):
+            node_path = g.nodes[_uid].get("path")
+            if node_path:
+                p = Path(node_path)
+            else:
+                raise FileNotFoundError(f"Vault file not found for UID: {_uid}")
     if not p.exists():
         raise FileNotFoundError(f"Vault file not found: {p}")
 
