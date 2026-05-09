@@ -9,7 +9,7 @@
 This system was synthesized from the Loci codebase. There is no pre-existing UI, brand, or visual identity — Loci today is a CLI / MCP server. The visual language here is invented from first principles, grounded in the project's etymology and one canonical artifact in the code:
 
 - **Codebase**: `gked/loci` (private GitHub repo)
-- **Type colors** lifted from `viz_vault.py` (the only existing visual artifact). These are the Tableau-10-derived swatches that color nodes by type in the topology graph and are treated as canonical.
+- **Type colors** defined in `colors_and_type.css`. These are the canonical swatches that color nodes by type in the topology graph.
 - **Vocabulary** from `loci-skill/references/ontology.yaml`, `type-dictionary.md`, and `relation-dictionary.md` — the type system (document, article, bookmark, conversation, project, task, event, entity, procedure, topic, asset) and relation types (depends-on, belongs-to, about, mentions, influences, supports, contradicts, …) drive the components.
 - **README of gked/loci** (etymology, vault topology, capture flow) — anchors the classical/spatial metaphor.
 
@@ -34,7 +34,7 @@ Where the user actually works — browsing nodes, reading frontmatter, traversin
 
 - **Mood**: clinical, archival, IDE-adjacent. The walls of the palace, not its façade.
 - **Type**: neutral sans + mono. Inter for UI, JetBrains Mono for UIDs and code.
-- **Color**: near-monochrome surface (paper / vellum / ink) with the **canonical type palette** from `viz_vault.py` doing all the semantic lifting.
+- **Color**: near-monochrome surface (paper / vellum / ink) with the **canonical type palette** doing all the semantic lifting.
 - **Motifs**: thin rules, monospace UIDs, dotted leader lines, edge-labels, minimal chrome.
 
 ### Instrument shell — the *Observatory*
@@ -142,7 +142,7 @@ Two palettes, one system. See `colors_and_type.css` for tokens.
 | `--vault-danger` | `#c0392b` | Errors, destructive |
 | `--vault-accent` | `#7a5cc1` | Highlights, agent voice |
 
-**Semantic — type colors** (canonical from `viz_vault.py`, do not change)
+**Semantic — type colors** (canonical, defined in `colors_and_type.css` — do not change)
 
 These color the nodes in the knowledge graph. Each vault type owns one swatch.
 
@@ -241,7 +241,7 @@ Loci has no existing icon set. Two systems are used:
 
 ## Caveats & next steps
 
-- **Loci has no existing UI.** Everything visual here was invented from etymology + the `viz_vault.py` type colors + the codebase vocabulary. The two-shell direction is a hypothesis — please push back.
+- **Loci has no existing UI.** Everything visual here was invented from etymology + the codebase vocabulary. The two-shell direction is a hypothesis — please push back.
 - **Type colors:** the inner-shell node palette was made more vibrant per your direction. Originals (Tableau-10) still live as comments in `colors_and_type.css` if we need to walk back.
 - **Inner-shell accent palette:** added contrast colors (info / success / warn / danger / accent) on top of the existing focus + selection. Bluer overall.
 - **Fonts substituted from Google Fonts** (Cormorant Garamond, EB Garamond, Inter, JetBrains Mono). If you have licensed display faces (e.g. real Garamond Premier, Plantin) drop the `.woff2` files into `fonts/` and I'll rewire `colors_and_type.css`.

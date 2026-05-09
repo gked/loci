@@ -65,7 +65,7 @@
   --t-paper-3:   #d8cdb4;
   --t-paper-grid: rgba(122,90,46,0.06);
 
-  /* ----- Semantic — TYPE COLORS (canonical from viz_vault.py) */
+  /* ----- Semantic — TYPE COLORS (canonical — do not change) */
   --type-project:      #2f6fc4;
   --type-task:         #ff8a00;
   --type-document:     #1fa050;
