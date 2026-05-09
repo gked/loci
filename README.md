@@ -224,41 +224,56 @@ The agent scans the staging folder, presents a plan with cost/time estimates, wa
 
 ```
 loci/
-  knowledge-vault/                ← vault lives here (gitignored, synced via rclone)
-  loci-skill/
-    loci-save/
-      SKILL.md                    ← Claude's instructions for saving content
-    loci-query/
-      SKILL.md                    ← Claude's instructions for querying content
-    loci-inbox/
-      SKILL.md                    ← Claude's instructions for processing loci-stage/
-    references/
-      ontology.yaml               ← machine-readable type system (TypeRegistry source)
-      ontology-user.yaml          ← user-defined type extensions (seeded once, user-owned)
-                                    includes: reading-log (extends document)
-      type-dictionary.md          ← type selection guide (semantic; structure in ontology.yaml)
-      field-dictionary.md         ← field guidance (semantic; structure in ontology.yaml)
-      tag-dictionary.md           ← seed: initial tag vocabulary
-      relation-dictionary.md      ← seed: typed edge vocabulary
-      foreign-definitions.md      ← seed: external source schemas
-  loci_mcp/
-    server.py                     ← MCP server (stdio or SSE via LOCI_TRANSPORT)
+  app/
+    design/                       ← design system (tokens, assets, UI kit components)
+      SKILL.md                    ← Claude's instructions for design work
+      colors_and_type.css
+      ui_kits/
+      assets/
+
+  server/
+    api.py                        ← public facade used by the MCP server
+    loci_mcp/
+      server.py                   ← MCP tool definitions and docstrings
                                     env vars: LOCI_TRANSPORT=stdio|sse
                                               LOCI_VAULT_ROOT=/path/to/knowledge-vault
                                               LOCI_PORT=8000 (SSE only, default 8000)
                                               LOCI_TOKEN=<secret> (SSE only, optional bearer auth)
-  tools/
-    uid_generator.py
-    slug.py
-    vault_init.py
-    write_file.py
-    asset_registry.py              ← asset resolve, register, find-unregistered, crash recovery
-    metadata_extractor.py          ← epub OPF parsing, PDF metadata, filename fallback
-    inbox_scanner.py               ← classify files in loci-stage/ by extension and location
-    inbox_plan.py                  ← read/write/update .inbox-plan.yaml work queue
-  sync/
-    rclone.conf.sample            ← rclone remote config template
-    sync.sh                       ← push/pull/bisync wrapper
+    skills/
+      loci-save/
+        SKILL.md                  ← Claude's instructions for saving content
+      loci-query/
+        SKILL.md                  ← Claude's instructions for querying content
+      loci-inbox/
+        SKILL.md                  ← Claude's instructions for processing loci-stage/
+      references/                 ← source of truth for vault/meta/ seed files
+        ontology.yaml             ← machine-readable type system (TypeRegistry source)
+        ontology-user.yaml        ← user-defined type extensions (seeded once, user-owned)
+        relation-dictionary.yaml  ← machine-readable relation vocabulary (RelationRegistry source)
+        relation-dictionary-user.yaml ← user relation extensions (seeded once, user-owned)
+        type-dictionary.md        ← type selection guide
+        type-decision.md          ← type decision flowchart
+        field-dictionary.md       ← field guidance per type
+        tag-dictionary.md         ← seed: initial tag vocabulary
+        relation-dictionary.md    ← seed: typed edge vocabulary (human-readable)
+        foreign-definitions.md    ← seed: external source schemas
+    tools/                        ← core business logic
+      uid_generator.py
+      slug.py
+      vault_init.py
+      write_file.py
+      vault_linter.py             ← lint checks for vault nodes
+      nx_graph.py                 ← NetworkX in-memory graph index
+      type_registry.py            ← TypeRegistry singleton (backed by ontology.yaml)
+      relation_registry.py        ← RelationRegistry singleton (backed by relation-dictionary.yaml)
+      asset_registry.py           ← asset resolve, register, find-unregistered, crash recovery
+      metadata_extractor.py       ← epub OPF parsing, PDF metadata, filename fallback
+      inbox_scanner.py            ← classify files in loci-stage/ by extension and location
+      inbox_plan.py               ← read/write/update .inbox-plan.yaml work queue
+    tests/
+      conftest.py
+      fixtures/                   ← fixture vault (node files only, no meta/)
+      test_*.py
 
   deploy/
     Dockerfile
@@ -267,9 +282,23 @@ loci/
     setup-homelab.sh              ← one-shot setup script for Linux home lab server
     loci-mcp.service              ← systemd service for always-on SSE server
     nginx.conf.sample             ← nginx config for SSE + Cloudflare
-  api.py
-  setup.py
+
+  docs/
+    execution-flows.md
+    diagrams.md
+    testing.md
+
+  sync/
+    rclone.conf.sample            ← rclone remote config template
+    sync.sh                       ← push/pull/bisync wrapper
+
+  setup.py                        ← local setup wizard
+  setup_docker.py                 ← Docker setup wizard
+  viz_vault.py                    ← render vault graph as PNG
+  run_server.sh
   config.yml                      ← local config (gitignored — see config.sample.yml)
+  config.sample.yml
+  Makefile
   pyproject.toml
   uv.lock
   README.md
