@@ -7,3 +7,6 @@ __pycache__/
 .venv/
 .coverage
 settings.local.json
+.claude/
+app/node_modules/
+app/dist/

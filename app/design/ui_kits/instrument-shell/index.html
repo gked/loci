@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Instrument Shell — Kit</title>
+<link rel="stylesheet" href="../../instrument-shell.css"/>
+<style>
+  html,body,#root { height:100%; margin:0; background:#060914; font-family:var(--font-sans); }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body class="instrument-shell">
+<div id="root"></div>
+
+<script type="text/babel" src="components.jsx"></script>
+<script type="text/babel">
+
+function Demo() {
+  const [paper, setPaper] = React.useState(false);
+  const [motion, setMotion] = React.useState('subtle');
+  const [density, setDensity] = React.useState('regular');
+
+  return (
+    <div data-motion={motion} data-density={density} style={{
+      height:'100%', display:'grid', gridTemplateRows:'auto 1fr',
+      '--flow-dur': motion === 'ambient' ? '6s' : motion === 'static' ? '0s' : '3s',
+      '--bezel-dur': motion === 'ambient' ? '120s' : '240s'
+    }}>
+      <div style={{
+        display:'flex', alignItems:'center', gap:14,
+        padding:'14px 22px', borderBottom:'1px solid var(--t-rule)',
+        background:'rgba(6,9,20,0.65)', position:'relative', zIndex:5
+      }}>
+        <span className="smcaps">instrument shell · kit</span>
+        <span className="tel" style={{marginLeft:'auto'}}>
+          motion <b>{motion}</b> · density <b>{density}</b> · reading <b>{paper?'paper':'dark'}</b>
+        </span>
+        <button className="t-btn" style={{padding:'4px 10px',fontSize:11}} onClick={()=>setPaper(p=>!p)}>
+          flip {paper?'dark':'paper'} <span className="key">r</span>
+        </button>
+        <select value={motion} onChange={e=>setMotion(e.target.value)}
+          style={{background:'transparent',color:'var(--t-bronze)',border:'0.5px solid var(--t-bronze-d)',padding:'3px 8px',fontFamily:'var(--font-mono)',fontSize:11}}>
+          <option>static</option><option>subtle</option><option>ambient</option>
+        </select>
+        <select value={density} onChange={e=>setDensity(e.target.value)}
+          style={{background:'transparent',color:'var(--t-bronze)',border:'0.5px solid var(--t-bronze-d)',padding:'3px 8px',fontFamily:'var(--font-mono)',fontSize:11}}>
+          <option>sparse</option><option>regular</option><option>dense</option>
+        </select>
+      </div>
+
+      <div className={`canvas instrument ${paper ? 'paper' : ''}`}>
+        <Meridian/>
+        <Reticle/>
+        <Corners
+          tl={{label:'kit · sample', value:'instrument shell'}}
+          tr={{label:'caelum',       value:'observatorium · v0.4'}}
+          bl={{label:'lat · long',   value:'40.71 · -74.00'}}
+          br={{label:'fol.',         value:'iii / xii'}}
+        />
+
+        <div style={{
+          position:'absolute', inset:0, display:'grid',
+          gridTemplateColumns:'1fr 1fr', gap:32, padding:'72px 56px 56px',
+          alignContent:'start'
+        }}>
+          {/* Bezel */}
+          <div className="frame bronze-frame" style={{padding:24, position:'relative'}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}>
+              <span className="smcaps">bezel · engraved ring</span>
+              <span className="tel">latin curving along arc</span>
+            </div>
+            <div style={{display:'grid',placeItems:'center',height:280}}>
+              <Bezel size={260} rotate={motion==='ambient'}
+                items={["documentum","negotium","persona","colloquium","articulus","signum"]}/>
+            </div>
+          </div>
+
+          {/* Roman folio + Latin twin */}
+          <div className="frame bronze-frame" style={{padding:24}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}>
+              <span className="smcaps">labels · folio</span>
+              <span className="tel">latin twin · roman page</span>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:18}}>
+              <L latin="topologia"><span style={{fontFamily:'var(--font-display)',fontSize:36,fontWeight:500,color: paper?'var(--ink)':'var(--t-fg)'}}>Topology</span></L>
+              <L latin="omnia loca"><span style={{fontFamily:'var(--font-sans)',fontSize:14,color: paper?'var(--ink)':'var(--t-fg)'}}>All loci</span></L>
+              <L latin="componere"><span style={{fontFamily:'var(--font-sans)',fontSize:14,color: paper?'var(--ink)':'var(--t-fg)'}}>Compose</span></L>
+              <div style={{height:1,background:paper?'var(--t-paper-3)':'var(--t-rule)'}}/>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                {['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'].map((r,i)=>(
+                  <span key={i} className="t-chip" style={{minWidth:28,justifyContent:'center'}}>{r}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Type dots + chips */}
+          <div className="frame bronze-frame" style={{padding:24}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}>
+              <span className="smcaps">genera · type colors</span>
+              <span className="tel">canonical from viz_vault</span>
+            </div>
+            <div style={{display:'flex',gap:14,flexWrap:'wrap'}}>
+              {['project','task','document','entity','conversation','article','bookmark','procedure','topic','event','asset'].map(t=>(
+                <div key={t} style={{display:'flex',alignItems:'center',gap:6,fontFamily:'var(--font-mono)',fontSize:11,color: paper?'var(--ink)':'var(--t-fg)'}}>
+                  <TypeDot type={t} halo/>
+                  <span>{t}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Buttons + telemetry */}
+          <div className="frame bronze-frame" style={{padding:24}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:14}}>
+              <span className="smcaps">action · telemetry</span>
+              <span className="tel">buttons + tel chips</span>
+            </div>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:18}}>
+              <button className="t-btn solid">enter <span className="key">⏎</span></button>
+              <button className="t-btn">configure <span className="key">⌘,</span></button>
+              <button className="t-btn">traverse <span className="key">g</span></button>
+            </div>
+            <div className="tel" style={{lineHeight:1.8}}>
+              <div>vault · <b>17</b> nodes · <b>23</b> nexus</div>
+              <div>last sync · <b>2026-05-07 09:14</b></div>
+              <div>drift · <b>4</b> stale · orphans · <b>2</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script>
+</body>
+</html>

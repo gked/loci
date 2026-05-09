@@ -8,6 +8,7 @@ dependencies = [
     "httpx>=0.27",
     "networkx>=3.0",
     "uvicorn>=0.29",
+    "fastapi>=0.111",
     "matplotlib>=3.10.8",
     "pypdf>=4.0",
     "defusedxml>=0.7",

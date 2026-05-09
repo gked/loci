@@ -1,0 +1,314 @@
+/* ============================================================
+   LOCI — INSTRUMENT SHELL
+   Third register: topology / observatory.
+   Dark navy canvas, bronze hairlines, Latin twins, Roman folios,
+   reticle brackets, dotted meridians, engraved bezels.
+   Paired with a paper variant for long-form reading surfaces.
+
+   Opt-in: wrap content in .instrument-shell or use individual
+   atoms (.canvas, .corner, .reticle, .meridian, .bezel-rotate, …).
+   ============================================================ */
+
+@import url("colors_and_type.css");
+
+/* ─── shell wrapper ───────────────────────────────────────── */
+.instrument-shell {
+  font-family: var(--font-sans);
+  color: var(--t-fg);
+  background: var(--t-bg);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "kern" 1, "ss01" 1;
+}
+
+/* ─── canvas: every screen sits on this ──────────────────── */
+.instrument-shell .canvas,
+.canvas.instrument {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(ellipse 110% 80% at center,
+                    var(--t-bg-soft) 0%,
+                    var(--t-bg) 65%,
+                    var(--t-bg-deep) 100%);
+  overflow: hidden;
+  isolation: isolate;
+}
+.instrument-shell .canvas::before,
+.canvas.instrument::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--t-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--t-grid-line) 1px, transparent 1px);
+  background-size: var(--t-grid-step) var(--t-grid-step);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* paper reading variant — same chrome, ivory ground */
+.instrument-shell .canvas.paper,
+.canvas.instrument.paper {
+  background:
+    radial-gradient(ellipse 90% 70% at center,
+                    #fbf6e9 0%,
+                    var(--t-paper) 65%,
+                    var(--t-paper-2) 100%);
+  color: var(--ink);
+}
+.instrument-shell .canvas.paper::before,
+.canvas.instrument.paper::before {
+  background-image:
+    linear-gradient(to right, var(--t-paper-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--t-paper-grid) 1px, transparent 1px);
+}
+.instrument-shell .canvas > *,
+.canvas.instrument > * { position: relative; z-index: 1; }
+
+/* ─── typography utilities ───────────────────────────────── */
+.smcaps {
+  font-family: var(--font-display);
+  font-style: italic;
+  text-transform: lowercase;
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  color: var(--t-bronze);
+}
+.latin-twin {
+  display: block;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 10px;
+  color: var(--t-bronze);
+  letter-spacing: 0.06em;
+  margin-top: 1px;
+}
+.tel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--t-fg-mute);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+.tel b { font-weight: 400; color: var(--t-fg); }
+
+/* ─── corner annotations ────────────────────────────────── */
+.corner {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  color: var(--t-bronze);
+  z-index: 4;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.2;
+}
+.corner i {
+  font-style: italic;
+  font-family: var(--font-display);
+  color: var(--t-fg-mute);
+  letter-spacing: 0.12em;
+  font-size: 10px;
+}
+.corner b {
+  font-weight: 400;
+  color: var(--t-fg);
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.corner.tl { top: 14px; left: 18px; }
+.corner.tr { top: 14px; right: 18px; align-items: flex-end; }
+.corner.bl { bottom: 14px; left: 18px; }
+.corner.br { bottom: 14px; right: 18px; align-items: flex-end; }
+
+.canvas.paper .corner { color: var(--t-bronze-d); }
+.canvas.paper .corner i { color: #6b6960; }
+.canvas.paper .corner b { color: var(--ink); }
+
+/* ─── reticle viewfinder brackets ───────────────────────── */
+.reticle {
+  position: absolute; inset: 28px; pointer-events: none; z-index: 2;
+}
+.reticle::before, .reticle::after,
+.reticle > i:first-child::before, .reticle > i:first-child::after {
+  content: "";
+  position: absolute;
+  width: 14px; height: 14px;
+  border: 0 solid var(--t-bronze);
+  opacity: 0.9;
+}
+.reticle::before { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
+.reticle::after  { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
+.reticle > i:first-child { position: absolute; inset: 0; }
+.reticle > i:first-child::before { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; top: auto; }
+.reticle > i:first-child::after  { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; top: auto; }
+.canvas.paper .reticle::before,
+.canvas.paper .reticle::after,
+.canvas.paper .reticle > i::before,
+.canvas.paper .reticle > i::after { border-color: var(--t-bronze-d); }
+
+/* ─── dotted meridian crosshairs ─────────────────────────── */
+.meridian {
+  position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  opacity: var(--meridian-opacity, 0.35);
+}
+.meridian::before, .meridian::after {
+  content: ""; position: absolute;
+}
+.meridian::before {
+  top: 8%; bottom: 8%; left: 50%; width: 0;
+  border-left: 0.5px dashed var(--t-bronze);
+}
+.meridian::after {
+  left: 8%; right: 8%; top: 50%; height: 0;
+  border-top: 0.5px dashed var(--t-bronze);
+}
+.canvas.paper .meridian::before,
+.canvas.paper .meridian::after { border-color: var(--t-bronze-d); }
+
+/* ─── frame: doubled bronze hairline ─────────────────────── */
+.frame {
+  border: 1px solid var(--t-rule);
+  background: rgba(10, 16, 32, 0.4);
+  position: relative;
+}
+.frame.bronze-frame {
+  border: 1px solid var(--t-bronze-d);
+  outline: 0.5px solid var(--t-bronze-d);
+  outline-offset: 3px;
+}
+.canvas.paper .frame {
+  background: rgba(245,239,226,0.5);
+  border-color: var(--t-paper-3);
+}
+
+/* ─── motion primitives ──────────────────────────────────── */
+@keyframes flow         { to { stroke-dashoffset: -16; } }
+@keyframes bezel-rotate { to { transform: rotate(360deg); } }
+@keyframes pulse        { 0%,100% { opacity: 0.6 } 50% { opacity: 1 } }
+
+.edge-flow    { stroke-dasharray: 3 4; animation: flow var(--flow-dur, 3s) linear infinite; }
+.bezel-rotate { transform-origin: center; animation: bezel-rotate var(--bezel-dur, 240s) linear infinite; }
+.pulse        { animation: pulse 2.4s cubic-bezier(0.4,0,0.6,1) infinite; }
+
+/* ─── headings ───────────────────────────────────────────── */
+.instrument-shell .h-display {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 56px;
+  line-height: 1.04;
+  letter-spacing: -0.01em;
+  color: var(--t-fg);
+  margin: 0;
+}
+.instrument-shell .h-display em,
+.instrument-shell .h-section em {
+  font-style: italic;
+  color: var(--t-bronze);
+  font-weight: 400;
+}
+.instrument-shell .h-section {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 22px;
+  letter-spacing: 0.01em;
+  color: var(--t-fg);
+  margin: 0;
+}
+.canvas.paper .h-display,
+.canvas.paper .h-section { color: var(--ink); }
+
+/* ─── buttons ────────────────────────────────────────────── */
+.t-btn {
+  appearance: none;
+  border: 1px solid var(--t-bronze-d);
+  background: transparent;
+  color: var(--t-bronze);
+  padding: 9px 18px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  cursor: pointer;
+  transition: background 120ms var(--ease, cubic-bezier(0.2,0,0,1)),
+              color      120ms var(--ease, cubic-bezier(0.2,0,0,1));
+}
+.t-btn:hover { background: var(--t-bronze); color: var(--t-bg); }
+.t-btn.solid { background: var(--t-bronze); color: var(--t-bg); }
+.t-btn.solid:hover { background: var(--t-fg); border-color: var(--t-fg); }
+.t-btn .key {
+  font-family: var(--font-mono); font-style: normal; font-size: 10px;
+  margin-left: 8px; opacity: 0.7; letter-spacing: 0.02em;
+}
+.canvas.paper .t-btn { color: var(--t-bronze-d); border-color: var(--t-bronze-d); }
+.canvas.paper .t-btn:hover { background: var(--t-bronze-d); color: var(--t-paper); }
+
+/* ─── chips / dots ───────────────────────────────────────── */
+.t-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 0;
+  border: 0.5px solid var(--t-bronze-d);
+  background: rgba(122, 90, 46, 0.08);
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--t-bronze); letter-spacing: 0.04em;
+}
+.canvas.paper .t-chip { color: var(--t-bronze-d); }
+
+.t-dot {
+  display: inline-block;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--type-default);
+  vertical-align: -1px; flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
+}
+.t-dot[data-type="project"]      { background: var(--type-project); }
+.t-dot[data-type="task"]         { background: var(--type-task); }
+.t-dot[data-type="document"]     { background: var(--type-document); }
+.t-dot[data-type="entity"]       { background: var(--type-entity); }
+.t-dot[data-type="conversation"] { background: var(--type-conversation); }
+.t-dot[data-type="article"]      { background: var(--type-article); }
+.t-dot[data-type="bookmark"]     { background: var(--type-bookmark); }
+.t-dot[data-type="procedure"]    { background: var(--type-procedure); }
+.t-dot[data-type="topic"]        { background: var(--type-topic); }
+.t-dot[data-type="event"]        { background: var(--type-event); }
+.t-dot[data-type="asset"]        { background: var(--type-asset); }
+
+.t-halo { position: relative; }
+.t-halo::after {
+  content: ""; position: absolute; inset: -6px; border-radius: 50%;
+  background: radial-gradient(circle, currentColor 0%, transparent 70%);
+  opacity: 0.35; pointer-events: none; z-index: -1;
+}
+
+/* ─── input ──────────────────────────────────────────────── */
+.t-input {
+  appearance: none; border: 0;
+  border-bottom: 1px solid var(--t-bronze-d);
+  background: transparent; color: var(--t-fg);
+  padding: 10px 0;
+  font-family: var(--font-serif); font-size: 18px;
+  width: 100%; outline: none; letter-spacing: 0.01em;
+}
+.t-input::placeholder { color: var(--t-fg-faint); font-style: italic; }
+.t-input:focus { border-bottom-color: var(--t-bronze); }
+.canvas.paper .t-input { color: var(--ink); }
+
+/* ─── density modifiers (data-density on any wrapper) ────── */
+[data-density="sparse"]  .list-row { padding: 18px 24px; }
+[data-density="sparse"]  .rail-row { padding: 7px 16px; }
+[data-density="regular"] .list-row { padding: 12px 24px; }
+[data-density="regular"] .rail-row { padding: 5px 16px; }
+[data-density="dense"]   .list-row { padding: 7px 24px; font-size: 12px; }
+[data-density="dense"]   .rail-row { padding: 3px 16px; font-size: 12px; }
+
+/* ─── motion modifiers (data-motion on any wrapper) ──────── */
+[data-motion="static"]  .edge-flow,
+[data-motion="static"]  .bezel-rotate,
+[data-motion="static"]  .pulse        { animation: none; }
+[data-motion="ambient"] .meridian     { opacity: 0.5; }

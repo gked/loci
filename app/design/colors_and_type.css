@@ -1,7 +1,9 @@
 /* ============================================================
    LOCI DESIGN SYSTEM — Tokens
-   Outer shell = classical antiquity (serif, parchment, ink)
-   Inner shell = vault explorer (sans/mono, neutral, high-contrast)
+   Outer shell      = classical antiquity (serif, parchment, ink)
+   Inner shell      = vault explorer (sans/mono, neutral, high-contrast)
+   Instrument shell = topology / observatory (dark canvas, bronze
+                      hairlines, Latin twins, Roman folios, reticles)
    ============================================================ */
 
 @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
@@ -42,6 +44,26 @@
   --vault-rule-dark:      #2d2b25;
   --vault-fg-dark:        #ebe6d8;
   --vault-fg-muted-dark:  #8a877c;
+
+  /* ----- Instrument shell — topology / observatory --------- */
+  --t-bg:        #0a1020;   /* canvas */
+  --t-bg-deep:   #060914;   /* canvas vignette edge */
+  --t-bg-soft:   #15203a;   /* canvas vignette center */
+  --t-rule:      #2a3450;   /* hairline rule */
+  --t-rule-soft: #1c2538;   /* secondary rule */
+  --t-fg:        #e9e2cf;   /* primary text */
+  --t-fg-mute:   #8896b8;   /* secondary */
+  --t-fg-faint:  #5a6788;   /* tertiary, telemetry */
+  --t-bronze:    #c9a86a;   /* engraved Latin, accents */
+  --t-bronze-d:  #7a5a2e;   /* deeper bronze, hairlines */
+  --t-grid-step: 28px;
+  --t-grid-line: rgba(245,239,226,0.035);
+
+  /* paper variant of instrument shell — for reading surfaces */
+  --t-paper:     #f5efe2;
+  --t-paper-2:   #ebe2cf;
+  --t-paper-3:   #d8cdb4;
+  --t-paper-grid: rgba(122,90,46,0.06);
 
   /* ----- Semantic — TYPE COLORS (canonical from viz_vault.py) */
   --type-project:      #2f6fc4;

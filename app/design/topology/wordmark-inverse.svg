@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 96" width="360" height="96">
+  
+  <text x="0" y="76" class="wm">Loci</text>
+  <circle cx="170" cy="70" r="4" class="wm-dot"></circle>
+</svg>

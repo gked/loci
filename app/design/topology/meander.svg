@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 48" width="480" height="48" preserveAspectRatio="xMidYMid meet">
+  
+  <g fill="none" stroke="#0d0a08" stroke-width="2" stroke-linecap="square">
+    
+    <g>
+      <path d="M 4 44 V 12 H 36 V 36 H 20 V 20 H 28 V 28"></path>
+    </g>
+    <g transform="translate(40,0)">
+      <path d="M 4 44 V 12 H 36 V 36 H 20 V 20 H 28 V 28"></path>
+    </g>
+    <g transform="translate(80,0)">
+      <path d="M 4 44 V 12 H 36 V 36 H 20 V 20 H 28 V 28"></path>
+    </g>
+    <g transform="translate(120,0)">
+      <path d="M 4 44 V 12 H 36 V 36 H 20 V 20 H 28 V 28"></path>
+    </g>
+    <g transform="translate(160,0)">
+      <path d="M 4 44 V 12 H 36 V 36 H 20 V 20 H 28 V 28"></path>
+    </g>
+    <g transform="translate(200,0)">
+      <path d="M 4 44 V 12 H 36 V 36 H 20 V 20 H 28 V 28"></path>
+    </g>
+    <g transform="translate(240,0)">
+      <path d="M 4 44 V 12 H 36 V 36 H 20 V 20 H 28 V 28"></path>
+    </g>
+    <g transform="translate(280,0)">
+      <path d="M 4 44 V 12 H 36 V 36 H 20 V 20 H 28 V 28"></path>
+    </g>
+    <g transform="translate(320,0)">
+      <path d="M 4 44 V 12 H 36 V 36 H 20 V 20 H 28 V 28"></path>
+    </g>
+    <g transform="translate(360,0)">
+      <path d="M 4 44 V 12 H 36 V 36 H 20 V 20 H 28 V 28"></path>
+    </g>
+    <g transform="translate(400,0)">
+      <path d="M 4 44 V 12 H 36 V 36 H 20 V 20 H 28 V 28"></path>
+    </g>
+    <g transform="translate(440,0)">
+      <path d="M 4 44 V 12 H 36 V 36 H 20 V 20 H 28 V 28"></path>
+    </g>
+    <line x1="0" y1="44" x2="480" y2="44"></line>
+    <line x1="0" y1="6" x2="480" y2="6"></line>
+  </g>
+</svg>

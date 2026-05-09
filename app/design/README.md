@@ -17,9 +17,9 @@ If you have access to the repo, read those files. If not: the relevant excerpts 
 
 ---
 
-## The Two Shells
+## The Three Shells
 
-Loci's brief asks for **two distinct visual registers**, used in different contexts:
+Loci's brief asks for **distinct visual registers**, used in different contexts:
 
 ### Outer shell — the *Memory Palace*
 Where Loci speaks to the world. Marketing, splash, install screens, README artwork, slides, the seam where the user enters the vault.
@@ -37,7 +37,16 @@ Where the user actually works — browsing nodes, reading frontmatter, traversin
 - **Color**: near-monochrome surface (paper / vellum / ink) with the **canonical type palette** from `viz_vault.py` doing all the semantic lifting.
 - **Motifs**: thin rules, monospace UIDs, dotted leader lines, edge-labels, minimal chrome.
 
-These shells share fonts, spacing, and radii — but invert their character. Outer shell is *generous, warm, ornamental.* Inner shell is *dense, cool, structural.*
+### Instrument shell — the *Observatory*
+Where the user reads the *topology* of the vault. Graph view, command bar, splash, capture flow, vault health — anywhere navigation, time, or position is what's being examined. A planetarium console, not a document.
+
+- **Mood**: dark navy canvas, bronze hairlines, engraved Latin curving along arcs, dotted meridians and reticle brackets. An instrument someone built by hand.
+- **Type**: same families as the inner shell, but pressed into service as engraving — Cormorant italic for Latin twins and bezel labels, JetBrains Mono for telemetry and corner annotations, Roman numerals for folios.
+- **Color**: deep navy ground (`--t-bg` `#0a1020`) with a vignette to `--t-bg-deep`, faint bronze grid (`--t-grid-line`), bronze accents (`--t-bronze` `#c9a86a`). The canonical type colors keep doing the semantic lifting; everything else is bronze.
+- **Motifs**: corner Latin annotations (*nodi · nexus · focus*), bronze bezel rings, reticle viewfinder corners, dotted meridian crosshairs, Roman folio counters, dashed flow on edges.
+- **Paper variant**: `canvas.paper` — same chrome on ivory ground, for long-form reading without leaving the register.
+
+These shells share fonts, spacing, and radii — but invert their character. Outer shell is *generous, warm, ornamental.* Inner shell is *dense, cool, structural.* Instrument shell is *engraved, instrumental, observational.*
 
 ---
 
@@ -48,6 +57,7 @@ Loci Design System/
   README.md                ← you are here
   SKILL.md                 ← Agent Skills entrypoint (Claude Code compatible)
   colors_and_type.css      ← all design tokens; import this first
+  instrument-shell.css     ← topology vibe — opt in via .instrument-shell or .canvas.instrument
   fonts/                   ← Cormorant Garamond, EB Garamond, Inter, JetBrains Mono
   assets/
     logo/                  ← wordmark, monogram, seal
@@ -57,6 +67,7 @@ Loci Design System/
   ui_kits/
     outer-shell/           ← marketing surfaces (splash, README plate, install screen)
     inner-shell/           ← vault explorer (sidebar, node detail, graph view, composer)
+    instrument-shell/      ← topology / observatory atoms (Bezel, Reticle, Corners, L, RomanIndex)
 ```
 
 Open `preview/` cards through the Design System tab. Open `ui_kits/<kit>/index.html` to see each kit in motion.
