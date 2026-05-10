@@ -305,6 +305,40 @@ loci/
 
 ---
 
+## Development
+
+### API server (FastAPI)
+
+```bash
+make dev-api
+# or directly:
+uv run uvicorn server.http_server:app --reload --port 8765
+```
+
+Runs the FastAPI server at `http://localhost:8765` with hot reload. The vault UI and any local HTTP clients point here.
+
+### React app (Vite)
+
+```bash
+make dev-ui
+# or directly:
+cd app && npm run dev
+```
+
+Starts the Vite dev server (default `http://localhost:5173`). Expects the API server to be running on port 8765.
+
+### MCP server (stdio)
+
+```bash
+./run_server.sh
+# or directly:
+uv run python server/loci_mcp/server.py
+```
+
+Runs the MCP server in stdio mode for use with Claude Code / Claude Desktop. Not needed for UI development.
+
+---
+
 ## Vault Structure
 
 ```
