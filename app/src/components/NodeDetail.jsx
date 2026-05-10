@@ -71,7 +71,7 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 300px", gap: 32, padding: "40px 56px 56px" }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 300px", gap: 32, padding: "40px 56px 56px" }}>
         <article style={{ maxWidth: 720, position: "relative" }}>
           {/* engraved overline */}
           <div style={{

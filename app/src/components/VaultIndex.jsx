@@ -56,7 +56,7 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav }) {
         <span>updated</span>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         {nodes.map(n => (
           <div
             key={n.uid}
