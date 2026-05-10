@@ -124,7 +124,7 @@ export default function App() {
       <VaultRail active={railActive} onNav={handleNav} nodes={allNodes}/>
 
       {/* main content area */}
-      <div style={{ flex: 1, position: "relative", minWidth: 0, display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, position: "relative", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
         {nodesError && (
           <div style={{
             padding: "10px 20px", background: "rgba(192,57,43,0.15)",
@@ -136,7 +136,7 @@ export default function App() {
             <span>Cannot reach API — is <code>make dev-api</code> running?</span>
           </div>
         )}
-        <div style={{ flex: 1, position: "relative", minWidth: 0, display: "flex" }}>
+        <div style={{ flex: 1, position: "relative", minWidth: 0, minHeight: 0, display: "flex" }}>
         {/* Screens */}
         {(section === "all" || section === "recent" || section.startsWith("t:")) && (
           <VaultIndex
