@@ -22,7 +22,7 @@ from pathlib import Path
 # Install dependencies before any local imports that require them
 subprocess.run(["uv", "sync"], cwd=Path(__file__).parent, check=True)
 
-# Add tools/ to path
+# Add server/tools/ to path
 sys.path.insert(0, str(Path(__file__).parent / "server" / "tools"))
 from vault_init import init as vault_init
 

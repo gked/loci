@@ -151,7 +151,7 @@ cp -r loci-skill/loci-inbox/ ~/.claude/skills/loci-inbox/
 After code changes, restart the server by running:
 
 ```bash
-uv run --directory /path/to/loci python loci_mcp/server.py
+uv run --directory /path/to/loci python server/loci_mcp/server.py
 ```
 
 For Claude Desktop, the server is managed by the app — just quit and reopen Claude Desktop. For Claude Code, restart the session or toggle the MCP connection in settings.
