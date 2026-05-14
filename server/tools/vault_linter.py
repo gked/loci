@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from vault_init import load_config
 from type_registry import TypeRegistry, get_registry, REFERENCES_DIR
 from relation_registry import RelationRegistry, get_relation_registry
+from scheme_registry import SchemeRegistry, get_scheme_registry
 
 BASE_REQUIRED = [
     "uid", "type", "title", "author",
@@ -80,6 +81,7 @@ def lint_file(
     all_uids: set[str],
     registry: TypeRegistry,
     relation_registry: Optional[RelationRegistry] = None,
+    scheme_registry: Optional[SchemeRegistry] = None,
 ) -> list[LintIssue]:
     """Lint a single vault file against the type registry."""
     issues: list[LintIssue] = []
@@ -176,6 +178,51 @@ def lint_file(
     if not summary or not str(summary).strip():
         issues.append(LintIssue(name, "warning", "empty-summary", "Summary is empty"))
 
+    # has_asset structure — only validate when it's the new list form
+    has_asset = fm.get("has_asset")
+    if has_asset is not None and not isinstance(has_asset, (bool, list)):
+        issues.append(LintIssue(name, "warning", "has-asset-unexpected-type",
+            f"has_asset should be a list or legacy boolean true (got {type(has_asset).__name__})"))
+    if isinstance(has_asset, list):
+        for i, variant in enumerate(has_asset):
+            if not isinstance(variant, dict):
+                issues.append(LintIssue(name, "error", "has-asset-invalid-variant",
+                    f"has_asset[{i}] must be a mapping (got {type(variant).__name__})"))
+                continue
+            if not variant.get("format"):
+                issues.append(LintIssue(name, "error", "has-asset-missing-format",
+                    f"has_asset[{i}] is missing required 'format' field"))
+            locations = variant.get("locations")
+            if not locations:
+                issues.append(LintIssue(name, "error", "has-asset-missing-locations",
+                    f"has_asset[{i}] must have at least one location"))
+                continue
+            if not isinstance(locations, list):
+                issues.append(LintIssue(name, "error", "has-asset-invalid-locations",
+                    f"has_asset[{i}].locations must be a list"))
+                continue
+            for j, loc in enumerate(locations):
+                if not isinstance(loc, dict):
+                    issues.append(LintIssue(name, "error", "has-asset-invalid-location",
+                        f"has_asset[{i}].locations[{j}] must be a mapping"))
+                    continue
+                scheme = loc.get("scheme")
+                if not scheme:
+                    issues.append(LintIssue(name, "error", "has-asset-missing-scheme",
+                        f"has_asset[{i}].locations[{j}] is missing 'scheme'"))
+                    continue
+                if scheme_registry and not scheme_registry.is_valid(scheme):
+                    issues.append(LintIssue(name, "error", "has-asset-unknown-scheme",
+                        f"has_asset[{i}].locations[{j}] uses unknown scheme '{scheme}'"))
+                    continue
+                if scheme_registry:
+                    scheme_def = scheme_registry.get(scheme)
+                    for req_field in scheme_def.required_fields:
+                        if req_field not in loc:
+                            issues.append(LintIssue(name, "error", "has-asset-missing-scheme-field",
+                                f"has_asset[{i}].locations[{j}] scheme '{scheme}' "
+                                f"requires field '{req_field}'"))
+
     return issues
 
 
@@ -190,6 +237,7 @@ def lint_vault(vault_root: Path) -> dict:
     """
     registry = get_registry(vault_root)
     relation_registry = get_relation_registry(vault_root)
+    scheme_reg = get_scheme_registry(vault_root)
     md_files = sorted(f for f in vault_root.glob("*.md"))
 
     # Pass 1: collect all uids and detect duplicates
@@ -221,7 +269,7 @@ def lint_vault(vault_root: Path) -> dict:
     # Pass 2: lint each file
     all_issues: list[LintIssue] = list(dup_issues)
     for path in md_files:
-        all_issues.extend(lint_file(path, all_uids, registry, relation_registry))
+        all_issues.extend(lint_file(path, all_uids, registry, relation_registry, scheme_reg))
 
     errors = [i for i in all_issues if i.severity == "error"]
     warnings = [i for i in all_issues if i.severity == "warning"]

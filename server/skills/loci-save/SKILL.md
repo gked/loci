@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 10
+skill_version: 11
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, or topic — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 10`.
+This skill is at `skill_version: 11`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -424,3 +424,77 @@ Deletion is permanent — there is no undo.
 **Unknown type:** use `article` if the content has a citable source (URL, author, publication). Use `document` if there is no publication record to track. Ask only when genuinely ambiguous.
 
 **Very long content:** summarize in `summary`, keep full content in body.
+
+---
+
+## has_asset Field (Location Refactor — Phase 1 foundation)
+
+> **Status:** schema and resolver infrastructure is in place. Production use (migrating
+> existing asset-registry data into has_asset frontmatter) lands in Phase 5.
+> Until then, nodes may carry the legacy `has_asset: true` boolean form.
+
+`has_asset` is an optional frontmatter field that attaches file variants and their
+storage locations to a vault node. It replaces the legacy separate asset-registry.
+
+### Structure
+
+```yaml
+has_asset:
+  - format: pdf           # required: file format identifier
+    primary: true         # optional: marks the primary/preferred variant (default false)
+    locations:            # required: at least one location entry
+      - scheme: local     # required: scheme name — must appear in scheme-dictionary
+        path: assets/<uid>.pdf  # scheme-specific required fields
+        priority: 1       # optional: lower number = preferred fallback order
+      - scheme: s3
+        bucket: my-backup
+        key: <uid>.pdf
+        priority: 2
+  - format: html
+    locations:
+      - scheme: google-drive
+        file_id: 1aBcD...
+```
+
+**Before writing any has_asset entry:** call `loci__read_meta(file="scheme-dictionary")`
+to confirm valid scheme names and their required fields. Unknown schemes and missing
+required fields are lint errors.
+
+**Authoritative fields only** — store only what cannot be derived: format, primary flag,
+scheme, scheme-specific identifiers, priority. Do NOT store mime_type, size_bytes,
+last_verified_at, or registered_at — these are computed at resolve time.
+
+### Scheme model
+
+Each location's `scheme` names a storage type. The scheme determines which resolver
+handles the location and which fields are required. Current canonical schemes:
+
+| Scheme | Required fields | enumerate? |
+|---|---|---|
+| `local` | `path` | yes |
+| `google-drive` | `file_id` | yes |
+| `nextcloud` | `path` | yes |
+| `onedrive` | `item_id` | no |
+| `dropbox` | `path` | no |
+| `icloud-drive` | `path` | no |
+| `url` | `url` | no |
+| `gmail` | `thread_id`, `message_id` | yes |
+| `s3` | `bucket`, `key` | yes |
+| `ssh-remote` | `host`, `path` | yes |
+
+User-defined schemes go in scheme-dictionary-user. They must not collide with canonical names.
+
+### Two relationships to content
+
+- **Adopt** — file lives under `loci/assets/`. Vault is canonical. Use `scheme: local`
+  with `path: assets/<uid>.<format>`.
+- **Reference** — file lives elsewhere (Drive, Gmail, URL, etc.). Vault carries a pointer;
+  the original remains canonical. Use the appropriate non-local scheme.
+
+A single variant can mix both — a local copy as primary, a cloud mirror as fallback.
+
+### find_nodes filters
+
+`loci__find_nodes` now accepts:
+- `has_asset=True` — return only nodes with an asset attached (either form)
+- `has_asset_scheme="google-drive"` — return only nodes with a location using that scheme

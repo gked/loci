@@ -229,7 +229,8 @@ def read_meta(file: str) -> str:
     Read a vault meta file.
     file: type-dictionary | tag-dictionary | field-dictionary |
           relation-dictionary | relation-dictionary-user |
-          foreign-definitions | ontology | ontology-user | config
+          foreign-definitions | ontology | ontology-user |
+          scheme-dictionary | scheme-dictionary-user | config
 
     ontology              — machine-readable canonical type definitions (required fields,
                             optional fields, enum values). Source of truth for structure.
@@ -241,6 +242,10 @@ def read_meta(file: str) -> str:
                             relation types alongside canonical ones.
     field-dictionary      — behavioral guidance: field descriptions, complex object schemas,
                             archiving patterns, temporal field rules (LLM-readable).
+    scheme-dictionary     — canonical location schemes for has_asset fields (scheme names,
+                            required/optional fields, capabilities). Read before constructing
+                            any has_asset entry to confirm valid schemes and required fields.
+    scheme-dictionary-user — user-defined location scheme additions.
     """
     try:
         return loci.read_meta(file)
@@ -429,6 +434,8 @@ def find_nodes(
     updated_after: str = None,
     related_to: str = None,
     language: str = None,
+    has_asset: bool = None,
+    has_asset_scheme: str = None,
 ) -> list[dict]:
     """
     Find vault nodes matching any combination of filters. At least one should be provided.
@@ -446,6 +453,9 @@ def find_nodes(
         updated_after:  ISO date — nodes updated on or after this date
         related_to: UID — only return nodes connected to this node by any edge
         language: Language code (en, ru, de, …)
+        has_asset: True to return only nodes with an asset; False for nodes without
+        has_asset_scheme: scheme name (e.g. "google-drive") — return only nodes
+                          with a has_asset location using that scheme (case-insensitive)
     """
     graph.get(loci._vault_root())
     return graph.find(
@@ -459,6 +469,8 @@ def find_nodes(
         updated_after=updated_after,
         related_to=related_to,
         language=language,
+        has_asset=has_asset,
+        has_asset_scheme=has_asset_scheme,
     )
 
 

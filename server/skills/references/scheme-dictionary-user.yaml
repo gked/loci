@@ -1,0 +1,10 @@
+# User-defined location schemes.
+# Add custom schemes here; canonical schemes live in scheme-dictionary.yaml.
+#
+# Rules:
+#   - name must not collide with any canonical scheme
+#   - additive only — canonical definitions cannot be changed here
+#   - same structure as canonical entries: name, description, required_fields,
+#     optional_fields, capabilities
+
+schemes: []

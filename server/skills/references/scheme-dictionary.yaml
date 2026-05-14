@@ -1,0 +1,68 @@
+schema_version: 1
+# Canonical vocabulary for location schemes in vault node has_asset fields.
+# Machine-readable source of truth for SchemeRegistry.
+# Seeded to vault/meta/ on every META_VERSION bump.
+# To add custom schemes, use scheme-dictionary-user.yaml.
+#
+# Each entry declares:
+#   name            — scheme identifier used in has_asset[].locations[].scheme
+#   description     — human-readable description of what this scheme resolves to
+#   required_fields — fields that MUST be present on every location using this scheme
+#   optional_fields — fields that MAY be present (list is informational; unknown fields warn)
+#   capabilities    — subset of [resolve, enumerate] this scheme supports
+#     resolve   — hydrate a specific item (fetch content or metadata)
+#     enumerate — list items in a container (e.g. directory, Drive folder, label)
+
+schemes:
+  - name: local
+    description: A file on the local filesystem (path relative to loci root)
+    required_fields: [path]
+    capabilities: [resolve, enumerate]
+
+  - name: google-drive
+    description: A Google Drive file (accessed via Drive API file ID)
+    required_fields: [file_id]
+    capabilities: [resolve, enumerate]
+
+  - name: nextcloud
+    description: A Nextcloud file (accessed via WebDAV)
+    required_fields: [path]
+    optional_fields: [host]
+    capabilities: [resolve, enumerate]
+
+  - name: onedrive
+    description: A Microsoft OneDrive file (accessed via Microsoft Graph item ID)
+    required_fields: [item_id]
+    capabilities: [resolve]
+
+  - name: dropbox
+    description: A Dropbox file (accessed via Dropbox path)
+    required_fields: [path]
+    capabilities: [resolve]
+
+  - name: icloud-drive
+    description: An iCloud Drive file (local sync path)
+    required_fields: [path]
+    capabilities: [resolve]
+
+  - name: url
+    description: A plain HTTP/HTTPS URL (single resource — no enumerate)
+    required_fields: [url]
+    capabilities: [resolve]
+
+  - name: gmail
+    description: A Gmail message (accessed via Gmail API thread and message IDs)
+    required_fields: [thread_id, message_id]
+    capabilities: [resolve, enumerate]
+
+  - name: s3
+    description: An AWS S3 object
+    required_fields: [bucket, key]
+    optional_fields: [region]
+    capabilities: [resolve, enumerate]
+
+  - name: ssh-remote
+    description: A file on a remote server (accessed via SSH/SFTP)
+    required_fields: [host, path]
+    optional_fields: [user, port]
+    capabilities: [resolve, enumerate]

@@ -156,6 +156,10 @@ def write_item(
     if relation_errors:
         return {"errors": relation_errors}
 
+    # TODO Phase 5: validate has_asset list structure against SchemeRegistry here
+    # (block on write for unknown schemes / missing required fields, matching
+    # the relation validation pattern above).
+
     vault_root.mkdir(parents=True, exist_ok=True)
 
     # Duplicate check
@@ -248,6 +252,9 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
                     f"Unknown relation type '{rel_type}'. "
                     f"Call read_meta(file='relation-dictionary') to see valid types."
                 )
+
+    # TODO Phase 5: validate has_asset list structure in updates against SchemeRegistry
+    # (warn on patch for unknown schemes / missing required fields).
 
     raw = p.read_text(encoding="utf-8")
 

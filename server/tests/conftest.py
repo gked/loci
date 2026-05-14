@@ -21,6 +21,7 @@ sys.path.insert(0, str(SERVER_ROOT / "tools"))
 import nx_graph as _nx_graph  # noqa: E402  (must follow sys.path insert)
 from type_registry import reset_registry as _reset_type_registry  # noqa: E402
 from relation_registry import reset_relation_registry as _reset_relation_registry  # noqa: E402
+from scheme_registry import reset_scheme_registry as _reset_scheme_registry  # noqa: E402
 
 
 @pytest.fixture
@@ -38,6 +39,7 @@ def tmp_vault(tmp_path):
     _nx_graph._built_at = 0.0
     _reset_type_registry()
     _reset_relation_registry()
+    _reset_scheme_registry()
 
     yield vault_path
 
@@ -46,6 +48,7 @@ def tmp_vault(tmp_path):
     _nx_graph._built_at = 0.0
     _reset_type_registry()
     _reset_relation_registry()
+    _reset_scheme_registry()
 
 
 @pytest.fixture

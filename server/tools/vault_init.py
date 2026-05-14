@@ -17,7 +17,7 @@ from typing import Optional
 CONFIG_PATH = Path(__file__).parent.parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "skills" / "references"
 
-META_VERSION = 5
+META_VERSION = 6
 
 VAULT_FOLDERS = [
     "meta",
@@ -32,12 +32,14 @@ META_FILES = [
     "relation-dictionary.yaml",
     "foreign-definitions.md",
     "ontology.yaml",
+    "scheme-dictionary.yaml",
 ]
 
 # Seeded once on first setup, never overwritten — user owns these.
 USER_META_FILES = [
     "ontology-user.yaml",
     "relation-dictionary-user.yaml",
+    "scheme-dictionary-user.yaml",
 ]
 
 

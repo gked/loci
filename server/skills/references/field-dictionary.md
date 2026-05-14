@@ -110,6 +110,40 @@ type: array
 required: yes
 description: external sources; each entry is {url, title, source_type}
 
+field: has_asset
+type: array
+required: no
+description: >
+  List of file variants attached to this vault node. Each variant represents
+  a distinct format of the same conceptual artifact (e.g. PDF and HTML of the
+  same document). Only set when this node carries or references an external file.
+  Read scheme-dictionary before constructing has_asset entries to confirm valid
+  schemes and their required fields.
+
+  Structure:
+    has_asset:
+      - format: pdf           # required: file format identifier
+        primary: true         # optional: marks the primary/preferred variant (default false)
+        locations:            # required: at least one location entry
+          - scheme: local     # required: scheme name — must appear in scheme-dictionary
+            path: assets/<uid>.pdf  # scheme-specific required fields (see scheme-dictionary)
+            priority: 1       # optional: lower number = preferred fallback order
+          - scheme: s3
+            bucket: my-backup
+            key: <uid>.pdf
+            priority: 2
+      - format: html
+        locations:
+          - scheme: google-drive
+            file_id: 1aBcD...
+
+  Authoritative fields only — store only what cannot be derived (format, primary flag,
+  scheme, scheme-specific identifiers, priority). Do NOT store mime_type, size_bytes,
+  last_verified_at, modified_time, or registered_at — compute these at resolve time.
+
+  NOTE: Production use of has_asset as a list lands in Phase 5 of the locations refactor.
+  Until then, existing nodes may carry has_asset: true (legacy boolean form).
+
 ---
 
 ## Type-Specific Fields

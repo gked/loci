@@ -251,6 +251,8 @@ loci/
         ontology-user.yaml        ← user-defined type extensions (seeded once, user-owned)
         relation-dictionary.yaml  ← machine-readable relation vocabulary (RelationRegistry source)
         relation-dictionary-user.yaml ← user relation extensions (seeded once, user-owned)
+        scheme-dictionary.yaml    ← location scheme vocabulary (SchemeRegistry source)
+        scheme-dictionary-user.yaml   ← user scheme extensions (seeded once, user-owned)
         type-dictionary.md        ← type selection guide
         type-decision.md          ← type decision flowchart
         field-dictionary.md       ← field guidance per type
@@ -262,10 +264,15 @@ loci/
       slug.py
       vault_init.py
       write_file.py
-      vault_linter.py             ← lint checks for vault nodes
+      vault_linter.py             ← lint checks for vault nodes (incl. has_asset structure)
       nx_graph.py                 ← NetworkX in-memory graph index
       type_registry.py            ← TypeRegistry singleton (backed by ontology.yaml)
       relation_registry.py        ← RelationRegistry singleton (backed by relation-dictionary.yaml)
+      scheme_registry.py          ← SchemeRegistry singleton (backed by scheme-dictionary.yaml)
+      resolvers/                  ← location scheme resolver layer
+        base.py                   ← Resolver ABC (resolve / enumerate interface)
+        local_resolver.py         ← local filesystem resolver
+        dispatcher.py             ← routes locations to the correct resolver by scheme
       asset_registry.py           ← asset resolve, register, find-unregistered, crash recovery
       metadata_extractor.py       ← epub OPF parsing, PDF metadata, filename fallback
       inbox_scanner.py            ← classify files in loci-stage/ by extension and location
@@ -356,12 +363,14 @@ Runs the MCP server in stdio mode for use with Claude Code / Claude Desktop. Not
     topics/
     references/
     meta/
-      type-dictionary.md        ← canonical type vocabulary       (schema_version: N)
-      field-dictionary.md       ← field definitions per type      (schema_version: N)
-      tag-dictionary.md         ← freeform tag vocabulary         (schema_version: N)
-      relation-dictionary.md    ← typed edge vocabulary           (schema_version: N)
-      foreign-definitions.md    ← external source schemas         (schema_version: N)
-      ontology-user.yaml        ← user-defined type extensions    (user-owned)
+      type-dictionary.md           ← canonical type vocabulary       (schema_version: N)
+      field-dictionary.md          ← field definitions per type      (schema_version: N)
+      tag-dictionary.md            ← freeform tag vocabulary         (schema_version: N)
+      relation-dictionary.md       ← typed edge vocabulary           (schema_version: N)
+      foreign-definitions.md       ← external source schemas         (schema_version: N)
+      ontology-user.yaml           ← user-defined type extensions    (user-owned)
+      scheme-dictionary.yaml       ← location scheme vocabulary      (reseeded on META_VERSION bump)
+      scheme-dictionary-user.yaml  ← user-defined schemes            (user-owned)
 
   assets/                       ← binary/rich files (HTML, PDF, PNG, etc.)
     <uid>.<ext>                 ← one file per asset, named by vault node UID
@@ -377,8 +386,11 @@ Runs the MCP server in stdio mode for use with Claude Code / Claude Desktop. Not
     .inbox-plan.yaml            ← work queue written by scan_inbox, consumed by execution
 ```
 
-Vault nodes reference assets by setting `has_asset: true`. The registry maps UIDs to physical
-file locations. If a file moves, only the registry entry changes — vault nodes are untouched.
+Vault nodes reference assets via the `has_asset` field. The current production form is
+`has_asset: true` (boolean), backed by the `asset-registry/` YAML files. A new structured
+form (`has_asset: [{format, locations: [{scheme, ...}]}]`) is being phased in — it folds
+location data directly into frontmatter, eliminating the separate registry (Phase 5 of the
+locations refactor). Until Phase 5 ships, both forms coexist.
 
 ---
 
@@ -426,8 +438,10 @@ The vault meta files are user-owned — they accumulate customizations (new tags
 - [x] Asset registry — binary/rich file storage (HTML, PDF, PNG, etc.) with crash-safe write sequence, resolver, and startup recovery
 - [x] Library support — `asset` nodes with `subtype: book`; `reading-log` user type (one per reading, supports re-reads); Library topic structure
 - [x] Inbox — `loci-stage/` staging folder with two-phase scan → execute workflow, per-category budgets, resumable plan file
+- [x] Locations refactor Phase 1 — `has_asset` list schema, scheme-dictionary, SchemeRegistry, local resolver + dispatcher, has_asset lint, `find_nodes` scheme filters
 
 ### Next
+- [ ] Locations refactor Phase 2 — external scheme resolvers (`url`, `google-drive`, `nextcloud`, `gmail`) shipped independently
 - [ ] Streamable HTTP transport (SSE is deprecated in MCP spec)
 
 ### Later

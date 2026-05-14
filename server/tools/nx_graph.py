@@ -83,6 +83,21 @@ def _build(vault_root: Path) -> nx.DiGraph:
 
         uid = fm["uid"]
 
+        has_asset_val = fm.get("has_asset")
+        has_asset_present = (
+            has_asset_val is True  # legacy boolean form
+            or (isinstance(has_asset_val, list) and bool(has_asset_val))
+        )
+        has_asset_schemes: list = []
+        if isinstance(has_asset_val, list):
+            for variant in has_asset_val:
+                if isinstance(variant, dict):
+                    for loc in (variant.get("locations") or []):
+                        if isinstance(loc, dict) and loc.get("scheme"):
+                            s = loc["scheme"]
+                            if s not in has_asset_schemes:
+                                has_asset_schemes.append(s)
+
         g.add_node(
             uid,
             type=fm.get("type", ""),
@@ -98,6 +113,8 @@ def _build(vault_root: Path) -> nx.DiGraph:
             due_date=_date_str(fm.get("due_date")),
             created_at=_date_str(fm.get("created_at")),
             updated_at=_date_str(fm.get("updated_at")),
+            has_asset=has_asset_present,
+            has_asset_schemes=has_asset_schemes,
         )
 
         for rel in fm.get("relations") or []:
@@ -270,6 +287,8 @@ def find(
     updated_after: str = None,
     related_to: str = None,
     language: str = None,
+    has_asset: bool = None,
+    has_asset_scheme: str = None,
 ) -> list[dict]:
     """
     Filter nodes by any combination of supported attributes.
@@ -280,6 +299,8 @@ def find(
     is passed explicitly. Pass state=None to include all nodes regardless of state.
     Date parameters accept ISO date strings (YYYY-MM-DD).
     related_to: uid — only return nodes connected to this uid by any edge.
+    has_asset: True to return only nodes with an asset attached; False for nodes without.
+    has_asset_scheme: scheme name — return only nodes with a location using this scheme (case-insensitive).
     """
     g = _graph
     if g is None:
@@ -307,6 +328,16 @@ def find(
             continue
         if related_uids is not None and uid not in related_uids:
             continue
+        if has_asset is not None:
+            node_has_asset = attrs.get("has_asset", False)
+            if has_asset and not node_has_asset:
+                continue
+            if not has_asset and node_has_asset:
+                continue
+        if has_asset_scheme:
+            node_schemes = attrs.get("has_asset_schemes") or []
+            if has_asset_scheme.lower() not in node_schemes:
+                continue
 
         node_due = attrs.get("due_date", "")
         if due_before and not (node_due and node_due <= due_before):

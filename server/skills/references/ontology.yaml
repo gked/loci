@@ -28,6 +28,7 @@ base_fields:
   optional:
     - language
     - aliases
+    - has_asset
 
 types:
   - name: document
