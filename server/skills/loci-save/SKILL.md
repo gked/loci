@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 11
+skill_version: 13
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, or topic — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 11`.
+This skill is at `skill_version: 13`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -427,10 +427,12 @@ Deletion is permanent — there is no undo.
 
 ---
 
-## has_asset Field (Location Refactor — Phase 1 foundation)
+## has_asset Field (Location Refactor — Phase 2 complete)
 
-> **Status:** schema and resolver infrastructure is in place. Production use (migrating
-> existing asset-registry data into has_asset frontmatter) lands in Phase 5.
+> **Status:** schema, resolver infrastructure, and all canonical scheme docs are in place.
+> `local` and `url` schemes resolve content directly. All other schemes are pointer-only —
+> Loci stores the location; access happens via the appropriate MCP or native tool.
+> Production use (migrating existing asset-registry data into has_asset frontmatter) lands in Phase 5.
 > Until then, nodes may carry the legacy `has_asset: true` boolean form.
 
 `has_asset` is an optional frontmatter field that attaches file variants and their
@@ -498,3 +500,196 @@ A single variant can mix both — a local copy as primary, a cloud mirror as fal
 `loci__find_nodes` now accepts:
 - `has_asset=True` — return only nodes with an asset attached (either form)
 - `has_asset_scheme="google-drive"` — return only nodes with a location using that scheme
+
+### Scheme: url
+
+Use `scheme: url` to reference a specific web resource by its HTTP/HTTPS address. Suitable for web pages, downloadable files, publicly accessible PDFs, API endpoints, or any single resource reachable via a URL.
+
+**When to use:** the content lives at a stable URL you want to record as the canonical location. Contrast with `source_url` (which is a vault frontmatter field for the *origin* of the content), and with bookmarks (vault nodes whose *subject* is a URL). Use `has_asset` with `scheme: url` when you want the URL to be resolvable — i.e. when the system should be able to fetch the content on demand.
+
+**Required field:** `url` — the full `https://` or `http://` URL.
+
+**No enumerate.** A bare URL points to a single resource, not a container. `sync_locations` skips `url` locations silently.
+
+**Example:**
+
+```yaml
+has_asset:
+  - format: pdf
+    primary: true
+    locations:
+      - scheme: url
+        url: https://arxiv.org/pdf/2401.00001
+```
+
+**Limitations:**
+- No authentication support. Use a different scheme for resources behind OAuth or API keys.
+- Resolver respects HTTP redirects and returns the final URL in the result.
+
+> **Note on external schemes (all schemes below):** For non-local, non-URL schemes, Loci stores the location pointer only. It does not fetch content from the service. To access the file, use the appropriate MCP server or native tool for that service (google-docs MCP for Drive/Gmail, native Nextcloud client, AWS CLI for S3, etc.).
+
+### Scheme: google-drive
+
+Use `scheme: google-drive` when the file lives in Google Drive and you want to record its canonical Drive location.
+
+**When to use:** the file is owned or primarily stored in Drive — shared decks, collaborative docs, uploaded attachments. Not needed if the file is already synced locally and `scheme: local` covers it.
+
+**Required field:** `file_id` — the Drive file ID. Find it in the file's URL: `https://drive.google.com/file/d/<file_id>/view`.
+
+**Enumerate:** supported (folder listing). Scope field: `file_id` pointing to a Drive folder ID.
+
+**Example:**
+```yaml
+has_asset:
+  - format: pdf
+    primary: true
+    locations:
+      - scheme: google-drive
+        file_id: 1aBcDeFgHiJkLmNoPqRsTuVwXyZ
+```
+
+### Scheme: nextcloud
+
+Use `scheme: nextcloud` for files on a Nextcloud server accessed via WebDAV.
+
+**When to use:** the file lives on a Nextcloud instance and you want to reference it by server path — especially useful when the file is not synced locally on all devices.
+
+**Required field:** `path` — path relative to the user's Nextcloud root (e.g. `Documents/report.pdf`).
+
+**Optional field:** `host` — Nextcloud server base URL (e.g. `https://cloud.example.com`). If omitted, the resolver falls back to the `NEXTCLOUD_HOST` environment variable.
+
+**Enumerate:** supported (WebDAV directory listing). Scope fields: `path`, optional `host`.
+
+**Example:**
+```yaml
+has_asset:
+  - format: pdf
+    locations:
+      - scheme: nextcloud
+        path: loci/assets/report.pdf
+        host: https://cloud.example.com
+```
+
+### Scheme: gmail
+
+Use `scheme: gmail` when the vault node represents a Gmail message — e.g. an important email thread saved as a reference.
+
+**When to use:** the *content itself* is an email (not just a link to one). Both `thread_id` and `message_id` are required so the message can be uniquely located.
+
+**Required fields:** `thread_id` and `message_id`. Find them in the Gmail URL: `https://mail.google.com/mail/u/0/#inbox/<thread_id>`, or via the Gmail API.
+
+**Enumerate:** supported (label listing). Scope field: `label_id` (e.g. `"INBOX"` or a custom label ID).
+
+**Example:**
+```yaml
+has_asset:
+  - format: message
+    primary: true
+    locations:
+      - scheme: gmail
+        thread_id: 18f3a2b1c0d4e5f6
+        message_id: 18f3a2b1c0d4e5f6
+```
+
+### Scheme: icloud-drive
+
+Use `scheme: icloud-drive` for files in iCloud Drive, referenced by their local sync path.
+
+**When to use:** the file is in iCloud Drive and synced to the local filesystem. The path is device-specific (where iCloud syncs on that machine). If the file is reliably present locally, `scheme: local` with the synced path works too — `icloud-drive` signals the semantic intent that this is iCloud-managed content.
+
+**Required field:** `path` — absolute or `~`-relative path to the iCloud-synced file (e.g. `~/Library/Mobile Documents/com~apple~CloudDocs/Documents/file.pdf`).
+
+**No enumerate.**
+
+**Example:**
+```yaml
+has_asset:
+  - format: pdf
+    locations:
+      - scheme: icloud-drive
+        path: ~/Library/Mobile Documents/com~apple~CloudDocs/Papers/paper.pdf
+```
+
+### Scheme: onedrive
+
+Use `scheme: onedrive` for files in Microsoft OneDrive, identified by their Microsoft Graph item ID.
+
+**When to use:** the file is owned in OneDrive and you want to record its canonical location by Graph item ID (stable across renames and moves).
+
+**Required field:** `item_id` — Microsoft Graph Drive item ID. Retrieve it via the Graph API or from the OneDrive sharing URL parameters.
+
+**No enumerate.**
+
+**Example:**
+```yaml
+has_asset:
+  - format: docx
+    locations:
+      - scheme: onedrive
+        item_id: 01ABCDEFGHIJKLMNOPQRST
+```
+
+### Scheme: dropbox
+
+Use `scheme: dropbox` for files in Dropbox, identified by their Dropbox path.
+
+**When to use:** the file lives in Dropbox and you want the canonical Dropbox path recorded. The path is stable as long as the file isn't moved within Dropbox.
+
+**Required field:** `path` — Dropbox path starting with `/` (e.g. `/Documents/report.pdf`).
+
+**No enumerate.**
+
+**Example:**
+```yaml
+has_asset:
+  - format: pdf
+    locations:
+      - scheme: dropbox
+        path: /Research/papers/2024/paper.pdf
+```
+
+### Scheme: s3
+
+Use `scheme: s3` for objects in AWS S3.
+
+**When to use:** the file is stored in S3 — uploaded artifacts, large binaries, backups. Both `bucket` and `key` are required.
+
+**Required fields:** `bucket` and `key`.
+
+**Optional field:** `region` — AWS region (e.g. `us-east-1`). Omit to use the default from the AWS credential chain.
+
+**Enumerate:** supported (prefix listing). Scope fields: `bucket`, optional `key` as prefix.
+
+**Example:**
+```yaml
+has_asset:
+  - format: zip
+    locations:
+      - scheme: s3
+        bucket: my-artifacts
+        key: builds/2024-05-01/release.zip
+        region: us-west-2
+```
+
+### Scheme: ssh-remote
+
+Use `scheme: ssh-remote` for files on a remote server accessible via SSH.
+
+**When to use:** the file lives on a server you access by SSH — build outputs, logs, data files on a remote machine. Auth is via the system SSH agent and default key files; no credentials are stored in Loci.
+
+**Required fields:** `host` and `path` (absolute path on the remote host).
+
+**Optional fields:** `user` (SSH username; defaults to current user) and `port` (defaults to 22).
+
+**Enumerate:** supported (remote `ls`). Scope fields: `host`, `path`, optional `user` and `port`.
+
+**Example:**
+```yaml
+has_asset:
+  - format: log
+    locations:
+      - scheme: ssh-remote
+        host: build-server.example.com
+        path: /var/log/build/output.log
+        user: ci
+```

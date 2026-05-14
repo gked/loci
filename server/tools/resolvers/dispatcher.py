@@ -8,7 +8,7 @@ Usage:
     result = dispatch_resolve({"scheme": "local", "path": "assets/abc.pdf"}, loci_root)
     items  = dispatch_enumerate({"scheme": "local", "path": "assets/"}, loci_root)
 
-Resolver registration is static. To add a new scheme in Phase 2+:
+Resolver registration is static. To add a new scheme in Phase 3+:
   1. Create resolvers/<name>_resolver.py implementing Resolver (both resolve and enumerate,
      raising NotImplementedError for unsupported operations).
   2. Add an entry to _RESOLVER_FACTORIES below.
@@ -21,14 +21,31 @@ from pathlib import Path
 from typing import Callable
 
 from .base import Resolver
+from .external_resolver import ExternalResolver
 from .local_resolver import LocalResolver
+from .url_resolver import UrlResolver
+
+
+def _external(scheme: str) -> Callable[[Path], Resolver]:
+    return lambda _root: ExternalResolver(scheme)
 
 
 # Maps scheme name → factory callable(loci_root: Path) -> Resolver.
 # LocalResolver.__init__(loci_root) matches the factory signature directly.
-# Resolvers that don't need loci_root should be wrapped: lambda _root: MyResolver()
+# Resolvers that don't need loci_root are wrapped: lambda _root: MyResolver()
+# External schemes (cloud services, remote hosts) use ExternalResolver — Loci stores
+# the location pointer only; access is handled by the appropriate MCP or native tool.
 _RESOLVER_FACTORIES: dict[str, Callable[[Path], Resolver]] = {
     "local": LocalResolver,
+    "url": lambda _root: UrlResolver(),
+    "google-drive": _external("google-drive"),
+    "nextcloud": _external("nextcloud"),
+    "gmail": _external("gmail"),
+    "icloud-drive": _external("icloud-drive"),
+    "onedrive": _external("onedrive"),
+    "dropbox": _external("dropbox"),
+    "s3": _external("s3"),
+    "ssh-remote": _external("ssh-remote"),
 }
 
 
