@@ -863,9 +863,19 @@ def fetch_url_metadata(url: str) -> dict:
         return {"url": url, "title": url, "site_name": None, "description": None, "error": str(e)}
 
 
-def read_skill() -> str:
-    """Read the current Loci skill instructions (skill/SKILL.md)."""
-    p = Path(__file__).parent / "loci-skill" / "loci-save" / "SKILL.md"
+def scan_directory(path: str, recursive: bool = False) -> dict:
+    """
+    Scan a directory for files and identify which already have vault nodes
+    with a has_asset local location pointing to them.
+    Returns {directory, total_files, unregistered: [...], registered: [...]}.
+    """
+    from directory_scanner import scan_directory as _scan_directory
+    return _scan_directory(path, _vault_root(), recursive)
+
+
+def read_skill(skill: str = "loci-save") -> str:
+    """Read Loci skill instructions for the named skill."""
+    p = Path(__file__).parent / "skills" / skill / "SKILL.md"
     if not p.exists():
         raise FileNotFoundError(f"Skill file not found: {p}")
     return p.read_text(encoding="utf-8")
@@ -887,13 +897,13 @@ def lint_vault() -> dict:
     return _lint_vault(_vault_root())
 
 
-def write_skill(content: str) -> str:
+def write_skill(content: str, skill: str = "loci-save") -> str:
     """
-    Overwrite the Loci skill instructions (skill/SKILL.md). Returns the path written.
+    Overwrite Loci skill instructions for the named skill. Returns the path written.
     Since ~/.claude/skills/loci-save/ is a symlink to skill/, Claude Code picks
     up the update automatically. Claude Desktop users will need to re-paste.
     """
-    p = Path(__file__).parent / "loci-skill" / "loci-save" / "SKILL.md"
+    p = Path(__file__).parent / "skills" / skill / "SKILL.md"
     if not p.exists():
         raise FileNotFoundError(f"Skill file not found: {p}")
     p.write_text(content, encoding="utf-8")

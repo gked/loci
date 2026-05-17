@@ -15,7 +15,7 @@ schema_version: 1
 
 schemes:
   - name: local
-    description: A file on the local filesystem (path relative to loci root)
+    description: A file on the local filesystem. 'path' may be absolute or relative to loci root.
     required_fields: [path]
     capabilities: [resolve, enumerate]
 

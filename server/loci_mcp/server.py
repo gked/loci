@@ -264,23 +264,53 @@ def fetch_url_metadata(url: str) -> dict:
 
 
 @mcp.tool()
-def read_skill() -> str:
-    """Read the current Loci skill instructions (skill/SKILL.md)."""
+def scan_directory(path: str, recursive: bool = False) -> dict:
+    """
+    Scan a directory for files and identify which already have vault nodes.
+
+    For each file found, checks whether any vault node has a has_asset location
+    with scheme: local pointing to that file (by resolved absolute path).
+
+    Returns:
+        {
+            directory: str,
+            total_files: int,
+            unregistered: [{path, filename, format}, ...],
+            registered:   [{path, filename, format, node_uid}, ...],
+        }
+
+    Args:
+        path:      Absolute path to the directory to scan.
+        recursive: Scan subdirectories recursively (default false).
+    """
     try:
-        return loci.read_skill()
+        return loci.scan_directory(path, recursive)
+    except (FileNotFoundError, NotADirectoryError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def read_skill(skill: str = "loci-save") -> str:
+    """
+    Read Loci skill instructions.
+    skill: loci-save | loci-query | loci-inbox | loci-ingest-directory
+    """
+    try:
+        return loci.read_skill(skill)
     except FileNotFoundError as e:
         return str(e)
 
 
 @mcp.tool()
-def write_skill(content: str) -> str:
+def write_skill(content: str, skill: str = "loci-save") -> str:
     """
-    Overwrite the Loci skill instructions (skill/SKILL.md).
+    Overwrite Loci skill instructions.
+    skill: loci-save | loci-query | loci-inbox | loci-ingest-directory
     Claude Code picks up the update automatically via the symlink.
     Claude Desktop users will need to re-paste into Project custom instructions.
     """
     try:
-        return loci.write_skill(content)
+        return loci.write_skill(content, skill)
     except FileNotFoundError as e:
         return str(e)
 

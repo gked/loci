@@ -533,7 +533,7 @@ def test_fetch_url_metadata_error_returns_dict():
 # ---------------------------------------------------------------------------
 
 def test_read_skill_returns_content(tmp_path, monkeypatch):
-    skill_dir = tmp_path / "loci-skill" / "loci-save"
+    skill_dir = tmp_path / "skills" / "loci-save"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text("# Save Skill\n", encoding="utf-8")
     monkeypatch.setattr(api, "__file__", str(tmp_path / "api.py"))
@@ -548,7 +548,7 @@ def test_read_skill_raises_when_missing(tmp_path, monkeypatch):
 
 
 def test_write_skill_writes_content(tmp_path, monkeypatch):
-    skill_dir = tmp_path / "loci-skill" / "loci-save"
+    skill_dir = tmp_path / "skills" / "loci-save"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text("# original\n", encoding="utf-8")
     monkeypatch.setattr(api, "__file__", str(tmp_path / "api.py"))
