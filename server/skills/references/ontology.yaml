@@ -201,9 +201,8 @@ types:
       A thing you own or possess — a digital file stored in the asset vault,
       a physical object, or both. subtype categorises the kind of asset;
       storage summarises whether it is digital, physical, or both.
-      File metadata (mime_type, locations) lives in the asset-registry YAML;
-      physical inventory (condition, location, quantity, attributes) lives
-      in the physical array of that same registry entry.
+      File locations live in the has_asset frontmatter list on the vault node
+      (scheme: local for adopted files, other schemes for referenced locations).
     fields:
       required:
         - name: subtype

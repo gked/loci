@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 13
+skill_version: 14
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, or topic — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 13`.
+This skill is at `skill_version: 14`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -427,13 +427,13 @@ Deletion is permanent — there is no undo.
 
 ---
 
-## has_asset Field (Location Refactor — Phase 2 complete)
+## has_asset Field (Location Refactor — Phase 5 complete)
 
-> **Status:** schema, resolver infrastructure, and all canonical scheme docs are in place.
-> `local` and `url` schemes resolve content directly. All other schemes are pointer-only —
-> Loci stores the location; access happens via the appropriate MCP or native tool.
-> Production use (migrating existing asset-registry data into has_asset frontmatter) lands in Phase 5.
-> Until then, nodes may carry the legacy `has_asset: true` boolean form.
+> **Status:** fully live. Schema, resolver infrastructure, all canonical scheme docs, and production
+> migration (asset-registry → has_asset frontmatter) are all complete. `local` and `url` schemes
+> resolve content directly. All other schemes are pointer-only — Loci stores the location; access
+> happens via the appropriate MCP or native tool. The legacy `has_asset: true` boolean form is no
+> longer written; read existing nodes defensively if they pre-date Phase 5.
 
 `has_asset` is an optional frontmatter field that attaches file variants and their
 storage locations to a vault node. It replaces the legacy separate asset-registry.
