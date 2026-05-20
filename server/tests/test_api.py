@@ -192,23 +192,20 @@ def test_get_by_uid_unknown_raises(tmp_vault):
 
 
 def test_get_appends_asset_path_for_large_asset(tmp_vault):
-    """When has_asset is True and asset is large/binary, path reference is appended."""
+    """When has_asset is a list and asset is large/binary, path reference is appended."""
     loci_root = tmp_vault.parent
     uid = "asst0001"
 
-    # Create a fake registry entry and a large binary "asset"
     import asset_registry as ar
     asset_content = b"\x00" * (ar.SIZE_THRESHOLD_BYTES + 1)
     asset_file = ar.assets_dir(loci_root) / f"{uid}.pdf"
     ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
-    ar.registry_dir(loci_root).mkdir(parents=True, exist_ok=True)
     asset_file.write_bytes(asset_content)
-    ar.write_registry_entry(loci_root, uid, "pdf", "application/pdf", f"assets/{uid}.pdf")
 
-    # Write vault proxy node with has_asset: true
+    has_asset = [{"format": "pdf", "primary": True, "locations": [{"scheme": "local", "path": f"assets/{uid}.pdf"}]}]
     p = _write_raw(
         tmp_vault, f"{uid}-doc.md",
-        {"uid": uid, "type": "document", "title": "Asset Doc", "has_asset": True},
+        {"uid": uid, "type": "document", "title": "Asset Doc", "has_asset": has_asset},
     )
     text = api.get(str(p))
     assert "asset_path" in text
@@ -216,7 +213,7 @@ def test_get_appends_asset_path_for_large_asset(tmp_vault):
 
 
 def test_get_inlines_small_text_asset(tmp_vault):
-    """When has_asset is True and asset is small text, content is inlined."""
+    """When has_asset is a list and asset is small text, content is inlined."""
     loci_root = tmp_vault.parent
     uid = "asst0002"
 
@@ -224,13 +221,12 @@ def test_get_inlines_small_text_asset(tmp_vault):
     asset_content = b"<html>inline content</html>"
     asset_file = ar.assets_dir(loci_root) / f"{uid}.html"
     ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
-    ar.registry_dir(loci_root).mkdir(parents=True, exist_ok=True)
     asset_file.write_bytes(asset_content)
-    ar.write_registry_entry(loci_root, uid, "html", "text/html", f"assets/{uid}.html")
 
+    has_asset = [{"format": "html", "primary": True, "locations": [{"scheme": "local", "path": f"assets/{uid}.html"}]}]
     p = _write_raw(
         tmp_vault, f"{uid}-doc.md",
-        {"uid": uid, "type": "document", "title": "HTML Asset", "has_asset": True},
+        {"uid": uid, "type": "document", "title": "HTML Asset", "has_asset": has_asset},
     )
     text = api.get(str(p))
     assert "inline content" in text
@@ -367,11 +363,12 @@ def test_generate_uid_returns_8_char_hex(tmp_vault):
 # ---------------------------------------------------------------------------
 
 def test_get_asset_missing_appends_error(tmp_vault):
-    """has_asset: true but asset not in registry → error note appended."""
+    """has_asset list with unreachable local location → error note appended."""
     uid = "noasset1"
+    has_asset = [{"format": "pdf", "primary": True, "locations": [{"scheme": "local", "path": f"assets/{uid}.pdf"}]}]
     p = _write_raw(
         tmp_vault, f"{uid}-doc.md",
-        {"uid": uid, "type": "document", "title": "Missing Asset", "has_asset": True},
+        {"uid": uid, "type": "document", "title": "Missing Asset", "has_asset": has_asset},
     )
     text = api.get(str(p))
     assert "asset_error" in text
@@ -387,26 +384,198 @@ def test_resolve_asset(tmp_vault):
     uid = "rslv0001"
     asset_file = ar.assets_dir(loci_root) / f"{uid}.html"
     ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
-    ar.registry_dir(loci_root).mkdir(parents=True, exist_ok=True)
     asset_file.write_bytes(b"<html/>")
-    ar.write_registry_entry(loci_root, uid, "html", "text/html", f"assets/{uid}.html")
+
+    has_asset = [{"format": "html", "primary": True, "locations": [{"scheme": "local", "path": f"assets/{uid}.html"}]}]
+    _write_raw(
+        tmp_vault, f"{uid}-doc.md",
+        {"uid": uid, "type": "document", "title": "Asset Doc", "has_asset": has_asset, "status": "draft"},
+    )
 
     result = api.resolve_asset(uid)
     assert result["format"] == "html"
     assert result["size_bytes"] == len(b"<html/>")
 
 
+def test_resolve_asset_uid_not_in_graph_raises(tmp_vault):
+    """UID with no vault node raises FileNotFoundError."""
+    with pytest.raises(FileNotFoundError, match="No vault node"):
+        api.resolve_asset("deadbeef")
+
+
+def test_resolve_asset_has_asset_boolean_raises(tmp_vault):
+    """Node with legacy has_asset: true (boolean) raises FileNotFoundError."""
+    uid = "legc0001"
+    _write_raw(
+        tmp_vault, f"{uid}-doc.md",
+        {"uid": uid, "type": "document", "title": "Legacy", "has_asset": True},
+    )
+    with pytest.raises(FileNotFoundError, match="has no asset locations"):
+        api.resolve_asset(uid)
+
+
+def test_resolve_asset_has_asset_missing_raises(tmp_vault):
+    """Node with no has_asset field raises FileNotFoundError."""
+    uid = "nohas001"
+    _write_raw(
+        tmp_vault, f"{uid}-doc.md",
+        {"uid": uid, "type": "document", "title": "No Asset"},
+    )
+    with pytest.raises(FileNotFoundError, match="has no asset locations"):
+        api.resolve_asset(uid)
+
+
+def test_resolve_asset_format_not_found_raises(tmp_vault):
+    """Requesting a format not in has_asset raises ValueError."""
+    import asset_registry as ar
+    loci_root = tmp_vault.parent
+    uid = "fmtnf001"
+    ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
+    (ar.assets_dir(loci_root) / f"{uid}.html").write_bytes(b"<html/>")
+
+    has_asset = [{"format": "html", "primary": True, "locations": [{"scheme": "local", "path": f"assets/{uid}.html"}]}]
+    _write_raw(
+        tmp_vault, f"{uid}-doc.md",
+        {"uid": uid, "type": "document", "title": "HTML Only Asset", "has_asset": has_asset},
+    )
+    with pytest.raises(ValueError, match="No 'pdf' format"):
+        api.resolve_asset(uid, format="pdf")
+
+
+def test_resolve_asset_all_locations_fail_raises(tmp_vault):
+    """All locations unreachable raises FileNotFoundError mentioning 'not reachable'."""
+    uid = "noreac01"
+    has_asset = [{"format": "pdf", "primary": True, "locations": [{"scheme": "local", "path": f"assets/{uid}.pdf"}]}]
+    _write_raw(
+        tmp_vault, f"{uid}-doc.md",
+        {"uid": uid, "type": "document", "title": "Gone Asset", "has_asset": has_asset},
+    )
+    with pytest.raises(FileNotFoundError, match="not reachable"):
+        api.resolve_asset(uid)
+
+
+def test_resolve_asset_selects_primary_variant(tmp_vault):
+    """When no format specified, the primary variant is preferred over others."""
+    import asset_registry as ar
+    loci_root = tmp_vault.parent
+    uid = "prim0001"
+    ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
+    (ar.assets_dir(loci_root) / f"{uid}.html").write_bytes(b"<html/>")
+    (ar.assets_dir(loci_root) / f"{uid}.pdf").write_bytes(b"%PDF")
+
+    has_asset = [
+        {"format": "html", "primary": True, "locations": [{"scheme": "local", "path": f"assets/{uid}.html"}]},
+        {"format": "pdf", "locations": [{"scheme": "local", "path": f"assets/{uid}.pdf"}]},
+    ]
+    _write_raw(
+        tmp_vault, f"{uid}-doc.md",
+        {"uid": uid, "type": "document", "title": "Multi-format Asset", "has_asset": has_asset},
+    )
+    result = api.resolve_asset(uid)
+    assert result["format"] == "html"
+
+
+def test_resolve_asset_falls_back_to_first_when_no_primary(tmp_vault):
+    """When no variant has primary=True, the first valid variant is used."""
+    import asset_registry as ar
+    loci_root = tmp_vault.parent
+    uid = "nopri001"
+    ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
+    (ar.assets_dir(loci_root) / f"{uid}.html").write_bytes(b"<html/>")
+
+    has_asset = [{"format": "html", "locations": [{"scheme": "local", "path": f"assets/{uid}.html"}]}]
+    _write_raw(
+        tmp_vault, f"{uid}-doc.md",
+        {"uid": uid, "type": "document", "title": "No-primary Asset", "has_asset": has_asset},
+    )
+    result = api.resolve_asset(uid)
+    assert result["format"] == "html"
+
+
+def test_resolve_asset_by_explicit_format(tmp_vault):
+    """Requesting a specific format by name returns that variant, not the primary."""
+    import asset_registry as ar
+    loci_root = tmp_vault.parent
+    uid = "fmtok001"
+    ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
+    (ar.assets_dir(loci_root) / f"{uid}.html").write_bytes(b"<html/>")
+    (ar.assets_dir(loci_root) / f"{uid}.pdf").write_bytes(b"%PDF")
+
+    has_asset = [
+        {"format": "html", "primary": True, "locations": [{"scheme": "local", "path": f"assets/{uid}.html"}]},
+        {"format": "pdf", "locations": [{"scheme": "local", "path": f"assets/{uid}.pdf"}]},
+    ]
+    _write_raw(
+        tmp_vault, f"{uid}-doc.md",
+        {"uid": uid, "type": "document", "title": "PDF Asset", "has_asset": has_asset},
+    )
+    result = api.resolve_asset(uid, format="pdf")
+    assert result["format"] == "pdf"
+
+
 # ---------------------------------------------------------------------------
 # find_unregistered_assets
 # ---------------------------------------------------------------------------
 
-def test_find_unregistered_assets(tmp_vault):
+def test_find_unregistered_no_assets_dir(tmp_vault):
+    """No assets/ directory → returns []."""
+    result = api.find_unregistered_assets()
+    assert result == []
+
+
+def test_find_unregistered_assets_returns_orphan(tmp_vault):
+    """Files in assets/ with no vault node registration are returned."""
     import asset_registry as ar
     loci_root = tmp_vault.parent
     ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
     (ar.assets_dir(loci_root) / "orphan.html").write_bytes(b"data")
     result = api.find_unregistered_assets()
     assert "assets/orphan.html" in result
+
+
+def test_find_unregistered_excludes_registered_files(tmp_vault):
+    """Files claimed by a vault node's has_asset list are not returned."""
+    import asset_registry as ar
+    loci_root = tmp_vault.parent
+    uid = "reg00001"
+    ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
+    (ar.assets_dir(loci_root) / f"{uid}.html").write_bytes(b"<html/>")
+
+    has_asset = [{"format": "html", "primary": True, "locations": [{"scheme": "local", "path": f"assets/{uid}.html"}]}]
+    _write_raw(
+        tmp_vault, f"{uid}-doc.md",
+        {"uid": uid, "type": "document", "title": "Registered Asset", "has_asset": has_asset},
+    )
+    result = api.find_unregistered_assets()
+    assert f"assets/{uid}.html" not in result
+
+
+def test_find_unregistered_ignores_dotfiles(tmp_vault):
+    """Dotfiles in assets/ are always excluded."""
+    import asset_registry as ar
+    loci_root = tmp_vault.parent
+    ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
+    (ar.assets_dir(loci_root) / ".tmp_draft.pdf").write_bytes(b"%PDF")
+    result = api.find_unregistered_assets()
+    assert not any(".tmp_draft.pdf" in r for r in result)
+
+
+def test_find_unregistered_handles_absolute_loc_path(tmp_vault):
+    """Absolute paths in loc.path are normalised to relative and recognised as registered."""
+    import asset_registry as ar
+    loci_root = tmp_vault.parent
+    uid = "absp0001"
+    ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
+    asset_file = ar.assets_dir(loci_root) / f"{uid}.pdf"
+    asset_file.write_bytes(b"%PDF")
+
+    has_asset = [{"format": "pdf", "primary": True, "locations": [{"scheme": "local", "path": str(asset_file)}]}]
+    _write_raw(
+        tmp_vault, f"{uid}-doc.md",
+        {"uid": uid, "type": "document", "title": "Abs Path Asset", "has_asset": has_asset},
+    )
+    result = api.find_unregistered_assets()
+    assert f"assets/{uid}.pdf" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +597,11 @@ def test_save_asset_full_sequence(tmp_vault):
     import asset_registry as ar
     loci_root = tmp_vault.parent
     assert not list(ar.pending_dir(loci_root).glob("*.json"))
+    # Vault node has has_asset as list with local scheme
+    raw = Path(result["vault_path"]).read_text(encoding="utf-8")
+    fm = yaml.safe_load(raw.split("---", 2)[1])
+    assert isinstance(fm.get("has_asset"), list)
+    assert fm["has_asset"][0]["locations"][0]["scheme"] == "local"
 
 
 # ---------------------------------------------------------------------------

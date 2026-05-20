@@ -77,7 +77,11 @@ try:  # pragma: no cover
                 domains=vault_node.get("domains"),
                 summary=vault_node.get("summary"),
                 relations=vault_node.get("relations"),
-                extra_fields={"uid": uid, "has_asset": True},
+                extra_fields={
+                    "uid": uid,
+                    "has_asset": vault_node.get("has_asset", []),
+                    "status": "evergreen",
+                },
                 skip_duplicate_check=True,
             )
         return result.get("path", "")

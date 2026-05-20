@@ -32,6 +32,7 @@ from relation_registry import get_relation_registry
 import nx_graph as graph
 from vault_linter import lint_vault as _lint_vault
 import asset_registry as ar
+from resolvers.dispatcher import dispatch_resolve
 
 
 # ---------------------------------------------------------------------------
@@ -210,12 +211,27 @@ def get(path: str) -> str:
         if len(parts) >= 3:
             fm = yaml.safe_load(parts[1]) or {}
             uid = fm.get("uid")
-            if uid and fm.get("has_asset"):
-                try:
-                    result = ar.resolve(_loci_root(), uid)
-                    size = result["size_bytes"]
-                    mime = result["mime_type"]
-                    apath = result["path"]
+            has_asset = fm.get("has_asset")
+            if uid and isinstance(has_asset, list) and has_asset:
+                resolved = None
+                last_err = None
+                for variant in has_asset:
+                    if not isinstance(variant, dict):
+                        continue
+                    for loc in variant.get("locations", []):
+                        if not isinstance(loc, dict):
+                            continue
+                        try:
+                            resolved = dispatch_resolve(loc, _loci_root())
+                            break
+                        except (FileNotFoundError, ValueError) as e:
+                            last_err = e
+                    if resolved:
+                        break
+                if resolved:
+                    size = resolved["size_bytes"]
+                    mime = resolved["mime_type"]
+                    apath = resolved["path"]
                     if size <= ar.SIZE_THRESHOLD_BYTES and mime.startswith("text/"):
                         content = Path(apath).read_text(encoding="utf-8", errors="replace")
                         text += (
@@ -230,8 +246,9 @@ def get(path: str) -> str:
                             f"asset_mime_type: {mime}\n"
                             f"asset_size_bytes: {size}"
                         )
-                except FileNotFoundError as e:
-                    text += f"\n\nasset_content: null\nasset_error: {e}"
+                else:
+                    err_msg = str(last_err) if last_err else "no locations defined"
+                    text += f"\n\nasset_content: null\nasset_error: {err_msg}"
 
     return text
 
@@ -241,12 +258,106 @@ def resolve_asset(uid: str, format: str = None) -> dict:
     Resolve an asset UID to its file path and metadata.
     Returns {path, mime_type, format, size_bytes}.
     """
-    return ar.resolve(_loci_root(), uid, format)
+    vault_root = _vault_root()
+    loci_root = _loci_root()
+
+    g = graph.get(vault_root)
+    if not g.has_node(uid):
+        raise FileNotFoundError(f"No vault node for asset UID: {uid}")
+    node_path = g.nodes[uid].get("path")
+    if not node_path:
+        raise FileNotFoundError(f"No file path in vault node: {uid}")
+
+    text = Path(node_path).read_text(encoding="utf-8")
+    parts = text.split("---", 2)
+    if not text.startswith("---") or len(parts) < 3:
+        raise FileNotFoundError(f"No valid frontmatter in vault node: {node_path}")
+    fm = yaml.safe_load(parts[1]) or {}
+    has_asset = fm.get("has_asset")
+
+    if not isinstance(has_asset, list) or not has_asset:
+        raise FileNotFoundError(f"Node {uid} has no asset locations")
+
+    if format:
+        variant = next(
+            (v for v in has_asset if isinstance(v, dict) and v.get("format") == format),
+            None,
+        )
+        if variant is None:
+            raise ValueError(f"No {format!r} format for asset {uid}")
+    else:
+        variant = next(
+            (v for v in has_asset if isinstance(v, dict) and v.get("primary")),
+            next((v for v in has_asset if isinstance(v, dict)), None),
+        )
+        if variant is None:
+            raise FileNotFoundError(f"Node {uid} has no valid asset variants")
+
+    failed = []
+    for loc in variant.get("locations", []):
+        if not isinstance(loc, dict):
+            continue
+        try:
+            result = dispatch_resolve(loc, loci_root)
+            return {
+                "path": result["path"],
+                "mime_type": result["mime_type"],
+                "format": variant.get("format"),
+                "size_bytes": result["size_bytes"],
+            }
+        except (FileNotFoundError, ValueError) as e:
+            failed.append(str(e))
+
+    raise FileNotFoundError(f"Asset {uid} not reachable. Tried: {failed}")
 
 
 def find_unregistered_assets() -> list:
-    """Return relative paths of files in assets/ not listed in manifest.txt."""
-    return ar.find_unregistered(_loci_root())
+    """Return relative paths of files in assets/ with no vault node has_asset local location."""
+    loci_root = _loci_root()
+    vault_root = _vault_root()
+    ad = loci_root / "assets"
+    if not ad.exists():
+        return []
+
+    registered: set[str] = set()
+    for vf in vault_root.glob("*.md"):
+        try:
+            text = vf.read_text(encoding="utf-8")
+            if not text.startswith("---"):
+                continue
+            parts = text.split("---", 2)
+            if len(parts) < 3:
+                continue
+            fm = yaml.safe_load(parts[1]) or {}
+            has_asset = fm.get("has_asset")
+            if not isinstance(has_asset, list):
+                continue
+            for variant in has_asset:
+                if not isinstance(variant, dict):
+                    continue
+                for loc in variant.get("locations", []):
+                    if not isinstance(loc, dict) or loc.get("scheme") != "local":
+                        continue
+                    raw = loc.get("path", "")
+                    if not raw:
+                        continue
+                    p = Path(raw)
+                    if p.is_absolute():
+                        try:
+                            raw = str(p.relative_to(loci_root))
+                        except ValueError:
+                            pass
+                    registered.add(raw)
+        except Exception:
+            continue
+
+    return [
+        f"assets/{f.name}"
+        for f in sorted(ad.iterdir())
+        if f.is_file()
+        and not f.name.startswith(".")
+        and f"assets/{f.name}" not in registered
+    ]
 
 
 def save_asset(
@@ -288,16 +399,25 @@ def save_asset(
     vault_fname = make_filename(title)
     vault_path = vault_root / vault_fname
 
+    has_asset_list = [
+        {
+            "format": format,
+            "mime_type": mime_type,
+            "primary": True,
+            "locations": [{"scheme": "local", "path": asset_rel_path}],
+        }
+    ]
+
     vault_node = {
         "title": title,
         "summary": summary,
         "tags": tags or [],
         "domains": domains or [],
         "relations": relations or [],
+        "has_asset": has_asset_list,
     }
 
     ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
-    ar.registry_dir(loci_root).mkdir(parents=True, exist_ok=True)
     ar.pending_dir(loci_root).mkdir(parents=True, exist_ok=True)
 
     # Step 1: Write intent file
@@ -310,14 +430,8 @@ def save_asset(
     asset_tmp.write_bytes(content)
     asset_tmp.rename(asset_final)
 
-    # Step 4: Write registry entry
-    ar.write_registry_entry(loci_root, uid, format, mime_type, asset_rel_path)
-
-    # Step 5: Append to manifest
-    ar.append_manifest(loci_root, asset_rel_path)
-
     # Step 6: Write vault proxy node
-    extra_fields: dict = {"uid": uid, "has_asset": True, "status": "evergreen"}
+    extra_fields: dict = {"uid": uid, "has_asset": has_asset_list, "status": "evergreen"}
     if node_type == "asset":
         if subtype:
             extra_fields["subtype"] = subtype
