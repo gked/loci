@@ -5,7 +5,7 @@ import { Corners } from "./Corners.jsx";
 
 const FILTER_TYPES = ["all","project","topic","article","bookmark","conversation","procedure","entity","task","document","asset"];
 
-export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav }) {
+export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeTag, onTagSelect }) {
   const activeFilter = section?.startsWith("t:") ? section.slice(2) : "all";
 
   return (
@@ -26,19 +26,33 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav }) {
       />
 
       {/* filter strip */}
-      <div style={{ padding: "8px 24px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--t-rule-soft)", flexShrink: 0 }}>
-        <span className="smcaps">filter</span>
-        {FILTER_TYPES.slice(0, 7).map((t, i) => (
+      <div style={{ padding: "8px 24px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--t-rule-soft)", flexShrink: 0, flexWrap: "wrap" }}>
+        <span className="smcaps">type</span>
+        {FILTER_TYPES.map((t) => (
           <span
             key={t}
             className="t-chip"
             onClick={() => onNav(t === "all" ? "all" : `t:${t}`)}
-            style={{ cursor: "pointer", opacity: activeFilter === t ? 1 : 0.55 }}
+            style={{ cursor: "pointer", opacity: activeFilter === t ? 1 : 0.45 }}
           >
             {t !== "all" && <TypeDot type={t} size={6}/>}
             {t}
           </span>
         ))}
+        {activeTag && (
+          <>
+            <span style={{ color: "var(--t-rule)", margin: "0 2px" }}>·</span>
+            <span
+              className="t-chip"
+              onClick={() => onTagSelect(activeTag)}
+              style={{ cursor: "pointer", opacity: 1, color: "var(--t-bronze)", display: "flex", alignItems: "center", gap: 4 }}
+            >
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}>#</span>
+              {activeTag}
+              <span style={{ fontSize: 9, opacity: 0.7, marginLeft: 2 }}>×</span>
+            </span>
+          </>
+        )}
       </div>
 
       {/* column headers */}

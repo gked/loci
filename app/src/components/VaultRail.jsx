@@ -1,30 +1,22 @@
-import { TypeDot } from "./TypeDot.jsx";
+import { useMemo } from "react";
 
-const T_LATIN = {
-  project: "negotium", task: "labor", document: "documentum",
-  entity: "persona", conversation: "colloquium", article: "articulus",
-  bookmark: "signum", procedure: "ratio", topic: "argumentum",
-  event: "eventus", asset: "res",
-};
+export function VaultRail({ active, onNav, nodes, activeTag, onTagSelect }) {
+  const tags = useMemo(() => {
+    const counts = {};
+    nodes.forEach(n => (n.tags || []).forEach(t => {
+      counts[t] = (counts[t] || 0) + 1;
+    }));
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [nodes]);
 
-const TYPES = [
-  "project","task","document","entity","conversation",
-  "article","bookmark","procedure","topic","event","asset",
-];
-
-export function VaultRail({ active, onNav, nodes }) {
-  const counts = {};
-  TYPES.forEach(t => { counts[t] = nodes.filter(n => n.type === t).length; });
-
-  const Row = ({ id, type, label, count, latin, icon }) => (
+  const Row = ({ id, label, latin, icon, count }) => (
     <button
       className={`rail-row ${active === id ? "active" : ""}`}
       onClick={() => onNav(id)}
     >
-      {type
-        ? <TypeDot type={type} size={8}/>
-        : <span style={{ width: 14, height: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--t-bronze)", fontSize: 13 }}>{icon}</span>
-      }
+      <span style={{ width: 14, height: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--t-bronze)", fontSize: 13 }}>
+        {icon}
+      </span>
       <span style={{ flex: 1, display: "flex", flexDirection: "column", lineHeight: 1.05 }}>
         <span>{label}</span>
         {latin && (
@@ -36,6 +28,21 @@ export function VaultRail({ active, onNav, nodes }) {
       {count != null && (
         <span className="count">{String(count).padStart(3, "0")}</span>
       )}
+    </button>
+  );
+
+  const TagRow = ({ tag, count }) => (
+    <button
+      className={`rail-row ${activeTag === tag ? "active" : ""}`}
+      onClick={() => onTagSelect(tag)}
+    >
+      <span style={{ width: 14, height: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--t-bronze)", fontSize: 10, opacity: 0.7 }}>
+        #
+      </span>
+      <span style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: "0.03em" }}>
+        {tag}
+      </span>
+      <span className="count">{String(count).padStart(3, "0")}</span>
     </button>
   );
 
@@ -54,15 +61,19 @@ export function VaultRail({ active, onNav, nodes }) {
         <Row id="recent"   label="Recent"    latin="recentia"    icon="↺"/>
         <Row id="graph"    label="Topology"  latin="topologia"   icon="◌"/>
 
-        <div className="rail-section">
-          genera · types <span className="roman">II</span>
-        </div>
-        {TYPES.filter(t => counts[t] > 0).map(t => (
-          <Row key={t} id={`t:${t}`} type={t} label={t} latin={T_LATIN[t]} count={counts[t]}/>
-        ))}
+        {tags.length > 0 && (
+          <>
+            <div className="rail-section">
+              notae · tags <span className="roman">II</span>
+            </div>
+            {tags.map(([tag, count]) => (
+              <TagRow key={tag} tag={tag} count={count}/>
+            ))}
+          </>
+        )}
 
         <div className="rail-section">
-          instrumenta · tools <span className="roman">III</span>
+          instrumenta · tools <span className="roman">{tags.length > 0 ? "III" : "II"}</span>
         </div>
         <Row id="cmd"      label="Command"   latin="praeceptum"  icon="⌘"/>
         <Row id="settings" label="Settings"  latin="calibratio"  icon="⚙"/>

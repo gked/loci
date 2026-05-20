@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { VaultRail } from "./components/VaultRail.jsx";
 import { VaultIndex } from "./components/VaultIndex.jsx";
@@ -10,6 +10,7 @@ import { getNodes, getNode, getNodeNeighbors, getRecentNodes, getGraph } from ".
 export default function App() {
   const [selectedUid, setSelectedUid] = useState(null);
   const [section, setSection] = useState("all");
+  const [activeTag, setActiveTag] = useState(null);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [paper, setPaper] = useState(false);
 
@@ -102,10 +103,18 @@ export default function App() {
     setSection(id);
   };
 
+  const handleTagSelect = useCallback((tag) => {
+    setActiveTag(prev => prev === tag ? null : tag);
+    if (section !== "all" && section !== "recent" && !section.startsWith("t:")) {
+      setSection("all");
+    }
+  }, [section]);
+
   // Determine which nodes to show in VaultIndex
-  const indexNodes = section === "recent" ? recentNodes
+  const baseNodes = section === "recent" ? recentNodes
     : section.startsWith("t:") ? allNodes.filter(n => n.type === section.slice(2))
     : allNodes;
+  const indexNodes = activeTag ? baseNodes.filter(n => n.tags?.includes(activeTag)) : baseNodes;
 
   // Active rail id (for VaultIndex sections we highlight the specific type/all/recent)
   const railActive = section;
@@ -121,7 +130,7 @@ export default function App() {
         "--meridian-opacity": 0.35,
       }}
     >
-      <VaultRail active={railActive} onNav={handleNav} nodes={allNodes}/>
+      <VaultRail active={railActive} onNav={handleNav} nodes={allNodes} activeTag={activeTag} onTagSelect={handleTagSelect}/>
 
       {/* main content area */}
       <div style={{ flex: 1, position: "relative", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -145,6 +154,8 @@ export default function App() {
             onOpen={handleOpenNode}
             section={section}
             onNav={handleNav}
+            activeTag={activeTag}
+            onTagSelect={handleTagSelect}
           />
         )}
 
