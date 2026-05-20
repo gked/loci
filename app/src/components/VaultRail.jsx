@@ -1,6 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 export function VaultRail({ active, onNav, nodes, activeTag, onTagSelect }) {
+  const [tagFilter, setTagFilter] = useState("");
+
   const tags = useMemo(() => {
     const counts = {};
     nodes.forEach(n => (n.tags || []).forEach(t => {
@@ -66,9 +68,32 @@ export function VaultRail({ active, onNav, nodes, activeTag, onTagSelect }) {
             <div className="rail-section">
               notae · tags <span className="roman">II</span>
             </div>
-            {tags.map(([tag, count]) => (
-              <TagRow key={tag} tag={tag} count={count}/>
-            ))}
+            <div style={{ padding: "2px 8px 6px" }}>
+              <input
+                type="text"
+                value={tagFilter}
+                onChange={e => setTagFilter(e.target.value)}
+                placeholder="filter tags…"
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: "1px solid var(--t-border)",
+                  color: "var(--t-fg-muted)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 10,
+                  letterSpacing: "0.03em",
+                  padding: "2px 0",
+                  outline: "none",
+                }}
+              />
+            </div>
+            {tags
+              .filter(([tag]) => tag.includes(tagFilter.toLowerCase()))
+              .map(([tag, count]) => (
+                <TagRow key={tag} tag={tag} count={count}/>
+              ))}
           </>
         )}
 
