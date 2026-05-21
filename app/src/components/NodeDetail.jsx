@@ -6,6 +6,30 @@ import { Corners } from "./Corners.jsx";
 import { Reticle } from "./Reticle.jsx";
 import { Meridian } from "./Meridian.jsx";
 
+const KNOWN_FIELDS = new Set(["uid","type","title","status","created_at","updated_at","tags","domains","relations","body","asset"]);
+
+function formatFieldVal(v) {
+  if (Array.isArray(v)) return v.map(item => typeof item === "object" ? JSON.stringify(item) : String(item)).join(", ");
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+function getFrontmatterRows(node) {
+  const extra = Object.entries(node).filter(([k, v]) =>
+    !KNOWN_FIELDS.has(k) && v != null && v !== "" && !(Array.isArray(v) && v.length === 0)
+  );
+  return [
+    ["uid",     node.uid],
+    ["type",    <span key="type"><TypeDot type={node.type} size={7}/> {node.type}</span>],
+    ["status",  node.status || "—"],
+    ["created", (node.created_at || "").slice(0, 10)],
+    ["updated", (node.updated_at || "").slice(0, 10)],
+    node.tags?.length    && ["tags",    node.tags.map(t => "#" + t).join(" ")],
+    node.domains?.length && ["domains", node.domains.join(", ")],
+    ...extra.map(([k, v]) => [k, formatFieldVal(v)]),
+  ].filter(Boolean);
+}
+
 const TYPE_COLOR = {
   project:"#2f6fc4", task:"#ff8a00", document:"#1fa050",
   entity:"#e63946", conversation:"#2dbfb6", article:"#f4c430",
@@ -119,18 +143,10 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
               fontFamily: "var(--font-mono)", fontSize: 11.5,
               color: paper ? "var(--t-ink)" : "var(--t-fg)",
             }}>
-              {[
-                ["uid",     node.uid],
-                ["type",    <span key="type"><TypeDot type={node.type} size={7}/> {node.type}</span>],
-                ["status",  node.status || "—"],
-                ["created", (node.created_at || "").slice(0, 10)],
-                ["updated", (node.updated_at || "").slice(0, 10)],
-                node.tags?.length   && ["tags",    node.tags.map(t => "#" + t).join(" ")],
-                node.domains?.length && ["domains", node.domains.join(", ")],
-              ].filter(Boolean).map(([k, v], i) => (
-                <Fragment key={i}>
+              {getFrontmatterRows(node).map(([k, v]) => (
+                <Fragment key={k}>
                   <span style={{ color: paper ? "#6b6960" : "var(--t-fg-mute)" }}>{k}</span>
-                  <span style={{ display: "flex", gap: 6, alignItems: "center" }}>{v}</span>
+                  <span style={{ display: "flex", gap: 6, alignItems: "center", wordBreak: "break-word" }}>{v}</span>
                 </Fragment>
               ))}
             </div>

@@ -156,7 +156,8 @@ def nodes_list(
 ):
     vr = _vault_root()
     g = graph.get(vr)
-    results = graph.find(node_type=node_type, tag=tag, state=state)
+    state_filter = None if state == "all" else state
+    results = graph.find(node_type=node_type, tag=tag, state=state_filter)
     augmented = []
     for item in results:
         uid = item["uid"]

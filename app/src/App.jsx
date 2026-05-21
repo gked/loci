@@ -13,13 +13,18 @@ export default function App() {
   const [activeTag, setActiveTag] = useState(null);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [paper, setPaper] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [showGhost, setShowGhost] = useState(false);
 
-  // All nodes (for rail counts + VaultIndex)
-  const { data: allNodes = [], isError: nodesError } = useQuery({
+  // Always fetch all nodes (including archived + ghost); toggles filter client-side
+  const { data: allNodesRaw = [], isError: nodesError } = useQuery({
     queryKey: ["nodes"],
-    queryFn: () => getNodes({}),
+    queryFn: () => getNodes({ state: "all" }),
     staleTime: 30_000,
   });
+
+  // Active-only subset for rail counts (tags, etc.) — excludes archived regardless of toggle
+  const allNodes = allNodesRaw.filter(n => n.state !== "archived" && n.path);
 
   // Recent nodes for "recent" section
   const { data: recentNodes = [] } = useQuery({
@@ -111,10 +116,12 @@ export default function App() {
   }, [section]);
 
   // Determine which nodes to show in VaultIndex
+  const visibleNodes = showArchived ? allNodesRaw : allNodesRaw.filter(n => n.state !== "archived");
   const baseNodes = section === "recent" ? recentNodes
-    : section.startsWith("t:") ? allNodes.filter(n => n.type === section.slice(2))
-    : allNodes;
-  const indexNodes = activeTag ? baseNodes.filter(n => n.tags?.includes(activeTag)) : baseNodes;
+    : section.startsWith("t:") ? visibleNodes.filter(n => n.type === section.slice(2))
+    : visibleNodes;
+  const withTag = activeTag ? baseNodes.filter(n => n.tags?.includes(activeTag)) : baseNodes;
+  const indexNodes = showGhost ? withTag : withTag.filter(n => n.path);
 
   // Active rail id (for VaultIndex sections we highlight the specific type/all/recent)
   const railActive = section;
@@ -156,6 +163,10 @@ export default function App() {
             onNav={handleNav}
             activeTag={activeTag}
             onTagSelect={handleTagSelect}
+            showArchived={showArchived}
+            onToggleArchived={() => setShowArchived(v => !v)}
+            showGhost={showGhost}
+            onToggleGhost={() => setShowGhost(v => !v)}
           />
         )}
 

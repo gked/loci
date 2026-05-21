@@ -68,29 +68,54 @@ export function VaultRail({ active, onNav, nodes, activeTag, onTagSelect }) {
             <div className="rail-section">
               notae · tags <span className="roman">II</span>
             </div>
-            <div style={{ padding: "2px 8px 6px" }}>
+            <div style={{ padding: "2px 8px 6px", position: "relative" }}>
               <input
                 type="text"
                 value={tagFilter}
                 onChange={e => setTagFilter(e.target.value)}
                 placeholder="filter tags…"
+                aria-label="filter tags"
                 style={{
                   width: "100%",
                   boxSizing: "border-box",
                   background: "transparent",
                   border: "none",
                   borderBottom: "1px solid var(--t-border)",
-                  color: "var(--t-fg-muted)",
+                  color: "var(--t-fg-mute)",
                   fontFamily: "var(--font-mono)",
                   fontSize: 10,
                   letterSpacing: "0.03em",
-                  padding: "2px 0",
+                  padding: "2px 14px 2px 0",
                   outline: "none",
                 }}
               />
+              {tagFilter && (
+                <button
+                  onClick={() => setTagFilter("")}
+                  style={{
+                    position: "absolute",
+                    right: 8,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    color: "var(--t-fg-faint)",
+                    fontSize: 10,
+                    lineHeight: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  aria-label="clear filter"
+                >
+                  ✕
+                </button>
+              )}
             </div>
             {tags
-              .filter(([tag]) => tag.includes(tagFilter.toLowerCase()))
+              .filter(([tag]) => tag.toLowerCase().includes(tagFilter.toLowerCase()))
               .map(([tag, count]) => (
                 <TagRow key={tag} tag={tag} count={count}/>
               ))}
