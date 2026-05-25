@@ -54,6 +54,26 @@ def _valid_task(uid: str = "aabb1122") -> dict:
     }
 
 
+def _valid_log(uid: str = "aabb1122") -> dict:
+    return {
+        "uid": uid,
+        "type": "log",
+        "title": "Reading Thinking, Fast and Slow",
+        "author": "self",
+        "state": "active",
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "archived_at": None,
+        "tags": ["reading"],
+        "domains": ["psychology"],
+        "summary": "Notes from my first read.",
+        "relations": [{"uid": "deadbeef", "type": "about"}],
+        "references": [],
+        "subject_uid": "deadbeef",
+        "log_status": "in-progress",
+    }
+
+
 def _codes(issues: list[LintIssue]) -> set[str]:
     return {i.code for i in issues}
 
@@ -396,3 +416,39 @@ def test_active_state_no_archived_at_warn(tmp_path, registry):
     p = _write(tmp_path, "f.md", fm)
     issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
     assert not any(i.code == "missing-archived-at" for i in issues)
+
+
+# ---------------------------------------------------------------------------
+# lint_file — log type
+# ---------------------------------------------------------------------------
+
+def test_valid_log_passes(tmp_path, registry):
+    p = _write(tmp_path, "log.md", _valid_log())
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    assert "missing-field" not in _codes(issues)
+
+
+def test_log_missing_subject_uid(tmp_path, registry):
+    fm = _valid_log()
+    del fm["subject_uid"]
+    p = _write(tmp_path, "log.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    errors = [i for i in issues if i.code == "missing-field"]
+    assert any("subject_uid" in i.message for i in errors)
+
+
+def test_log_missing_log_status(tmp_path, registry):
+    fm = _valid_log()
+    del fm["log_status"]
+    p = _write(tmp_path, "log.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    errors = [i for i in issues if i.code == "missing-field"]
+    assert any("log_status" in i.message for i in errors)
+
+
+def test_log_invalid_log_status(tmp_path, registry):
+    fm = _valid_log()
+    fm["log_status"] = "done"
+    p = _write(tmp_path, "log.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    assert "invalid-enum" in _codes(issues)

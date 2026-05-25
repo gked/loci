@@ -456,7 +456,14 @@ def search(query: str, state: str = "active") -> list[dict]:
         title = attrs.get("title", "")
         summary = attrs.get("summary", "") or ""
         aliases = attrs.get("aliases") or []
-        if q in title.lower() or q in summary.lower() or any(q in alias.lower() for alias in aliases):
+        tags = attrs.get("tags") or []
+        if (
+            q in uid.lower()
+            or q in title.lower()
+            or q in summary.lower()
+            or any(q in alias.lower() for alias in aliases)
+            or any(q in tag.lower() for tag in tags)
+        ):
             result.append({
                 "uid": uid,
                 "title": title,

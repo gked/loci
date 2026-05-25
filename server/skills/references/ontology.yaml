@@ -217,3 +217,27 @@ types:
         - name: highlights
           type: array
 
+  - name: log
+    extends: null
+    description: >
+      A personal record of engaging with something over time — reading a book,
+      running an experiment, taking a course, a practice session. One log per
+      engagement. subject_uid links to the vault node being engaged with.
+      Use tags to categorize: reading, experiment, course, workout, etc.
+    fields:
+      required:
+        - name: subject_uid
+          type: string
+        - name: log_status
+          type: enum
+          values: [in-progress, finished, abandoned]
+      optional:
+        - name: started_at
+          type: datetime
+        - name: finished_at
+          type: datetime
+        - name: rating
+          type: string
+        - name: highlights
+          type: array
+

@@ -1,9 +1,9 @@
 ---
 name: loci-save
-skill_version: 14
+skill_version: 15
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
-  event, entity, procedure, or topic — into the Loci personal
+  event, entity, procedure, topic, asset, or log — into the Loci personal
   knowledge vault. Use whenever the user says "save this", "add this to my
   vault", "capture this", "remember this", "log this", "store this", or any
   similar phrasing. Also use when the user shares a URL, text, or a
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 14`.
+This skill is at `skill_version: 15`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -107,7 +107,7 @@ frontmatter fields.
 
 **Book & Library pattern:**
 - **Saving an ebook or book you own** → `asset`, `subtype: book`. Always add `#book` tag for findability. Add genre/subject tags as appropriate (e.g. `#fiction`, `#philosophy`, `#technical`).
-- **Recording a reading** → `reading-log` (user-defined type extending `document`). Required: `read_status` (in-progress | finished | abandoned). Link to the book asset via `is-based-on` relation. Set `source_url` only when the source is not already an asset in the vault (e.g. a web read or a file not yet ingested). One `reading-log` per reading — create a new one for re-reads.
+- **Recording a reading** → `log` (canonical type). Required: `subject_uid` (the book asset's UID), `log_status` (in-progress | finished | abandoned). Add tag `reading`. Also add an `about` relation pointing to the book UID for graph traversal — `subject_uid` is the direct reference, the relation carries the graph edge. One `log` per reading — create a new one for re-reads.
 - **Library container** → a `topic` node titled "Library"; book assets use `belongs-to` → Library. Shelf subtopics (e.g. "To Read", "Philosophy") are optional children of Library linked the same way.
 
 ---

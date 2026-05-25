@@ -28,6 +28,33 @@ Every piece of content you save becomes a structured node with:
 
 ---
 
+## Type System
+
+Every vault node has a **type**. The right question when choosing one is not "what fields do I need?" but **"what question does this node answer?"**
+
+| Type | The question it answers |
+|---|---|
+| `document` | What do I think or know about X? |
+| `article` | What does this external source say? |
+| `bookmark` | Where is this thing? |
+| `conversation` | What did we discuss? |
+| `project` | What am I working on? |
+| `task` | What do I need to do? |
+| `event` | What happened, and when? |
+| `entity` | Who or what is this real-world actor? |
+| `procedure` | How do I do X? |
+| `topic` | What organizes this domain? |
+| `asset` | What do I own? |
+| `log` | What was my experience of engaging with X? |
+
+**The common mistake:** thinking "this node has text, so it must be document-like." All vault nodes can have a text body — that's not what defines the type.
+
+`document` is a **composition** — you're creating something that stands alone and matures over time (`status: draft → evergreen`). `log` is a **record** — it cannot exist without a subject (`subject_uid`), it doesn't mature, it completes. A reading log has text. So does a task description. Neither is a document.
+
+User-defined types extend canonical ones and are registered in `ontology-user.yaml`. They inherit all parent fields and can add new ones.
+
+---
+
 ## Setup — Docker (recommended)
 
 The easiest way to run Loci. Docker handles dependencies and sync inside the container.
@@ -200,7 +227,7 @@ Claude will classify the type, generate frontmatter, suggest entity links, and w
 
 ### Library
 
-Track your ebook library as a knowledge graph. Books are saved as `asset` nodes; each time you read one, a `reading-log` captures your notes, highlights, and rating — separately per reading, so re-reads are tracked independently.
+Track your ebook library as a knowledge graph. Books are saved as `asset` nodes; each time you read one, a `log` node (tagged `reading`) captures your notes, highlights, and rating — separately per reading, so re-reads are tracked independently.
 
 ```
 Save this ebook to my library: Thinking, Fast and Slow by Kahneman
@@ -436,7 +463,7 @@ The vault meta files are user-owned — they accumulate customizations (new tags
 - [x] Graph layer — NetworkX in-memory index for traversal and relationship queries
 - [x] loci-query skill — retrieve, relate, and summarize knowledge across vault nodes
 - [x] Asset registry — binary/rich file storage (HTML, PDF, PNG, etc.) with crash-safe write sequence, resolver, and startup recovery
-- [x] Library support — `asset` nodes with `subtype: book`; `reading-log` user type (one per reading, supports re-reads); Library topic structure
+- [x] Library support — `asset` nodes with `subtype: book`; `log` canonical type (tagged `reading`, one per read, supports re-reads); Library topic structure
 - [x] Inbox — `loci-stage/` staging folder with two-phase scan → execute workflow, per-category budgets, resumable plan file
 - [x] Locations refactor Phase 1 — `has_asset` list schema, scheme-dictionary, SchemeRegistry, local resolver + dispatcher, has_asset lint, `find_nodes` scheme filters
 

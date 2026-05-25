@@ -35,7 +35,7 @@ def test_loads_canonical_types():
     registry = TypeRegistry.load(_canonical_ontology())
     names = registry.type_names()
     for expected in ["document", "article", "task", "project", "entity",
-                     "procedure", "topic", "bookmark", "conversation", "event"]:
+                     "procedure", "topic", "bookmark", "conversation", "event", "log"]:
         assert expected in names
 
 
@@ -65,6 +65,30 @@ def test_entity_subtype_enum():
     entity = registry.get("entity")
     enums = entity.enum_constraints()
     assert enums["subtype"] == {"person", "organization", "place"}
+
+
+def test_log_has_subject_uid_required():
+    registry = TypeRegistry.load(_canonical_ontology())
+    log = registry.get("log")
+    assert "subject_uid" in log.required_names()
+
+
+def test_log_has_log_status_required():
+    registry = TypeRegistry.load(_canonical_ontology())
+    log = registry.get("log")
+    assert "log_status" in log.required_names()
+
+
+def test_log_status_enum():
+    registry = TypeRegistry.load(_canonical_ontology())
+    log = registry.get("log")
+    enums = log.enum_constraints()
+    assert enums["log_status"] == {"in-progress", "finished", "abandoned"}
+
+
+def test_reading_log_returns_none():
+    registry = TypeRegistry.load(_canonical_ontology())
+    assert registry.get("reading-log") is None
 
 
 def test_unknown_type_returns_none():

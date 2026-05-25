@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { TypeDot } from "./TypeDot.jsx";
 import { HeaderStrip } from "./HeaderStrip.jsx";
 import { Meridian } from "./Meridian.jsx";
@@ -38,9 +39,18 @@ function ToggleSwitch({ active, onToggle, label }) {
 }
 
 export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeTag, onTagSelect, showArchived, onToggleArchived, showGhost, onToggleGhost }) {
+  const [filterQ, setFilterQ] = useState("");
   const activeFilter = section?.startsWith("t:") ? section.slice(2) : "all";
   const archivedCount = showArchived ? nodes.filter(n => n.state === "archived").length : 0;
   const ghostCount = showGhost ? nodes.filter(n => !n.path).length : 0;
+
+  const q = filterQ.trim().toLowerCase();
+  const displayNodes = q
+    ? nodes.filter(n =>
+        n.uid?.toLowerCase().includes(q) ||
+        n.title?.toLowerCase().includes(q)
+      )
+    : nodes;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", minWidth: 0 }} className="canvas">
@@ -55,7 +65,7 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeT
         latin="omnia loca"
         telemetry={
           <>
-            <b>{nodes.length}</b> nodes · sorted by <b>updated</b> ↓
+            <b>{q ? displayNodes.length : nodes.length}</b>{q ? ` of ${nodes.length}` : ""} nodes · sorted by <b>updated</b> ↓
             {showArchived && archivedCount > 0 && (
               <span style={{ opacity: 0.55 }}> · <b>{archivedCount}</b> archived</span>
             )}
@@ -98,6 +108,27 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeT
           </>
         )}
         <span style={{ flex: 1 }}/>
+        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+          <input
+            value={filterQ}
+            onChange={e => setFilterQ(e.target.value)}
+            placeholder="filter by uid or title…"
+            className="t-input"
+            style={{ fontSize: 11, padding: "3px 22px 3px 8px", width: 180 }}
+          />
+          {filterQ && (
+            <button
+              onClick={() => setFilterQ("")}
+              aria-label="Clear filter"
+              style={{
+                position: "absolute", right: 6,
+                fontFamily: "var(--font-mono)", fontSize: 10,
+                color: "var(--t-fg-faint)", cursor: "pointer", lineHeight: 1,
+                background: "none", border: "none", padding: 0,
+              }}
+            >×</button>
+          )}
+        </div>
         <ToggleSwitch active={showGhost} onToggle={onToggleGhost} label="ghost"/>
         <ToggleSwitch active={showArchived} onToggle={onToggleArchived} label="archived"/>
       </div>
@@ -118,7 +149,7 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeT
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-        {nodes.map(n => {
+        {displayNodes.map(n => {
           const isArchived = n.state === "archived";
           const isGhost = !n.path;
           return (
@@ -155,9 +186,9 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeT
           </div>
           );
         })}
-        {nodes.length === 0 && (
+        {displayNodes.length === 0 && (
           <div style={{ padding: "48px 24px", textAlign: "center", fontFamily: "var(--font-display)", fontStyle: "italic", color: "var(--t-fg-faint)", fontSize: 14 }}>
-            vacuum · no loci found
+            {q ? `vacuum · no match for "${filterQ}"` : "vacuum · no loci found"}
           </div>
         )}
       </div>

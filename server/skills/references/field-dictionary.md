@@ -508,3 +508,45 @@ Examples:
       attributes:
         period: "2005–2012"
         contents: "Family photos, childhood"
+
+---
+
+### log
+
+field: subject_uid
+type: string
+required: yes
+description: >
+  UID of the vault node this log is about — typically an asset subtype:book, topic, or project.
+  A log cannot exist without a subject; subject_uid is a required direct reference, not just
+  a relation. Also add an `about` relation pointing to the same UID for graph traversal.
+  Note: the linter checks presence only — it does not verify the UID resolves to an existing
+  vault node (no dangling-reference error, unlike dangling relations).
+
+field: log_status
+type: enum
+values: in-progress | finished | abandoned
+required: yes
+description: >
+  Current state of the engagement. Not content maturity — use state: archived to hide the node,
+  not log_status: abandoned just because you stopped. abandoned means you intentionally quit.
+
+field: started_at
+type: datetime
+required: no
+description: ISO 8601 date when the engagement began
+
+field: finished_at
+type: datetime
+required: no
+description: ISO 8601 date when the engagement ended; null while in-progress
+
+field: rating
+type: string
+required: no
+description: personal rating — freeform (e.g. 5/5, 8/10, ★★★★)
+
+field: highlights
+type: array
+required: no
+description: notable excerpts, quotes, timestamps, or observations captured during the engagement

@@ -17,7 +17,7 @@ from typing import Optional
 CONFIG_PATH = Path(__file__).parent.parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "skills" / "references"
 
-META_VERSION = 6
+META_VERSION = 7
 
 VAULT_FOLDERS = [
     "meta",

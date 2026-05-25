@@ -515,6 +515,33 @@ def test_search_state_none_returns_all(monkeypatch):
     assert "q002" in uids
 
 
+def test_search_uid_match(monkeypatch):
+    """Query matching a UID substring but not title/summary/aliases/tags."""
+    dg = nx.DiGraph()
+    dg.add_node("prj-alpha-01", **_node_attrs(title="Unrelated Title"))
+    dg.add_node("prj-beta-02", **_node_attrs(title="Another Node"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.search("alpha")
+    uids = [r["uid"] for r in result]
+    assert "prj-alpha-01" in uids
+    assert "prj-beta-02" not in uids
+
+
+def test_search_tag_match(monkeypatch):
+    """Query matching a tag substring but not title/summary/aliases/uid."""
+    dg = nx.DiGraph()
+    dg.add_node(
+        "z001",
+        **_node_attrs(title="Unlabelled Doc", tags=["machine-learning", "python"]),
+    )
+    dg.add_node("z002", **_node_attrs(title="No Tags"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.search("machine")
+    uids = [r["uid"] for r in result]
+    assert "z001" in uids
+    assert "z002" not in uids
+
+
 # ---------------------------------------------------------------------------
 # recent
 # ---------------------------------------------------------------------------

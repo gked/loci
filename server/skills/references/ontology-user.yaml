@@ -20,26 +20,6 @@
 #           - name: cuisine
 #             type: string
 
-types:
-  - name: reading-log
-    extends: document
-    description: >
-      A record of one reading of a book or long-form content — notes, highlights,
-      and reflections. Create one per reading so multiple reads of the same work
-      are tracked separately. Link to the source asset via is-based-on relation.
-    fields:
-      required:
-        - name: read_status
-          type: enum
-          values: [in-progress, finished, abandoned]
-      optional:
-        - name: source_url
-          type: string
-        - name: started_at
-          type: datetime
-        - name: finished_at
-          type: datetime
-        - name: rating
-          type: string
-        - name: highlights
-          type: array
+types: []
+# reading-log has been promoted to the canonical `log` type in ontology.yaml.
+# Use type: log with tag: reading and subject_uid pointing to the book asset UID.
