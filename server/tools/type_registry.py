@@ -49,13 +49,22 @@ class TypeDef:
     description: str
     required_fields: list[FieldDef] = field(default_factory=list)
     optional_fields: list[FieldDef] = field(default_factory=list)
+    subtype_fields: dict[str, list[FieldDef]] = field(default_factory=dict)
 
-    def enum_constraints(self) -> dict[str, set[str]]:
-        """Return {field_name: valid_value_set} for all enum fields on this type."""
+    def enum_constraints(self, subtype: Optional[str] = None) -> dict[str, set[str]]:
+        """Return {field_name: valid_value_set} for all enum fields on this type.
+
+        Pass subtype to include fields that only apply to a specific subtype
+        (e.g. subtype='book' on an asset node includes the genre enum).
+        """
         result = {}
         for f in self.required_fields + self.optional_fields:
             if f.type == "enum" and f.values:
                 result[f.name] = set(f.values)
+        if subtype and subtype in self.subtype_fields:
+            for f in self.subtype_fields[subtype]:
+                if f.type == "enum" and f.values:
+                    result[f.name] = set(f.values)
         return result
 
     def required_names(self) -> set[str]:
@@ -143,12 +152,19 @@ class TypeRegistry:
     @staticmethod
     def _parse_type(entry: dict) -> TypeDef:
         fields = TypeRegistry._parse_fields(entry.get("fields", {}))
+        subtype_fields: dict[str, list[FieldDef]] = {}
+        for st in (entry.get("subtypes") or []):
+            st_name = st.get("name")
+            if st_name:
+                st_parsed = TypeRegistry._parse_fields(st.get("fields", {}))
+                subtype_fields[st_name] = st_parsed["required"] + st_parsed["optional"]
         return TypeDef(
             name=entry["name"],
             extends=entry.get("extends"),
             description=entry.get("description", ""),
             required_fields=fields["required"],
             optional_fields=fields["optional"],
+            subtype_fields=subtype_fields,
         )
 
     @staticmethod

@@ -406,6 +406,41 @@ def test_write_item_returns_errors_for_invalid_enum(tmp_vault):
     assert any("blocked" in e for e in result["errors"])
 
 
+def test_write_item_book_invalid_genre_blocked(tmp_vault):
+    result = write_item(
+        type="asset",
+        title="Bad Genre Book",
+        body="",
+        extra_fields={"subtype": "book", "genre": "cooking"},
+        skip_duplicate_check=True,
+    )
+    assert "errors" in result
+    assert any("genre" in e for e in result["errors"])
+
+
+def test_write_item_book_valid_genre_succeeds(tmp_vault):
+    result = write_item(
+        type="asset",
+        title="Good Genre Book",
+        body="",
+        extra_fields={"subtype": "book", "genre": "technology-computing"},
+        skip_duplicate_check=True,
+    )
+    assert "errors" not in result
+    assert result.get("uid") is not None
+
+
+def test_write_item_non_book_asset_genre_not_validated(tmp_vault):
+    result = write_item(
+        type="asset",
+        title="Video With Genre",
+        body="",
+        extra_fields={"subtype": "video", "genre": "cooking"},
+        skip_duplicate_check=True,
+    )
+    assert "errors" not in result
+
+
 def test_write_item_succeeds_with_valid_required_fields(tmp_vault):
     result = write_item(
         type="task",

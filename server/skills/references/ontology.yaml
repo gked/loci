@@ -216,6 +216,25 @@ types:
           type: datetime
         - name: highlights
           type: array
+    subtypes:
+      - name: book
+        fields:
+          optional:
+            - name: genre
+              type: enum
+              values: [philosophy-psychology, body-mind-spirit, religion, fiction-literature, science-fiction, history, social-sciences, natural-sciences-mathematics, technology-computing, business-economics, health, homesteading-practical-skills, biography-autobiography]
+        body_template: |
+          ## Bibliographic
+          - Published:
+          - Original language:
+          - Edition:
+
+          ## About
+          <!-- What this book is about. For Russian books: one paragraph in English,
+               one paragraph in Russian. -->
+
+          ## Notes
+          <!-- Personal notes, connections to other books. Filled in over time. -->
 
   - name: log
     extends: null

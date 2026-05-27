@@ -304,3 +304,63 @@ def test_reset_registry_forces_reload():
     reset_registry()
     r2 = get_registry()
     assert r1 is not r2
+
+
+# ---------------------------------------------------------------------------
+# Subtype-specific fields
+# ---------------------------------------------------------------------------
+
+def test_asset_book_subtype_fields_loaded():
+    registry = TypeRegistry.load(_canonical_ontology())
+    asset = registry.get("asset")
+    assert "book" in asset.subtype_fields
+
+
+def test_asset_book_genre_enum_available():
+    registry = TypeRegistry.load(_canonical_ontology())
+    asset = registry.get("asset")
+    enums = asset.enum_constraints(subtype="book")
+    assert "genre" in enums
+    assert "technology-computing" in enums["genre"]
+    assert "fiction-literature" in enums["genre"]
+
+
+def test_asset_genre_not_in_base_enum_constraints():
+    """genre is subtype-specific — should not appear without subtype arg."""
+    registry = TypeRegistry.load(_canonical_ontology())
+    asset = registry.get("asset")
+    enums = asset.enum_constraints()
+    assert "genre" not in enums
+
+
+def test_asset_non_book_subtype_has_no_genre():
+    registry = TypeRegistry.load(_canonical_ontology())
+    asset = registry.get("asset")
+    enums = asset.enum_constraints(subtype="video")
+    assert "genre" not in enums
+
+
+def test_subtype_fields_parsed_from_yaml(tmp_path):
+    onto = tmp_path / "ontology.yaml"
+    _write_ontology(onto, [{
+        "name": "asset",
+        "extends": None,
+        "description": "Test asset",
+        "fields": {
+            "required": [{"name": "subtype", "type": "enum", "values": ["book", "video"]}],
+            "optional": [],
+        },
+        "subtypes": [
+            {
+                "name": "book",
+                "fields": {
+                    "optional": [{"name": "genre", "type": "enum", "values": ["fiction", "non-fiction"]}]
+                }
+            }
+        ]
+    }])
+    registry = TypeRegistry.load(onto)
+    asset = registry.get("asset")
+    assert "book" in asset.subtype_fields
+    enums = asset.enum_constraints(subtype="book")
+    assert enums["genre"] == {"fiction", "non-fiction"}

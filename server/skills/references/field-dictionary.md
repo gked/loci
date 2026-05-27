@@ -434,6 +434,35 @@ description: >
   just to filter by possession type. Set to both when you own it in digital
   and physical form simultaneously.
 
+field: genre
+type: enum
+required: no
+applies_to: asset subtype:book
+description: >
+  Canonical genre classification for book assets. Use exactly one slug from the list below.
+  Aligned with Dewey Decimal, BISAC, and Amazon categories.
+
+  Canonical values:
+    philosophy-psychology      — Academic philosophy, logic, critical thinking, Jungian/Freudian/Gestalt
+                                 depth psychology, psychoanalysis, analytical psychology, NLP, self-help
+    body-mind-spirit           — Occult, esoterica, astrology, Tarot, Kabbalah, shamanism, Castaneda
+                                 tradition, lucid dreaming, altered states, energy work, chakras, channeling
+    religion                   — Buddhism, Taoism, Eastern spirituality, yoga philosophy, Agni Yoga,
+                                 Vedanta, Sufism, Theosophy, Christianity, Islam, other world religions
+    fiction-literature         — Literary fiction, philosophical fiction, poetry, classic literature
+    science-fiction            — Science fiction genre
+    history                    — World history, ancient civilizations, military history, biographical history
+    social-sciences            — Geopolitics, political economy, information warfare, OSINT, intelligence,
+                                 sociology, social theory, political science
+    natural-sciences-mathematics — Pure mathematics, physics, chemistry, biology, scientific papers
+    technology-computing       — Programming, algorithms, compilers, databases, systems design, AI/ML,
+                                 cybersecurity, software engineering
+    business-economics         — Product management, strategy, OKRs, finance, crypto/Bitcoin,
+                                 monetary theory, trading, management
+    health                     — Nutrition, physical training, medicine, alternative health, natural healing
+    homesteading-practical-skills — Aquaponics, beekeeping, household management, practical crafts
+    biography-autobiography    — Memoirs, autobiographies, biographical works
+
 field: acquired_at
 type: datetime
 required: no
@@ -443,6 +472,46 @@ field: highlights
 type: array
 required: no
 description: notable excerpts, timestamps, or notes you have made about this asset
+
+#### body_template (asset subtype:book)
+
+Not a frontmatter field. Guidance for the Markdown body of book nodes only.
+When creating a new `asset subtype:book`, use this structure for the body:
+
+```markdown
+## Bibliographic
+- Published:
+- Original language:
+- Edition:
+
+## About
+<!-- What this book is about. For Russian books: one paragraph in English,
+     one paragraph in Russian. -->
+
+## Notes
+<!-- Personal notes, connections to other books. Filled in over time. -->
+```
+
+Fill in known values at creation time; leave blank lines blank rather than omitting sections.
+
+#### Summary convention (asset subtype:book)
+
+Overrides the default "English-only" rule for `summary`:
+- `language: en` books — English summary only (default rule applies).
+- Non-English books (e.g. `language: ru`) — summary in **both** languages: English paragraph first, native-language paragraph second, in the same field.
+
+Reason: Loci semantic search must find books from queries in either language.
+
+Example (Russian book):
+```yaml
+summary: |
+  Systematic guide to Yoga Nidra as taught by Swami Satyananda Saraswati —
+  covers psychic sleep technique, rotation of consciousness, and use for
+  deep relaxation and meditation.
+
+  Руководство по йога-нидре — техника психического сна, ротация сознания,
+  применение для медитации и релаксации.
+```
 
 ---
 

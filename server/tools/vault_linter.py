@@ -147,8 +147,9 @@ def lint_file(
             issues.append(LintIssue(name, "error", "missing-field",
                 f"Missing required field '{field_def.name}' for type '{node_type}'"))
 
-    # enum values
-    for field_name, valid_values in type_def.enum_constraints().items():
+    # enum values (pass subtype so subtype-specific enums like genre:book are checked)
+    subtype = fm.get("subtype")
+    for field_name, valid_values in type_def.enum_constraints(subtype=subtype).items():
         val = fm.get(field_name)
         if val is not None and str(val) not in valid_values:
             issues.append(LintIssue(name, "error", "invalid-enum",

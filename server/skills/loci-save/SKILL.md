@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 15
+skill_version: 16
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, topic, asset, or log — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 15`.
+This skill is at `skill_version: 16`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -106,7 +106,10 @@ frontmatter fields.
 - `document` → add format tag if applicable: #essay, #spec, #design-doc, #meeting-notes, #journal, #note
 
 **Book & Library pattern:**
-- **Saving an ebook or book you own** → `asset`, `subtype: book`. Always add `#book` tag for findability. Add genre/subject tags as appropriate (e.g. `#fiction`, `#philosophy`, `#technical`).
+- **Saving an ebook or book you own** → `asset`, `subtype: book`. Always add `#book` tag for findability. Call `loci__read_meta(file="field-dictionary")` to get the body template, summary convention, and canonical genre list before writing.
+- **Book genre** — set `genre` to exactly one canonical slug from the genre taxonomy in field-dictionary (e.g. `business-economics`, `body-mind-spirit`, `technology-computing`). This field is required for book nodes — do not leave it blank. If the genre is ambiguous, pick the closest match and note it in the body.
+- **Book body** — use the `body_template` from field-dictionary: sections `## Bibliographic`, `## About`, `## Notes`. Fill in known values; leave blank lines blank.
+- **Book summary** — overrides the English-only rule: for non-English books (e.g. `language: ru`), write summary in **both** languages — English paragraph first, native-language paragraph second. English-only books follow the standard rule.
 - **Recording a reading** → `log` (canonical type). Required: `subject_uid` (the book asset's UID), `log_status` (in-progress | finished | abandoned). Add tag `reading`. Also add an `about` relation pointing to the book UID for graph traversal — `subject_uid` is the direct reference, the relation carries the graph edge. One `log` per reading — create a new one for re-reads.
 - **Library container** → a `topic` node titled "Library"; book assets use `belongs-to` → Library. Shelf subtopics (e.g. "To Read", "Philosophy") are optional children of Library linked the same way.
 

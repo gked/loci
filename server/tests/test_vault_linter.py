@@ -74,6 +74,25 @@ def _valid_log(uid: str = "aabb1122") -> dict:
     }
 
 
+def _valid_asset(uid: str = "aabb1122", subtype: str = "book") -> dict:
+    return {
+        "uid": uid,
+        "type": "asset",
+        "title": "Test Book",
+        "author": "self",
+        "state": "active",
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "archived_at": None,
+        "tags": ["book"],
+        "domains": ["technology-engineering"],
+        "summary": "A test book.",
+        "relations": [{"uid": "deadbeef", "type": "belongs-to"}],
+        "references": [],
+        "subtype": subtype,
+    }
+
+
 def _codes(issues: list[LintIssue]) -> set[str]:
     return {i.code for i in issues}
 
@@ -239,6 +258,30 @@ def test_invalid_entity_subtype(tmp_path, registry):
     p = _write(tmp_path, "f.md", fm)
     issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
     assert "invalid-enum" in _codes(issues)
+
+
+def test_invalid_book_genre_flagged(tmp_path, registry):
+    fm = _valid_asset(subtype="book")
+    fm["genre"] = "cooking"
+    p = _write(tmp_path, "f.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    assert "invalid-enum" in _codes(issues)
+
+
+def test_valid_book_genre_passes(tmp_path, registry):
+    fm = _valid_asset(subtype="book")
+    fm["genre"] = "technology-computing"
+    p = _write(tmp_path, "f.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    assert "invalid-enum" not in _codes(issues)
+
+
+def test_genre_not_validated_for_non_book_asset(tmp_path, registry):
+    fm = _valid_asset(subtype="video")
+    fm["genre"] = "cooking"
+    p = _write(tmp_path, "f.md", fm)
+    issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
+    assert "invalid-enum" not in _codes(issues)
 
 
 # ---------------------------------------------------------------------------

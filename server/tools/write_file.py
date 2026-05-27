@@ -67,7 +67,7 @@ def check_duplicate(vault_root: Path, title: str, url: str = None) -> Optional[P
     return None
 
 
-def validate_required_fields(type_def, extra_fields: dict) -> list[str]:
+def validate_required_fields(type_def, extra_fields: dict, subtype: Optional[str] = None) -> list[str]:
     """
     Validate type-specific required fields and enum constraints.
 
@@ -77,6 +77,7 @@ def validate_required_fields(type_def, extra_fields: dict) -> list[str]:
     Args:
         type_def: TypeDef from the registry
         extra_fields: Type-specific frontmatter fields provided by the caller
+        subtype: Subtype value (e.g. 'book' for asset nodes) to include subtype-specific enum constraints
 
     Returns:
         List of error strings; empty list means valid.
@@ -88,7 +89,7 @@ def validate_required_fields(type_def, extra_fields: dict) -> list[str]:
         if field_name not in ef or ef[field_name] is None:
             errors.append(f"Required field '{field_name}' is missing or null for type '{type_def.name}'")
 
-    for field_name, valid_values in type_def.enum_constraints().items():
+    for field_name, valid_values in type_def.enum_constraints(subtype=subtype).items():
         if field_name in ef and ef[field_name] is not None:
             if ef[field_name] not in valid_values:
                 errors.append(
@@ -140,7 +141,8 @@ def write_item(
         )
 
     type_def = registry.get(type)
-    validation_errors = validate_required_fields(type_def, extra_fields)
+    subtype = (extra_fields or {}).get("subtype")
+    validation_errors = validate_required_fields(type_def, extra_fields, subtype=subtype)
     if validation_errors:
         return {"errors": validation_errors}
 
