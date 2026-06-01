@@ -581,34 +581,75 @@ def find_unregistered_assets() -> list[str]:
 
 @mcp.tool()
 def save_asset(
-    content: str,
     format: str,
     mime_type: str,
     title: str,
+    source_path: str = None,
+    content: str = None,
+    is_base64: bool = False,
     summary: str = None,
     tags: list[str] = None,
     domains: list[str] = None,
     relations: list[dict] = None,
+    node_type: str = "asset",
+    subtype: str = None,
+    author: str = None,
+    published_at: str = None,
+    language: str = None,
 ) -> dict:
     """
     Save a new binary/rich-file asset with its vault proxy node.
     Executes the full crash-safe write sequence. Returns {uid, asset_path, vault_path}.
 
+    Provide either source_path OR content — not both.
+
+    Choosing the right mode:
+    - Use source_path whenever the file exists on disk. The server reads it
+      directly; no file data passes through MCP. Works for any file size.
+    - Use content only for material already present in the conversation context:
+      text that Claude just generated, or base64 data returned by another tool
+      in this same session. Never base64-encode a file yourself just to pass it
+      here — use source_path instead.
+
     Args:
-        content: File content as a UTF-8 string (for text files like HTML)
-                 or base64-encoded string (for binary files like PDF/PNG).
-        format:  File extension: html, pdf, png, mov, etc.
-        mime_type: MIME type: text/html, application/pdf, image/png, etc.
-        title:   Title for the vault proxy node.
-        summary: One-paragraph summary.
-        tags:    3-6 freeform lowercase hyphenated tags.
-        domains: One or more domain taxonomy values.
-        relations: List of {uid, type} dicts linking to other vault nodes.
+        source_path: Absolute path to a file on disk.
+        content:     File content as a UTF-8 string (text) or base64-encoded
+                     string (binary). Use is_base64=True for binary content.
+        is_base64:   Set True when content is base64-encoded binary data.
+        format:      File extension: html, pdf, png, mp4, mp3, mov, etc.
+        mime_type:   MIME type: text/html, application/pdf, video/mp4, etc.
+        title:       Title for the vault proxy node.
+        summary:     One-paragraph summary.
+        tags:        3-6 freeform lowercase hyphenated tags.
+        domains:     One or more domain taxonomy values.
+        relations:   List of {uid, type} dicts linking to other vault nodes.
+        node_type:   Vault node type: 'document' or 'asset'.
+        subtype:     For asset nodes — subtype field (e.g. 'book', 'film').
+        author:      Author or creator name.
+        published_at: Publication or release date string.
+        language:    ISO 639-1 language code.
     """
+    import base64 as _base64
     try:
-        content_bytes = content.encode("utf-8") if isinstance(content, str) else content
+        if source_path is not None and content is not None:
+            return {"error": "Provide either source_path or content, not both."}
+        content_bytes = None
+        source_path_arg = None
+        if source_path is not None:
+            if not Path(source_path).is_absolute():
+                return {"error": "source_path must be an absolute path."}
+            source_path_arg = source_path
+        elif content is not None:
+            if is_base64:
+                normalized = content.replace('-', '+').replace('_', '/')
+                content_bytes = _base64.b64decode(normalized, validate=True)
+            else:
+                content_bytes = content.encode("utf-8")
+        else:
+            return {"error": "Provide either source_path or content."}
         return loci.save_asset(
             content=content_bytes,
+            source_path=source_path_arg,
             format=format,
             mime_type=mime_type,
             title=title,
@@ -616,6 +657,11 @@ def save_asset(
             tags=tags,
             domains=domains,
             relations=relations,
+            node_type=node_type,
+            subtype=subtype,
+            author=author,
+            published_at=published_at,
+            language=language,
         )
     except Exception as e:
         return {"error": str(e)}

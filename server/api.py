@@ -361,10 +361,11 @@ def find_unregistered_assets() -> list:
 
 
 def save_asset(
-    content: bytes,
     format: str,
     mime_type: str,
     title: str,
+    content: bytes = None,
+    source_path: str = None,
     summary: str = None,
     tags: list = None,
     domains: list = None,
@@ -379,13 +380,25 @@ def save_asset(
     Save a new asset with its vault proxy node using the crash-safe write sequence.
     Returns {uid, asset_path, vault_path}.
 
+    Provide either content (bytes) or source_path — not both.
+
     Args:
+        content: Raw file bytes.
+        source_path: Absolute path to a file on disk; bytes are read here.
         node_type: Vault node type for the proxy node ('document' or 'asset').
         subtype: For asset nodes — subtype field (e.g. 'book').
         author: Author name (included in extra_fields for asset nodes).
         published_at: Publication date string.
         language: ISO 639-1 language code.
     """
+    if content is None and source_path is None:
+        raise ValueError("Provide either content or source_path.")
+    if content is not None and source_path is not None:
+        raise ValueError("Provide either content or source_path, not both.")
+    if content is None:
+        if not Path(source_path).is_absolute():
+            raise ValueError("source_path must be an absolute path.")
+        content = Path(source_path).read_bytes()
     from slug import filename as make_filename
 
     uid = _generate_uid()
@@ -443,11 +456,12 @@ def save_asset(
         if language:
             extra_fields["language"] = language
     else:
-        # For non-asset types, include author/language if provided
         if author:
             extra_fields["author"] = author
         if language:
             extra_fields["language"] = language
+        if published_at:
+            extra_fields["published_at"] = published_at
 
     with contextlib.redirect_stdout(io.StringIO()):
         result = _write_item(
@@ -461,6 +475,8 @@ def save_asset(
             extra_fields=extra_fields,
             skip_duplicate_check=True,
         )
+    if "errors" in result:
+        raise ValueError("; ".join(result["errors"]))
     graph.index_node(
         uid,
         type=node_type,

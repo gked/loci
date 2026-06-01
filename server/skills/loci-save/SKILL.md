@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 16
+skill_version: 18
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, topic, asset, or log — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 16`.
+This skill is at `skill_version: 18`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -104,6 +104,47 @@ frontmatter fields.
 - `entity` → set `subtype` field to person | organization | place — do NOT add as a tag
 - `procedure` → add domain tag: #recipe, #workout, #protocol, #playbook, #tutorial
 - `document` → add format tag if applicable: #essay, #spec, #design-doc, #meeting-notes, #journal, #note
+
+**Binary file / media pattern (video, audio, image, PDF, ebook):**
+
+Use `loci__save_asset` instead of `loci__write_vault` whenever the content is a
+binary file. It writes the asset to `loci/assets/` and creates the vault proxy
+node in one crash-safe sequence.
+
+**Three scenarios — choose the right path:**
+
+**1. File on disk (user provides a path)**
+Call `loci__save_asset(source_path=<absolute_path>, ...)`. The server reads the
+bytes directly — no file data passes through MCP, no size limit. This is always
+the most reliable path.
+
+**2. File dropped into the conversation (small/medium)**
+Use when the file content landed in context (image, small PDF, generated text).
+Call `loci__save_asset(content=<content>, is_base64=<True|False>, ...)`.
+Treat formats as small enough for this path: images (jpg, png, gif, webp, svg),
+PDFs and documents up to a few hundred KB, any text Claude generated.
+
+**3. File dropped into the conversation (too large)**
+Use when the file is a format that is inherently large, or when the content
+appears truncated or unavailable in context. This includes: video (mp4, mov, avi,
+mkv), audio (mp3, wav, flac, aac, m4a), raw images, and anything the user says
+is large. Do **not** attempt inline — tell the user:
+
+> This file is too large to save directly from the conversation. Please drop it
+> into your `loci-stage/` folder, then ask me to run the inbox scan and I'll
+> process it from there.
+
+Once the user confirms the file is in `loci-stage/`, run:
+`loci__scan_inbox` → `loci__approve_inbox_plan` → `loci__execute_inbox_file_batch`
+
+The inbox workflow reads the file from disk — no size limit, nothing through MCP.
+
+**Never** base64-encode a file yourself to pass it inline. If the file exists on
+disk or belongs in loci-stage, always use `source_path` or the inbox workflow.
+
+Set `node_type="asset"` and the appropriate `subtype` (e.g. `film`, `album`,
+`book`, `image`). `save_asset` returns `{uid, asset_path, vault_path}` — confirm
+all three to the user.
 
 **Book & Library pattern:**
 - **Saving an ebook or book you own** → `asset`, `subtype: book`. Always add `#book` tag for findability. Call `loci__read_meta(file="field-dictionary")` to get the body template, summary convention, and canonical genre list before writing.
