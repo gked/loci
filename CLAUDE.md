@@ -66,6 +66,20 @@ When adding a new meta file:
 5. Update `server.py` docstring for `read_meta`
 6. Update any skill that should read the new file
 
+## UI impact check
+
+**Always ask: does this change affect the UI?**
+
+After any code change, check whether the `app/` frontend is affected:
+
+- MCP tool added, renamed, or removed → does the UI call or display results from this tool?
+- API response shape changes (new fields, renamed keys, removed fields) → does any React component consume this shape?
+- New type, subtype, or relation added to the registry → does the UI render or filter on these values?
+- Vault node schema changes (new/removed frontmatter fields) → does the UI read or display those fields?
+- Business logic changes (sorting, filtering, validation) → does the UI rely on that behaviour?
+
+If yes: inspect the relevant files under `app/` and update them (or flag to the user that UI changes are needed).
+
 ## Running tests
 
 ```
