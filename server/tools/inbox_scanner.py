@@ -34,7 +34,6 @@ def scan_stage(stage_root: Path) -> dict:
     extraction_warnings: list[dict] = []
 
     files_dir = stage_root / "files"
-    unresolved_dir = stage_root / "unresolved"
 
     # --- Scan loci-stage/files/ (recurses into subdirectories) ---
     if files_dir.exists() and files_dir.is_dir():

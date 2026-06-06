@@ -20,7 +20,6 @@ def stage_root(tmp_path):
     root = tmp_path / "loci-stage"
     root.mkdir()
     (root / "files").mkdir()
-    (root / "unresolved").mkdir()
     return root
 
 
@@ -168,7 +167,7 @@ def test_scan_empty_stage(stage_root):
 
 
 def test_subdirs_in_root_are_skipped(stage_root):
-    """Subdirectories in the flat root (other than files/ and unresolved/) are skipped."""
+    """Subdirectories in the flat root (other than files/) are skipped."""
     subdir = stage_root / "otherdir"
     subdir.mkdir()
     (subdir / "note.md").write_text("content", encoding="utf-8")

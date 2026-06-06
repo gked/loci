@@ -409,7 +409,6 @@ Runs the MCP server in stdio mode for use with Claude Code / Claude Desktop. Not
 
   loci-stage/                   ← staging inbox — drop files here for batch ingestion
     files/                      ← binary files (ebooks, PDFs) → ingested as asset nodes
-    unresolved/                 ← files the inbox agent couldn't classify automatically
     .inbox-plan.yaml            ← work queue written by scan_inbox, consumed by execution
 ```
 

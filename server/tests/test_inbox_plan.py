@@ -21,7 +21,6 @@ def stage_root(tmp_path):
     root = tmp_path / "loci-stage"
     root.mkdir()
     (root / "files").mkdir()
-    (root / "unresolved").mkdir()
     return root
 
 
