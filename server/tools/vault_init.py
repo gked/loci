@@ -79,9 +79,8 @@ def create_vault_structure(vault_root: Path) -> None:
 
     # Staging folder lives alongside vault/, not inside it
     stage_root = loci_root / "loci-stage"
-    for stage_folder in [stage_root, stage_root / "files"]:
-        stage_folder.mkdir(parents=True, exist_ok=True)
-        print(f"  Created: {stage_folder}")
+    stage_root.mkdir(parents=True, exist_ok=True)
+    print(f"  Created: {stage_root}")
 
     for filename in META_FILES:
         dest = vault_root / "meta" / filename
@@ -101,15 +100,6 @@ def create_vault_structure(vault_root: Path) -> None:
 def reseed_meta(vault_root: Path) -> None:
     """Force overwrite canonical meta files from loci-skill/references/.
     USER_META_FILES are never touched — the user owns those."""
-    for filename in META_FILES:
-        dest = vault_root / "meta" / filename
-        src = REFERENCES_DIR / filename
-        dest.write_text(src.read_text())
-        print(f"  Re-seeded: {dest}")
-
-
-def reseed_meta(vault_root: Path) -> None:
-    """Force overwrite all meta files from loci-skill/references/."""
     for filename in META_FILES:
         dest = vault_root / "meta" / filename
         src = REFERENCES_DIR / filename

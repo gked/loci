@@ -1,6 +1,6 @@
 ---
 name: loci-inbox
-skill_version: 1
+skill_version: 2
 description: >
   Process the loci-stage inbox: scan staged files, present a plan to the user,
   then execute file ingestion and content processing in batches. Use whenever
@@ -16,7 +16,7 @@ Processes loci-stage/ into the vault in two phases: analysis then execution.
 
 ## Version Check
 
-This skill is at `skill_version: 1`.
+This skill is at `skill_version: 2`.
 
 Before following any instructions:
 1. Call `loci__read_skill` with skill="loci-inbox" to fetch the latest version
@@ -51,26 +51,16 @@ Present a summary:
 
 ```
 Inbox scan complete:
-  Files (auto-ingest):   243 ebooks → asset nodes (~5 runs of 50)
+  Files (auto-ingest):   243 ebooks + PDFs → asset nodes (~5 runs of 50)
   Content (manual):       44 notes/articles → document/article nodes (~5 runs of 10)
-  Unresolved:              8 files need your input
 
 Estimated: multiple sessions. File ingestion is automatic; content items need
 your review per batch.
 
-8 unresolved files:
-  • thesis.pdf — book or academic paper? [book / paper / skip]
-  • scan001.pdf — book or document? [book / document / skip]
-  ...
-
-Approve plan and start? [yes / resolve unresolved first / adjust budget / cancel]
+Approve plan and start? [yes / adjust budget / cancel]
 ```
 
-### Step 1.4 — Resolve unresolved items (if user chooses)
-
-For each unresolved item, present the options and call `loci__resolve_inbox_item()` on user confirmation.
-
-### Step 1.5 — Approve
+### Step 1.4 — Approve
 
 Call `loci__approve_inbox_plan()`.
 

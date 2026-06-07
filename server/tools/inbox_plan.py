@@ -72,7 +72,6 @@ def write_plan(
     stage_root: Path,
     vault_root: Path,
     items: list,
-    unresolved: list,
     budget_files: int = DEFAULT_BUDGET_FILES,
     budget_content: int = DEFAULT_BUDGET_CONTENT,
 ) -> dict:
@@ -115,7 +114,6 @@ def write_plan(
             },
         },
         "items": items,
-        "unresolved": unresolved,
     }
 
     p = plan_path(stage_root)
@@ -183,73 +181,6 @@ def update_item_status(
             plan["status"] = "in-progress"
 
         _atomic_write(plan_path(stage_root), yaml.dump(plan, sort_keys=False, allow_unicode=True))
-
-
-def resolve_unresolved_item(
-    stage_root: Path,
-    path: str,
-    action: str,
-    type: str,
-    subtype: str = None,
-) -> dict:
-    """
-    Move item from unresolved to items list with the given classification.
-    Returns updated plan.
-    """
-    with _plan_lock(stage_root):
-        plan = read_plan(stage_root)
-        if plan is None:
-            raise ValueError("No plan file found.")
-
-        unresolved = plan.get("unresolved", [])
-        items = plan.get("items", [])
-
-        # Find the unresolved entry
-        entry = None
-        remaining = []
-        for u in unresolved:
-            if u.get("path") == path:
-                entry = u
-            else:
-                remaining.append(u)
-
-        if entry is None:
-            raise ValueError(f"Unresolved item not found: {path!r}")
-
-        # Build a classified item
-        from metadata_extractor import extract_metadata, MIME_TYPES
-        stage_root_path = Path(plan["stage_root"])
-        file_path = stage_root_path / path
-        meta = extract_metadata(file_path) if file_path.exists() else {}
-
-        suffix = file_path.suffix.lower()
-        new_item: dict = {
-            "id": max((it.get("id", 0) for it in items), default=0) + 1,
-            "path": path,
-            "category": "file" if action == "ingest-asset" else "content",
-            "action": action,
-            "type": type,
-            "format": meta.get("format", suffix.lstrip(".")),
-            "mime_type": meta.get("mime_type", MIME_TYPES.get(suffix, "application/octet-stream")),
-            "title": meta.get("title", file_path.stem),
-            "status": "pending",
-            "result": None,
-        }
-        if subtype:
-            new_item["subtype"] = subtype
-        if meta.get("author"):
-            new_item["author"] = meta["author"]
-        if meta.get("language"):
-            new_item["language"] = meta["language"]
-
-        items.append(new_item)
-        plan["items"] = items
-        plan["unresolved"] = remaining
-
-        _recompute_progress(plan)
-
-        _atomic_write(plan_path(stage_root), yaml.dump(plan, sort_keys=False, allow_unicode=True))
-    return plan
 
 
 def get_pending_batch(plan: dict, category: str, limit: int) -> list[dict]:

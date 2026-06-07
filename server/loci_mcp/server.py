@@ -673,8 +673,7 @@ def scan_inbox() -> dict:
     Phase 1 of the inbox workflow: scan loci-stage/, classify all files,
     and write .inbox-plan.yaml. Read-only — no files are moved or vault nodes created.
 
-    Returns a summary: {status, total_files, total_content, total_unresolved,
-    runs_estimated, unresolved_items, plan_path}.
+    Returns a summary: {status, total_files, total_content, runs_estimated, plan_path}.
 
     Call this before approve_inbox_plan(). If a plan already exists with pending
     items, this overwrites it.
@@ -717,7 +716,7 @@ def execute_inbox_file_batch() -> dict:
     """
     Execute the next batch of file-category items from the approved plan.
     Processes up to budget_per_run.files items. Each item: reads file from
-    loci-stage/files/, saves as an asset vault node (type=asset, subtype=book),
+    loci-stage/, saves as an asset vault node (type=asset, subtype=book),
     deletes the staging file, updates plan status.
 
     Returns {processed: [{path, uid, title}], failed: [{path, error}], remaining: int}.
@@ -759,24 +758,6 @@ def update_inbox_item(path: str, status: str, uid: str = None) -> dict:
     """
     try:
         return loci.update_inbox_item(path, status, uid)
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@mcp.tool()
-def resolve_inbox_item(path: str, action: str, type: str, subtype: str = None) -> dict:
-    """
-    Resolve an ambiguous/unresolved item in the inbox plan.
-    Moves it from the unresolved list to the items queue with the specified classification.
-
-    Args:
-        path: Relative path within loci-stage (as shown in unresolved list)
-        action: 'ingest-asset' | 'save-document' | 'save-content' | 'skip'
-        type: Vault node type (asset, document, article, bookmark, ...)
-        subtype: For asset nodes: book, visual, music, etc.
-    """
-    try:
-        return loci.resolve_inbox_item(path, action, type, subtype)
     except Exception as e:
         return {"error": str(e)}
 

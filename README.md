@@ -408,7 +408,6 @@ Runs the MCP server in stdio mode for use with Claude Code / Claude Desktop. Not
     .pending/                   ← intent files for crash recovery during writes
 
   loci-stage/                   ← staging inbox — drop files here for batch ingestion
-    files/                      ← binary files (ebooks, PDFs) → ingested as asset nodes
     .inbox-plan.yaml            ← work queue written by scan_inbox, consumed by execution
 ```
 

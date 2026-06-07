@@ -514,19 +514,16 @@ def scan_inbox() -> dict:
 
     scan_result = scan_stage(stage_root)
     items = scan_result["items"]
-    unresolved = scan_result["unresolved"]
     summary = scan_result["summary"]
     extraction_warnings = scan_result["extraction_warnings"]
 
-    plan = write_plan(stage_root, vault_root, items, unresolved)
+    plan = write_plan(stage_root, vault_root, items)
 
     result = {
         "status": "pending",
         "total_files": summary["total_files"],
         "total_content": summary["total_content"],
-        "total_unresolved": summary["total_unresolved"],
         "runs_estimated": summary["runs_estimated"],
-        "unresolved_items": unresolved,
         "plan_path": str(stage_root / ".inbox-plan.yaml"),
     }
     if extraction_warnings:
@@ -557,7 +554,6 @@ def get_inbox_plan() -> dict:
         "progress": plan.get("progress"),
         "next_file_items": file_batch[:3],   # preview only
         "next_content_items": content_batch[:3],  # preview only
-        "total_unresolved": len(plan.get("unresolved", [])),
     }
 
 
@@ -738,28 +734,6 @@ def update_inbox_item(path: str, status: str, uid: str = None) -> dict:
         "path": path,
         "status": status,
         "progress": plan.get("progress") if plan else None,
-    }
-
-
-def resolve_inbox_item(path: str, action: str, type: str, subtype: str = None) -> dict:
-    """
-    Resolve an unresolved item by specifying its action and type.
-    Moves it from unresolved to items queue.
-    """
-    import sys as _sys
-    _sys.path.insert(0, str(Path(__file__).parent / "tools"))
-    from inbox_plan import resolve_unresolved_item
-
-    stage_root = _stage_root()
-    plan = resolve_unresolved_item(stage_root, path, action, type, subtype)
-    return {
-        "resolved": True,
-        "path": path,
-        "action": action,
-        "type": type,
-        "subtype": subtype,
-        "total_items": len(plan.get("items", [])),
-        "total_unresolved": len(plan.get("unresolved", [])),
     }
 
 
