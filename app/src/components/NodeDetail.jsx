@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { mdComponents } from "../lib/markdown.jsx";
 import { TypeDot } from "./TypeDot.jsx";
 import { Corners } from "./Corners.jsx";
 import { Reticle } from "./Reticle.jsx";
@@ -164,7 +165,7 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
               letterSpacing: "0.18em", textTransform: "lowercase",
               marginBottom: 14,
             }}>corpus · body</div>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
               {node.body || ""}
             </ReactMarkdown>
           </div>
