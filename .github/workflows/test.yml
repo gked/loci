@@ -1,7 +1,13 @@
 name: Tests
 
+# A bare `push:` alongside `pull_request:` ran both jobs twice for every commit
+# on a PR branch — once per event, same SHA. Limiting push to main keeps the
+# post-merge check on main and lets pull_request cover branch work exactly once.
+# Branches with no PR open no longer get CI; the pre-push hook still runs the
+# unit suite locally, and opening the PR runs both suites.
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
