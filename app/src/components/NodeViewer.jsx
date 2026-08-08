@@ -3,7 +3,7 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { mdComponents } from "../lib/markdown.jsx";
+import { LocalFileLink, markdownUrlTransform, mdComponents } from "../lib/markdown.jsx";
 import { TypeDot } from "./TypeDot.jsx";
 import { FrontmatterPills } from "./FrontmatterPills.jsx";
 
@@ -71,7 +71,7 @@ export function NodeViewer({ node, onShowTopology }) {
           <FrontmatterPills node={node} />
 
           <div className="inner-shell" style={{ marginTop: 24, fontFamily: "var(--font-serif)", fontSize: 17, lineHeight: 1.65, color: "var(--vault-fg)" }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents} urlTransform={markdownUrlTransform}>
               {node.body || ""}
             </ReactMarkdown>
           </div>
@@ -84,7 +84,9 @@ export function NodeViewer({ node, onShowTopology }) {
             }}>
               <div style={{ marginBottom: 6, fontWeight: 600, color: "var(--vault-fg)" }}>Asset</div>
               <div>{node.asset.mime_type} · {(node.asset.size_bytes / 1024).toFixed(1)} KB</div>
-              <div style={{ marginTop: 4, wordBreak: "break-all" }}>{node.asset.path}</div>
+              <div style={{ marginTop: 4, wordBreak: "break-all" }}>
+                <LocalFileLink href={node.asset.path}>{node.asset.path}</LocalFileLink>
+              </div>
               {node.asset.content && (
                 <pre style={{
                   marginTop: 12, padding: "10px 12px", background: "#fff",

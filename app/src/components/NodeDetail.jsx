@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { mdComponents } from "../lib/markdown.jsx";
+import { LocalFileLink, markdownUrlTransform, mdComponents } from "../lib/markdown.jsx";
 import { TypeDot } from "./TypeDot.jsx";
 import { Corners } from "./Corners.jsx";
 import { Reticle } from "./Reticle.jsx";
@@ -165,7 +165,7 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
               letterSpacing: "0.18em", textTransform: "lowercase",
               marginBottom: 14,
             }}>corpus · body</div>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents} urlTransform={markdownUrlTransform}>
               {node.body || ""}
             </ReactMarkdown>
           </div>
@@ -180,7 +180,9 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
             }}>
               <div className="smcaps" style={{ marginBottom: 8 }}>res · asset</div>
               <div className="tel">{node.asset.mime_type} · {(node.asset.size_bytes / 1024).toFixed(1)} KB</div>
-              <div className="tel" style={{ marginTop: 4, wordBreak: "break-all" }}>{node.asset.path}</div>
+              <div className="tel" style={{ marginTop: 4, wordBreak: "break-all" }}>
+                <LocalFileLink href={node.asset.path}>{node.asset.path}</LocalFileLink>
+              </div>
               {node.asset.content && (
                 <pre style={{
                   marginTop: 12, padding: "10px 12px",

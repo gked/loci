@@ -8,26 +8,32 @@ Run with:
 from __future__ import annotations
 
 import logging
+import os
 import re
+import secrets
+import subprocess
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 import yaml
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 # Add server/ and server/tools/ to path so we can import api.py and its deps
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "tools"))
 
-from vault_init import load_config
+from vault_init import CONFIG_PATH, load_config
 import nx_graph as graph
 import api as vault_api
 
 log = logging.getLogger(__name__)
 
 _VAULT_ROOT: Path | None = None
+
+DEFAULT_ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:4173"]
 
 
 def _resolve_vault_root() -> Path:
@@ -43,6 +49,101 @@ def _vault_root() -> Path:
     return _resolve_vault_root()
 
 
+# ---------------------------------------------------------------------------
+# Local-request authorization
+#
+# /api/open-local hands a path to the operating system's handler, so it must
+# only ever be reachable from this app's own frontend. Two independent checks
+# guard it:
+#
+#   1. Origin allowlist — browsers set Origin themselves and page scripts
+#      cannot forge it, so this rejects requests made by any other site the
+#      user happens to have open. CORSMiddleware alone does NOT cover this: a
+#      POST with no custom headers is a "simple" request, so the browser sends
+#      it and only hides the response.
+#   2. Shared token in a custom header — authenticates non-browser callers, and
+#      because custom headers force a CORS preflight it also gets the browser
+#      to enforce the allowlist before the request is ever sent.
+#
+# Requests with no Origin at all (curl, tests, the MCP server) are allowed
+# through the first check and fall back to the token. A browser always attaches
+# Origin to a cross-origin POST, so this is not a hole a malicious page can use.
+# ---------------------------------------------------------------------------
+
+def _read_config_file() -> dict:
+    """
+    Read config.yml directly.
+
+    load_config() short-circuits to {"vault_root": ...} when LOCI_VAULT_ROOT is
+    set, which would hide api_token/allowed_origins, so auth settings are read
+    straight from the file instead.
+    """
+    if not CONFIG_PATH.exists():
+        return {}
+    try:
+        with open(CONFIG_PATH) as f:
+            return yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        log.warning("Could not read %s: %s", CONFIG_PATH, exc)
+        return {}
+
+
+def _load_or_create_token() -> str:
+    """
+    Resolve the API token, generating and persisting one on first run.
+
+    Order: LOCI_API_TOKEN env var, then config.yml's api_token, then a freshly
+    generated token written back to config.yml. When config.yml does not exist
+    the token is kept in memory for the process lifetime.
+    """
+    env_token = os.environ.get("LOCI_API_TOKEN")
+    if env_token:
+        return env_token
+
+    config = _read_config_file()
+    token = config.get("api_token")
+    if token:
+        return str(token)
+
+    token = secrets.token_urlsafe(32)
+    if CONFIG_PATH.exists():
+        config["api_token"] = token
+        try:
+            with open(CONFIG_PATH, "w") as f:
+                yaml.dump(config, f, default_flow_style=False)
+            log.info("Generated a new API token and saved it to %s", CONFIG_PATH)
+        except OSError as exc:
+            log.warning("Could not persist API token to %s: %s", CONFIG_PATH, exc)
+    return token
+
+
+def _allowed_origins() -> list[str]:
+    configured = _read_config_file().get("allowed_origins")
+    if isinstance(configured, list) and configured:
+        return [str(o).rstrip("/") for o in configured]
+    return list(DEFAULT_ALLOWED_ORIGINS)
+
+
+_API_TOKEN: str | None = None
+
+
+def _api_token() -> str:
+    global _API_TOKEN
+    if _API_TOKEN is None:
+        _API_TOKEN = _load_or_create_token()
+    return _API_TOKEN
+
+
+def _authorize_local_request(origin: str | None, token: str | None) -> None:
+    """Raise 403 unless the caller is this app's own frontend."""
+    if origin is not None and origin.rstrip("/") not in _allowed_origins():
+        raise HTTPException(
+            status_code=403, detail="Cross-origin requests are not allowed"
+        )
+    if not token or not secrets.compare_digest(token, _api_token()):
+        raise HTTPException(status_code=403, detail="Missing or invalid API token")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _VAULT_ROOT
@@ -51,6 +152,11 @@ async def lifespan(app: FastAPI):
         graph.get(_VAULT_ROOT)
     except Exception as e:
         log.warning("Graph pre-warm failed: %s", e)
+    # Resolve up front so the token exists before the first request, and so a
+    # frontend served from somewhere other than the vite dev server has a value
+    # to paste in.
+    log.info("API token: %s", _api_token())
+    log.info("Allowed origins: %s", ", ".join(_allowed_origins()))
     yield
 
 
@@ -58,8 +164,8 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173"],
-    allow_methods=["GET"],
+    allow_origins=_allowed_origins(),
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -121,6 +227,76 @@ def _parse_file(raw: str) -> dict:
 
     result["body"] = remainder.strip()
     return result
+
+
+_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def _local_path(raw: str) -> Path:
+    """
+    Convert an absolute path, a ~-relative path, or a local file URI to a
+    filesystem path.
+
+    `raw` arrives already percent-decoded by Starlette, so only the file:// URI
+    branch decodes again — decoding a plain path a second time would corrupt
+    any filename containing a literal '%'.
+    """
+    if raw.lower().startswith("file://"):
+        parsed = urlparse(raw)
+        if parsed.netloc not in ("", "localhost"):
+            raise HTTPException(status_code=400, detail="Remote file URIs are not supported")
+        path_text = unquote(parsed.path)
+        if re.match(r"^/[A-Za-z]:[\\/]", path_text):
+            path_text = path_text[1:]
+    else:
+        path_text = raw
+        # A bare Windows path like C:\Users\me\note.md parses as scheme "c",
+        # so drive letters are matched before the scheme check rejects it.
+        if not _WINDOWS_DRIVE_RE.match(path_text) and urlparse(path_text).scheme:
+            raise HTTPException(status_code=400, detail="Only local file paths can be opened")
+
+    # Absoluteness is decided on the text as given. Expanding "~" first would
+    # make every ~-relative path look absolute and defeat the check, so "~/" is
+    # accepted as its own explicit form instead.
+    if path_text.startswith("~"):
+        path = Path(path_text).expanduser()
+        if not path.is_absolute():
+            raise HTTPException(
+                status_code=400, detail="Could not resolve the home directory in that path"
+            )
+        return path
+
+    path = Path(path_text)
+    if not path.is_absolute():
+        raise HTTPException(status_code=400, detail="File path must be absolute")
+    return path
+
+
+def _launch_system_handler(path: Path) -> None:
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)])
+    elif sys.platform == "win32":
+        os.startfile(path)  # type: ignore[attr-defined]
+    else:
+        subprocess.Popen(["xdg-open", str(path)])
+
+
+@app.post("/api/open-local")
+def open_local_path(
+    path: str = Query(...),
+    origin: str | None = Header(None),
+    x_loci_token: str | None = Header(None),
+):
+    """Open a local file or directory with the operating system's handler."""
+    _authorize_local_request(origin, x_loci_token)
+    local_path = _local_path(path)
+    if not local_path.exists():
+        raise HTTPException(status_code=404, detail=f"Path not found: {local_path}")
+    try:
+        _launch_system_handler(local_path)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not open path: {exc}") from exc
+    return {"opened": str(local_path)}
 
 
 # ---------------------------------------------------------------------------
