@@ -135,12 +135,15 @@ every push and PR, so a red suite blocks the merge anyway.
 
 1. Branch off up-to-date `main`:
    `git checkout main && git pull && git switch -c my-branch`
-2. Implement locally, run `make test`, and show the user the result.
-3. **Once the user says they're happy with the local implementation, open the PR
-   without being asked** — user approval of the implementation is the trigger:
-   `git push -u origin my-branch` then `gh pr create`.
-   Don't push or open a PR before that sign-off, and don't merge the PR yourself
-   unless asked.
+2. Implement locally and run `make test`.
+3. **When the work is done and both suites are green, push and open the PR
+   without asking** — don't wait for sign-off, and don't stop to report the
+   local result first: `git push -u origin my-branch` then `gh pr create`.
+   Report the test results and the PR link together, once it's open.
+   Still don't merge the PR yourself unless asked.
+
+   If the suites aren't green, or the work is genuinely ambiguous and you'd be
+   guessing at what was wanted, stop and say so instead of opening a PR.
 4. **After the PR is merged, sync back to `main`:**
    `git checkout main && git pull && git branch -d my-branch`.
    Leave the repo on an up-to-date `main` before starting the next change.
