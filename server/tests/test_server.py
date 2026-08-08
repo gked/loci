@@ -298,6 +298,28 @@ def test_write_vault_returns_uid(tmp_vault):
     assert result["uid"] == "abc12345"
 
 
+def test_patch_vault_accepts_uid_as_path(tmp_vault):
+    """No search_vault round-trip needed: the UID resolves on its own."""
+    written = write_vault("document", "Patch By UID", "body", extra_fields={"status": "draft"})
+    result = patch_vault(written["uid"], {"status": "done"})
+    assert result["uid"] == written["uid"]
+    assert "error" not in result
+    assert "status: done" in read_vault(written["uid"])
+
+
+def test_patch_vault_unknown_uid_returns_error(tmp_vault):
+    result = patch_vault("deadbeef", {"status": "done"})
+    assert "deadbeef" in result["error"]
+
+
+def test_delete_vault_directory_returns_error(tmp_vault):
+    """A directory must come back as an error dict, not an uncaught IsADirectoryError."""
+    (tmp_vault / "adir").mkdir(exist_ok=True)
+    result = delete_vault("adir")
+    assert "not a file" in result["error"]
+    assert (tmp_vault / "adir").is_dir()
+
+
 def test_list_vault_includes_startup_notice_once(tmp_vault, monkeypatch):
     monkeypatch.setattr(server, "_startup_notice", "meta updated to v3")
     with patch("loci_mcp.server.loci.list_items", return_value={}):

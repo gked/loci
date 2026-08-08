@@ -55,6 +55,67 @@ def _stage_root() -> Path:
     return _vault_root().parent / "loci-stage"
 
 
+_UID_RE = re.compile(r"[0-9a-f]{8}")
+
+
+def _frontmatter_uid(p: Path):
+    """Return the `uid` field from a node file's frontmatter, or None."""
+    try:
+        raw = p.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if not raw.startswith("---"):
+        return None
+    parts = raw.split("---", 2)
+    if len(parts) < 3:
+        return None
+    try:
+        fm = yaml.safe_load(parts[1]) or {}
+    except yaml.YAMLError:
+        return None
+    return fm.get("uid") if isinstance(fm, dict) else None
+
+
+def _resolve_vault_path(path: str) -> Path:
+    """
+    Resolve a vault reference to a filesystem path.
+
+    Accepts an absolute path, a path relative to vault_root, or an
+    8-character hex UID (looked up in the graph index).
+    Raises FileNotFoundError when the reference points at something that is
+    not a node file, or when a UID cannot be resolved to a file.
+    The returned path is not guaranteed to exist — callers still check.
+    """
+    p = Path(path)
+    if not p.is_absolute():
+        p = _vault_root() / path
+    if p.is_file():
+        return p
+    if p.exists():
+        # A directory (including vault_root itself for an empty path) would
+        # otherwise pass the callers' exists() guard and blow up on read/unlink.
+        raise FileNotFoundError(f"Vault path is not a file: {p}")
+
+    uid = path.strip()
+    if _UID_RE.fullmatch(uid):
+        g = graph.get(_vault_root())
+        node_path = g.nodes[uid].get("path") if g.has_node(uid) else None
+        if not node_path:
+            raise FileNotFoundError(f"Vault file not found for UID: {uid}")
+        resolved = Path(node_path)
+        # The graph's path cache only notices changes in vault_root and its
+        # immediate subdirectories, so a move deeper in the tree can leave a
+        # stale path pointing at a different node's file. Confirm the file
+        # still carries this uid before a caller patches or deletes it.
+        if resolved.is_file() and _frontmatter_uid(resolved) != uid:
+            raise FileNotFoundError(
+                f"Vault file for UID {uid} is stale: {resolved} holds a different node"
+            )
+        return resolved
+
+    return p
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -115,12 +176,11 @@ def save(
 
 def delete(path: str) -> dict:
     """
-    Delete a vault item. Accepts an absolute path or a path relative to vault_root.
+    Delete a vault item. Accepts an absolute path, a path relative to vault_root,
+    or an 8-character hex UID.
     Returns {deleted: True, path: str} or raises FileNotFoundError.
     """
-    p = Path(path)
-    if not p.is_absolute():
-        p = _vault_root() / path
+    p = _resolve_vault_path(path)
     if not p.exists():
         raise FileNotFoundError(f"Vault file not found: {p}")
     # Read uid before deleting so we can drop the node from the graph
@@ -142,12 +202,11 @@ def patch(path: str, updates: dict, body: str = None) -> dict:
     Patch frontmatter fields in an existing vault item.
     `updates` is merged into the existing frontmatter; `updated_at` is always bumped.
     If `body` is provided, it replaces the existing body.
-    Accepts an absolute path or a path relative to vault_root.
+    Accepts an absolute path, a path relative to vault_root, or an
+    8-character hex UID.
     Returns {uid, path, type, title}.
     """
-    p = Path(path)
-    if not p.is_absolute():
-        p = _vault_root() / path
+    p = _resolve_vault_path(path)
     result = _patch_item(str(p), updates, body)
     if result.get("uid"):
         graph.index_node(
@@ -188,19 +247,7 @@ def get(path: str) -> str:
     When the node has has_asset: true, asset content is appended inline (text files
     under the size threshold) or as a path reference (binary/large files).
     """
-    p = Path(path)
-    if not p.is_absolute():
-        p = _vault_root() / path
-    if not p.exists() and re.fullmatch(r"[0-9a-f]{8}", path.strip()):
-        # Treat input as a UID and look up the file path via the graph index.
-        _uid = path.strip()
-        g = graph.get(_vault_root())
-        if g.has_node(_uid):
-            node_path = g.nodes[_uid].get("path")
-            if node_path:
-                p = Path(node_path)
-            else:
-                raise FileNotFoundError(f"Vault file not found for UID: {_uid}")
+    p = _resolve_vault_path(path)
     if not p.exists():
         raise FileNotFoundError(f"Vault file not found: {p}")
 

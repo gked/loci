@@ -158,7 +158,8 @@ def delete_vault(path: str) -> dict:
     Delete a vault item permanently.
 
     Args:
-        path: Absolute path or path relative to vault_root (e.g. "notes/my-note.md")
+        path: 8-character hex UID (e.g. "0b74b77c"), absolute path, or path
+              relative to vault_root (e.g. "notes/my-note.md")
 
     Always confirm with the user before calling this. Deletion is irreversible.
     """
@@ -183,7 +184,9 @@ def patch_vault(path: str, updates: dict, body: str = None) -> dict:
       3. Call patch_vault(path, updates={...}) with only the fields that changed.
 
     Args:
-        path: Absolute path or path relative to vault_root (e.g. "notes/my-note.md")
+        path: 8-character hex UID (e.g. "0b74b77c"), absolute path, or path
+              relative to vault_root (e.g. "notes/my-note.md").
+              Prefer the UID when you have it — no lookup call is needed.
         updates: Dict of frontmatter fields to overwrite. Pass complete new values.
                  Common uses:
                    relations: [{uid: "a1b2c3d4", type: "belongs-to"}, ...]

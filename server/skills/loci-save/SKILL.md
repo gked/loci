@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 18
+skill_version: 19
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, topic, asset, or log — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 18`.
+This skill is at `skill_version: 19`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -418,6 +418,10 @@ Proceed? [yes / no]
 ### U4 — Patch the file
 
 Call `loci__patch_vault(path=<path>, updates={<only changed fields>})`.
+
+`path` accepts the node's 8-character UID as well as a file path — when you already
+know the UID, pass it directly instead of looking the path up first. The same is true
+of `loci__read_vault` and `loci__delete_vault`.
 
 Confirm to the user:
 ```

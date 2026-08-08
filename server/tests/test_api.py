@@ -98,6 +98,45 @@ def test_delete_missing_file_raises(tmp_vault):
         api.delete(str(tmp_vault / "nonexistent.md"))
 
 
+def test_delete_by_uid(tmp_vault):
+    result = api.save(type="document", title="UID Delete", body="", extra_fields={"status": "draft"})
+    api.delete(result["uid"])
+    assert not Path(result["path"]).exists()
+
+
+def test_delete_by_uid_unknown_raises(tmp_vault):
+    with pytest.raises(FileNotFoundError, match="deadbeef"):
+        api.delete("deadbeef")
+
+
+def test_delete_directory_raises_not_a_file(tmp_vault):
+    (tmp_vault / "somedir").mkdir(exist_ok=True)
+    with pytest.raises(FileNotFoundError, match="not a file"):
+        api.delete("somedir")
+    assert (tmp_vault / "somedir").is_dir()
+
+
+def test_delete_empty_path_does_not_touch_vault_root(tmp_vault):
+    with pytest.raises(FileNotFoundError, match="not a file"):
+        api.delete("")
+    assert tmp_vault.is_dir()
+
+
+def test_delete_by_uid_stale_graph_path_raises(tmp_vault):
+    """A stale graph path pointing at another node's file must not be deleted."""
+    victim = api.save(type="document", title="Victim", body="", extra_fields={"status": "draft"})
+    stale = api.save(type="document", title="Stale", body="", extra_fields={"status": "draft"})
+    # Simulate the stale cache: the file moved away and stale's cached path now
+    # points at victim's file. Inject after the rebuild the unlink triggers.
+    Path(stale["path"]).unlink()
+    g = api.graph.get(tmp_vault)
+    g.add_node(stale["uid"], path=victim["path"])
+
+    with pytest.raises(FileNotFoundError, match="stale"):
+        api.delete(stale["uid"])
+    assert Path(victim["path"]).exists()
+
+
 # ---------------------------------------------------------------------------
 # patch
 # ---------------------------------------------------------------------------
@@ -125,6 +164,49 @@ def test_patch_relative_path_resolves(tmp_vault):
     fname = Path(result["path"]).name
     patched = api.patch(fname, {"title": "Renamed"})
     assert patched["title"] == "Renamed"
+
+
+def test_patch_by_uid(tmp_vault):
+    result = api.save(type="document", title="UID Patch", body="", extra_fields={"status": "draft"})
+    patched = api.patch(result["uid"], {"tags": ["by-uid"], "status": "done"})
+    assert patched["uid"] == result["uid"]
+    fm = yaml.safe_load(Path(result["path"]).read_text(encoding="utf-8").split("---", 2)[1])
+    assert fm["tags"] == ["by-uid"]
+    assert fm["status"] == "done"
+
+
+def test_patch_by_uid_replaces_body(tmp_vault):
+    result = api.save(type="document", title="UID Body Patch", body="Old body.", extra_fields={"status": "draft"})
+    api.patch(result["uid"], {}, body="New body.")
+    raw = Path(result["path"]).read_text(encoding="utf-8")
+    assert "New body." in raw
+    assert "Old body." not in raw
+
+
+def test_patch_by_uid_unknown_raises(tmp_vault):
+    with pytest.raises(FileNotFoundError, match="deadbeef"):
+        api.patch("deadbeef", {"tags": ["x"]})
+
+
+def test_patch_directory_raises_not_a_file(tmp_vault):
+    (tmp_vault / "patchdir").mkdir(exist_ok=True)
+    with pytest.raises(FileNotFoundError, match="not a file"):
+        api.patch("patchdir", {"tags": ["x"]})
+
+
+def test_patch_by_uid_stale_graph_path_raises(tmp_vault):
+    """A stale graph path must not let a patch write into another node's file."""
+    victim = api.save(type="document", title="Patch Victim", body="Untouched.", extra_fields={"status": "draft"})
+    stale = api.save(type="document", title="Patch Stale", body="", extra_fields={"status": "draft"})
+    Path(stale["path"]).unlink()
+    g = api.graph.get(tmp_vault)
+    g.add_node(stale["uid"], path=victim["path"])
+
+    with pytest.raises(FileNotFoundError, match="stale"):
+        api.patch(stale["uid"], {"tags": ["clobbered"]})
+    fm = yaml.safe_load(Path(victim["path"]).read_text(encoding="utf-8").split("---", 2)[1])
+    assert fm["title"] == "Patch Victim"
+    assert fm.get("tags") != ["clobbered"]
 
 
 def test_patch_returns_metadata(tmp_vault):
