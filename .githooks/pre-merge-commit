@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Refuse `git merge` that would create a merge commit on a protected branch.
+set -euo pipefail
+
+. "$(dirname "$0")/_common.sh"
+
+branch="$(current_branch)"
+is_protected "$branch" || exit 0
+override_set && exit 0
+
+deny "merge into '$branch' from your working copy."

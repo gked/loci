@@ -1,4 +1,10 @@
-.PHONY: test test-fast test-e2e test-cov cov-html e2e-install dev dev-api dev-ui
+.PHONY: test test-fast test-e2e test-cov cov-html e2e-install dev dev-api dev-ui hooks
+
+# One-time per clone: point git at the versioned hooks in .githooks/.
+# They block commits, merges, and pushes that land directly on main.
+hooks:
+	git config core.hooksPath .githooks
+	@echo "hooks installed (core.hooksPath = .githooks)"
 
 # Full suite — Python unit tests + browser e2e. Needs `make e2e-install` once.
 test:

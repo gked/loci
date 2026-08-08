@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Refuse ordinary commits made directly on a protected branch.
+set -euo pipefail
+
+. "$(dirname "$0")/_common.sh"
+
+branch="$(current_branch)"
+is_protected "$branch" || exit 0
+override_set && exit 0
+
+deny "direct commit on '$branch'."

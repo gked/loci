@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Two gates before anything leaves this machine:
+#
+#   1. Refuse pushing to a protected branch.
+#      This is the hook that actually stops "merged straight into main": a
+#      fast-forward merge creates no commit, so pre-commit and
+#      pre-merge-commit never fire for it — but the push still comes here.
+#
+#   2. Run the unit suite, to keep obviously-red trees off a PR.
+#      Unit only (-m "not e2e"): ~4s, no Node or browser needed. The e2e
+#      suite is left to CI, which runs both on every push and PR.
+#      This tests the working tree, not the commits being pushed — when the
+#      two differ the hook says so instead of implying more than it checked.
+#
+# The two gates have separate escape hatches: LOCI_ALLOW_MAIN=1 waives the
+# branch guard only, LOCI_SKIP_TESTS=1 waives the suite only.
+#
+# stdin lines: <local ref> <local sha> <remote ref> <remote sha>
+set -euo pipefail
+
+. "$(dirname "$0")/_common.sh"
+
+head_sha="$(git rev-parse HEAD 2>/dev/null || echo "")"
+pushing_commits=0
+tree_matches_push=1
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+	[ -z "$remote_ref" ] && continue
+
+	remote_branch="${remote_ref#refs/heads/}"
+	if [ "$remote_branch" != "$remote_ref" ] && is_protected "$remote_branch" && ! override_set; then
+		deny "push to '$remote_branch' on the remote."
+	fi
+
+	# All-zero local sha means "delete this remote ref" — nothing to test.
+	case "$local_sha" in
+	*[!0]*)
+		pushing_commits=1
+		[ "$local_sha" = "$head_sha" ] || tree_matches_push=0
+		;;
+	esac
+done
+
+[ "$pushing_commits" -eq 1 ] || exit 0
+[ "${LOCI_SKIP_TESTS:-}" = "1" ] && exit 0
+
+if ! command -v uv >/dev/null 2>&1; then
+	echo "" >&2
+	echo "  BLOCKED: uv not found, so the unit suite cannot run." >&2
+	echo "" >&2
+	echo "  Install it: https://docs.astral.sh/uv/" >&2
+	echo "  Pushing from a GUI client or IDE? Its PATH probably misses uv" >&2
+	echo "  (usually ~/.local/bin) — push from a terminal, or fix its PATH." >&2
+	echo "" >&2
+	echo "  Skip this check (rarely correct): LOCI_SKIP_TESTS=1 git push" >&2
+	echo "" >&2
+	exit 1
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+
+# The suite covers the working tree. When that is not what is being pushed,
+# say so — passing tests here do not mean the pushed commits are green, and
+# failing ones may have nothing to do with them.
+if [ "$tree_matches_push" -eq 0 ]; then
+	echo "" >&2
+	echo "  NOTE: pushing commits that are not checked out (HEAD is elsewhere)." >&2
+	echo "        Tests below cover the working tree, not those commits." >&2
+	echo "" >&2
+elif ! git diff --quiet HEAD 2>/dev/null; then
+	echo "" >&2
+	echo "  NOTE: working tree has uncommitted changes." >&2
+	echo "        Tests below cover the tree as it stands, not the pushed commits." >&2
+	echo "" >&2
+fi
+
+echo "pre-push: running unit tests..." >&2
+
+# --extra dev because pytest lives in the dev extra; uv installs it on demand
+# and caches it, so this is only slow on a fresh clone.
+if ! uv run --extra dev pytest server/tests/ -q -m "not e2e"; then
+	echo "" >&2
+	echo "  BLOCKED: unit tests failed — not pushing." >&2
+	echo "" >&2
+	echo "  Fix them, or see the full output with:" >&2
+	echo "    make test-fast" >&2
+	echo "" >&2
+	echo "  Skip this check (rarely correct): LOCI_SKIP_TESTS=1 git push" >&2
+	echo "" >&2
+	exit 1
+fi

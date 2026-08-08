@@ -106,9 +106,53 @@ Rules of thumb:
   node to `server/tests/fixtures/e2e-overlay/`, **not** to `fixtures/vault/`
   (that one backs the unit suite and its counts are asserted on).
 
+## Branch and PR rules
+
+`main` is never written to directly. Every change lands through a PR from a
+branch. Local hooks in `.githooks/` enforce this — run `make hooks` once per
+clone to install them (they block commits and merges on `main`, block pushes to
+`main`, and run the unit suite before every push).
+
+**Every PR must carry tests:**
+
+- **Unit tests — always.** Any behaviour change needs unit coverage in
+  `server/tests/`. A PR with no test change is only acceptable for pure docs,
+  comments, or formatting.
+- **Playwright e2e tests — whenever the PR touches the UI.** If the change adds,
+  alters, or removes anything a user sees or clicks in `app/`, it also needs a
+  browser test in `server/tests/e2e/` that drives the real thing in Chromium and
+  asserts on the visible result. See the e2e sections below for the traps and
+  the `data-testid` rule.
+
+"Touches the UI" includes changes that reach the UI indirectly — an API response
+shape, a registry value the UI renders, a node field the UI displays. Use the
+UI impact check above to decide.
+
+Both suites must be green before opening the PR: `make test`. CI re-runs them on
+every push and PR, so a red suite blocks the merge anyway.
+
+### Workflow for a change
+
+1. Branch off up-to-date `main`:
+   `git checkout main && git pull && git switch -c my-branch`
+2. Implement locally, run `make test`, and show the user the result.
+3. **Once the user says they're happy with the local implementation, open the PR
+   without being asked** — user approval of the implementation is the trigger:
+   `git push -u origin my-branch` then `gh pr create`.
+   Don't push or open a PR before that sign-off, and don't merge the PR yourself
+   unless asked.
+4. **After the PR is merged, sync back to `main`:**
+   `git checkout main && git pull && git branch -d my-branch`.
+   Leave the repo on an up-to-date `main` before starting the next change.
+
+If the PR was stacked on another PR, check it after the base merges — GitHub
+closes a PR whose base branch is deleted rather than retargeting it (this is what
+happened to #51).
+
 ## Running tests
 
 ```
+make hooks                       # one-time per clone: install .githooks/
 make test                        # full suite: Python unit + browser e2e
 make test-fast                   # unit only (-m "not e2e") — no Node/browser
 make test-e2e                    # browser suite only
