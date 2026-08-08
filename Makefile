@@ -1,4 +1,4 @@
-.PHONY: test test-fast test-e2e test-cov cov-html e2e-install dev dev-api dev-ui hooks
+.PHONY: test test-fast test-e2e test-cov cov-html e2e-install dev dev-api dev-ui hooks screenshots
 
 # One-time per clone: point git at the versioned hooks in .githooks/.
 # They block commits, merges, and pushes that land directly on main.
@@ -27,6 +27,13 @@ test-e2e:
 e2e-install:
 	uv sync --extra dev
 	uv run playwright install chromium
+
+# Recapture the README screenshots from the e2e fixture vault into docs/images/.
+# Opt-in: these specs skip during a normal run. Commit the images afterwards.
+screenshots:
+	uv sync --extra dev
+	npm ci --prefix app
+	LOCI_CAPTURE_SCREENSHOTS=1 uv run --with pillow pytest server/tests/e2e/test_screenshots.py -v -s
 
 test-cov:
 	uv sync --extra dev

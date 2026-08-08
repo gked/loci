@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  
+  <rect x="6" y="6" width="108" height="108" fill="none" stroke="#0d0a08" stroke-width="1.5"></rect>
+
+  
+  <g fill="none" stroke="#0d0a08" stroke-width="1.4" stroke-linecap="square" stroke-linejoin="miter">
+    
+    <path d="M 22 14 L 22 10 L 30 10 L 30 14 M 26 14 L 26 12"></path>
+    <path d="M 38 14 L 38 10 L 46 10 L 46 14 M 42 14 L 42 12"></path>
+    <path d="M 54 14 L 54 10 L 62 10 L 62 14 M 58 14 L 58 12"></path>
+    <path d="M 70 14 L 70 10 L 78 10 L 78 14 M 74 14 L 74 12"></path>
+    <path d="M 86 14 L 86 10 L 94 10 L 94 14 M 90 14 L 90 12"></path>
+
+    
+    <path d="M 22 106 L 22 110 L 30 110 L 30 106 M 26 106 L 26 108"></path>
+    <path d="M 38 106 L 38 110 L 46 110 L 46 106 M 42 106 L 42 108"></path>
+    <path d="M 54 106 L 54 110 L 62 110 L 62 106 M 58 106 L 58 108"></path>
+    <path d="M 70 106 L 70 110 L 78 110 L 78 106 M 74 106 L 74 108"></path>
+    <path d="M 86 106 L 86 110 L 94 110 L 94 106 M 90 106 L 90 108"></path>
+
+    
+    <path d="M 14 22 L 10 22 L 10 30 L 14 30 M 14 26 L 12 26"></path>
+    <path d="M 14 38 L 10 38 L 10 46 L 14 46 M 14 42 L 12 42"></path>
+    <path d="M 14 54 L 10 54 L 10 62 L 14 62 M 14 58 L 12 58"></path>
+    <path d="M 14 70 L 10 70 L 10 78 L 14 78 M 14 74 L 12 74"></path>
+    <path d="M 14 86 L 10 86 L 10 94 L 14 94 M 14 90 L 12 90"></path>
+
+    
+    <path d="M 106 22 L 110 22 L 110 30 L 106 30 M 106 26 L 108 26"></path>
+    <path d="M 106 38 L 110 38 L 110 46 L 106 46 M 106 42 L 108 42"></path>
+    <path d="M 106 54 L 110 54 L 110 62 L 106 62 M 106 58 L 108 58"></path>
+    <path d="M 106 70 L 110 70 L 110 78 L 106 78 M 106 74 L 108 74"></path>
+    <path d="M 106 86 L 110 86 L 110 94 L 106 94 M 106 90 L 108 90"></path>
+
+    
+    <path d="M 6 14 L 14 14 L 14 6"></path>
+    <path d="M 114 14 L 106 14 L 106 6"></path>
+    <path d="M 6 106 L 14 106 L 14 114"></path>
+    <path d="M 114 106 L 106 106 L 106 114"></path>
+  </g>
+
+  
+  <g fill="#a4421f">
+    <circle cx="10" cy="10" r="1.6"></circle>
+    <circle cx="110" cy="10" r="1.6"></circle>
+    <circle cx="10" cy="110" r="1.6"></circle>
+    <circle cx="110" cy="110" r="1.6"></circle>
+  </g>
+
+  
+  <rect x="20" y="20" width="80" height="80" fill="none" stroke="#0d0a08" stroke-width="1"></rect>
+
+  
+  <text x="58.2" y="84.9" text-anchor="middle" font-family="Cormorant Garamond, EB Garamond, Georgia, serif" font-weight="500" font-size="72" fill="#0d0a08">L</text>
+
+  
+  <circle cx="76.2" cy="80.9" r="3" fill="#a4421f"></circle>
+</svg>

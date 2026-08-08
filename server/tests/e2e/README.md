@@ -154,5 +154,13 @@ use `get_by_role` / `get_by_placeholder` instead — no testid needed.
   "graph-node"` is already in place for whoever picks this up.
 - **Visual regression.** Deliberately out of scope: the design system animates
   (`--flow-dur`, `--bezel-dur`), so screenshot diffs would be chronically flaky.
+  `test_screenshots.py` *captures* the README images from this same fixture
+  vault, but asserts nothing about them — it skips unless
+  `LOCI_CAPTURE_SCREENSHOTS=1`, so `make test` never runs it. Regenerate with
+  `make screenshots` and commit what lands in `docs/images/`. Two things it has
+  to work around: shots must avoid the asset-bearing overlay node, whose
+  resolved path is a pytest tmp dir containing the local username, and captures
+  are taken at 2x then resampled down rather than palette-quantized, which
+  collapses the per-type dot colours into grey.
 - **Writes.** The HTTP API is read-only (`CORSMiddleware` allows GET only), so
   there is no create/edit flow to test from the browser.
