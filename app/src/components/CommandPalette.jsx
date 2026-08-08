@@ -45,6 +45,7 @@ export function CommandPalette({ open, onClose, onOpen }) {
     >
       <div
         onClick={e => e.stopPropagation()}
+        data-testid="command-palette"
         style={{
           width: 560, maxHeight: "70vh",
           background: "rgba(10,16,32,0.92)",
@@ -82,6 +83,8 @@ export function CommandPalette({ open, onClose, onOpen }) {
             onChange={e => setQ(e.target.value)}
             onKeyDown={e => { if (e.key === "Escape") onClose(); }}
             placeholder="search vault — title, tag, uid"
+            aria-label="search vault"
+            data-testid="palette-input"
             className="t-input"
             style={{ fontSize: 20 }}
           />
@@ -90,7 +93,7 @@ export function CommandPalette({ open, onClose, onOpen }) {
         {/* results */}
         <div style={{ flex: 1, overflowY: "auto", padding: "6px 0" }}>
           {results.length === 0 && debouncedQ.length >= 2 && (
-            <div style={{ padding: "24px 18px", fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 13, color: "var(--t-fg-faint)", textAlign: "center" }}>
+            <div data-testid="palette-empty" style={{ padding: "24px 18px", fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 13, color: "var(--t-fg-faint)", textAlign: "center" }}>
               vacuum · no results for "{debouncedQ}"
             </div>
           )}
@@ -98,6 +101,8 @@ export function CommandPalette({ open, onClose, onOpen }) {
             <button
               key={n.uid}
               onClick={() => { onOpen(n.uid); onClose(); }}
+              data-testid="palette-result"
+              data-uid={n.uid}
               style={{
                 display: "grid", gridTemplateColumns: "18px 1fr auto auto",
                 alignItems: "center", gap: 14, padding: "8px 18px",

@@ -12,6 +12,7 @@ configured vault.
 
 import asyncio
 import os
+import threading
 import pytest
 from unittest.mock import patch
 
@@ -139,6 +140,33 @@ async def _call_middleware(middleware, scope):
     return messages
 
 
+def _run_async(coro):
+    """
+    Run a coroutine to completion on a dedicated thread.
+
+    Not `asyncio.run()`: Playwright's sync API (server/tests/e2e/) keeps an
+    event loop alive in the main thread for the whole session, and both
+    `asyncio.run()` and `loop.run_until_complete()` refuse to start while
+    another loop is running there. Running on our own thread makes these tests
+    independent of whether the e2e suite is part of the same pytest process.
+    """
+    box = {}
+
+    def target():
+        try:
+            box["value"] = asyncio.run(coro)
+        except BaseException as e:  # re-raised on the calling thread below
+            box["error"] = e
+
+    t = threading.Thread(target=target)
+    t.start()
+    t.join()
+
+    if "error" in box:
+        raise box["error"]
+    return box["value"]
+
+
 def test_make_auth_app_no_token_returns_original_app(monkeypatch):
     monkeypatch.delenv("LOCI_TOKEN", raising=False)
 
@@ -174,7 +202,7 @@ def test_auth_middleware_allows_valid_bearer_token(monkeypatch):
         "headers": [(b"authorization", b"Bearer secret123")],
         "query_string": b"",
     }
-    asyncio.run(_call_middleware(middleware, scope))
+    _run_async(_call_middleware(middleware, scope))
     assert allowed == [True]
 
 
@@ -191,7 +219,7 @@ def test_auth_middleware_rejects_missing_token(monkeypatch):
         "headers": [],
         "query_string": b"",
     }
-    messages = asyncio.run(_call_middleware(middleware, scope))
+    messages = _run_async(_call_middleware(middleware, scope))
     assert messages[0]["status"] == 401
     assert messages[1]["body"] == b"Unauthorized"
 
@@ -209,7 +237,7 @@ def test_auth_middleware_rejects_wrong_token(monkeypatch):
         "headers": [(b"authorization", b"Bearer wrongtoken")],
         "query_string": b"",
     }
-    messages = asyncio.run(_call_middleware(middleware, scope))
+    messages = _run_async(_call_middleware(middleware, scope))
     assert messages[0]["status"] == 401
 
 
@@ -228,7 +256,7 @@ def test_auth_middleware_allows_token_as_query_param(monkeypatch):
         "headers": [],
         "query_string": b"token=secret123",
     }
-    asyncio.run(_call_middleware(middleware, scope))
+    _run_async(_call_middleware(middleware, scope))
     assert allowed == [True]
 
 
@@ -243,7 +271,7 @@ def test_auth_middleware_passes_through_non_http_scope(monkeypatch):
     middleware = _make_auth_app(dummy)
 
     scope = {"type": "lifespan"}
-    asyncio.run(_call_middleware(middleware, scope))
+    _run_async(_call_middleware(middleware, scope))
     assert passed == ["lifespan"]
 
 

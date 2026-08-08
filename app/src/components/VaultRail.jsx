@@ -15,6 +15,9 @@ export function VaultRail({ active, onNav, nodes, activeTag, onTagSelect }) {
     <button
       className={`rail-row ${active === id ? "active" : ""}`}
       onClick={() => onNav(id)}
+      data-testid="rail-row"
+      data-rail-id={id}
+      data-active={active === id ? "true" : "false"}
     >
       <span style={{ width: 14, height: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--t-bronze)", fontSize: 13 }}>
         {icon}
@@ -37,6 +40,9 @@ export function VaultRail({ active, onNav, nodes, activeTag, onTagSelect }) {
     <button
       className={`rail-row ${activeTag === tag ? "active" : ""}`}
       onClick={() => onTagSelect(tag)}
+      data-testid="rail-tag"
+      data-tag={tag}
+      data-active={activeTag === tag ? "true" : "false"}
     >
       <span style={{ width: 14, height: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--t-bronze)", fontSize: 10, opacity: 0.7 }}>
         #
@@ -130,7 +136,7 @@ export function VaultRail({ active, onNav, nodes, activeTag, onTagSelect }) {
       </div>
 
       <div className="rail-foot">
-        <div className="health">
+        <div className="health" data-testid="rail-count" data-count={nodes.length}>
           vault · {nodes.length} loci
         </div>
         <div style={{ color: "var(--t-fg-faint)", fontSize: 9 }}>~/loci</div>

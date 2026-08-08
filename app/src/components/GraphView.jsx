@@ -280,6 +280,9 @@ export function GraphView({ graphData, onOpen, focusUid }) {
             const c = TYPE_COLOR[n.type] || "#bab0ac";
             return (
               <g key={n.uid}
+                 data-testid="graph-node"
+                 data-uid={n.uid}
+                 data-selected={isSel ? "true" : "false"}
                  transform={`translate(${n.x},${n.y})`}
                  opacity={isNbr ? 1 : 0.22}
                  style={{ cursor: "grab" }}

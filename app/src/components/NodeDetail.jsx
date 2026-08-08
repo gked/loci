@@ -48,7 +48,7 @@ const T_LATIN = {
 export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology, paper }) {
   if (!node) {
     return (
-      <div style={{ flex: 1, display: "grid", placeItems: "center" }} className="canvas">
+      <div data-testid="node-detail-empty" style={{ flex: 1, display: "grid", placeItems: "center" }} className="canvas">
         <Meridian/>
         <div style={{ textAlign: "center", position: "relative", zIndex: 2 }}>
           <div className="smcaps" style={{ marginBottom: 14 }}>vacuum · empty</div>
@@ -65,7 +65,12 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
   const wordCount = (node.body || "").trim().split(/\s+/).filter(Boolean).length;
 
   return (
-    <div className={`canvas ${paper ? "paper" : ""}`} style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+    <div
+      className={`canvas ${paper ? "paper" : ""}`}
+      data-testid="node-detail"
+      data-uid={node.uid}
+      style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}
+    >
       <Meridian visible={!paper}/>
       <Reticle/>
       <Corners
@@ -82,7 +87,7 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
         background: paper ? "rgba(245,239,226,0.4)" : "rgba(6,9,20,0.65)",
         zIndex: 3, position: "relative", flexShrink: 0,
       }}>
-        <button onClick={onBack} className="t-btn" style={{ padding: "4px 12px", fontSize: 11 }}>
+        <button onClick={onBack} className="t-btn" data-testid="node-back" style={{ padding: "4px 12px", fontSize: 11 }}>
           ← back <span className="key">esc</span>
         </button>
         <span className="tel">
@@ -113,7 +118,7 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
             </span>
           </div>
 
-          <h1 style={{
+          <h1 data-testid="node-title" style={{
             fontFamily: "var(--font-display)", fontWeight: 500, fontSize: 46, lineHeight: 1.08,
             letterSpacing: "-0.005em", margin: "0 0 24px",
             color: paper ? "var(--t-ink)" : "var(--t-fg)",
@@ -139,7 +144,7 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
               <span>praefatio · frontmatter</span>
               <span style={{ fontFamily: "var(--font-mono)", fontStyle: "normal", fontSize: 9, letterSpacing: "0.04em", color: paper ? "#6b6960" : "var(--t-fg-faint)" }}>yaml</span>
             </div>
-            <div style={{
+            <div data-testid="node-frontmatter" style={{
               display: "grid", gridTemplateColumns: "120px 1fr", gap: "4px 16px",
               fontFamily: "var(--font-mono)", fontSize: 11.5,
               color: paper ? "var(--t-ink)" : "var(--t-fg)",
@@ -147,7 +152,7 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
               {getFrontmatterRows(node).map(([k, v]) => (
                 <Fragment key={k}>
                   <span style={{ color: paper ? "#6b6960" : "var(--t-fg-mute)" }}>{k}</span>
-                  <span style={{ display: "flex", gap: 6, alignItems: "center", wordBreak: "break-word" }}>{v}</span>
+                  <span data-testid="fm-value" data-field={k} style={{ display: "flex", gap: 6, alignItems: "center", wordBreak: "break-word" }}>{v}</span>
                 </Fragment>
               ))}
             </div>
@@ -165,14 +170,16 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
               letterSpacing: "0.18em", textTransform: "lowercase",
               marginBottom: 14,
             }}>corpus · body</div>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents} urlTransform={markdownUrlTransform}>
-              {node.body || ""}
-            </ReactMarkdown>
+            <div data-testid="node-body">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents} urlTransform={markdownUrlTransform}>
+                {node.body || ""}
+              </ReactMarkdown>
+            </div>
           </div>
 
           {/* asset block */}
           {node.asset && (
-            <div style={{
+            <div data-testid="node-asset" data-mime={node.asset.mime_type} style={{
               marginTop: 32, padding: "14px 18px",
               border: "0.5px solid var(--t-bronze-d)",
               outline: "0.5px solid var(--t-bronze-d)", outlineOffset: 3,
@@ -184,7 +191,7 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
                 <LocalFileLink href={node.asset.path}>{node.asset.path}</LocalFileLink>
               </div>
               {node.asset.content && (
-                <pre style={{
+                <pre data-testid="node-asset-content" style={{
                   marginTop: 12, padding: "10px 12px",
                   background: paper ? "rgba(235,226,207,0.6)" : "rgba(6,9,20,0.6)",
                   border: "0.5px solid var(--t-bronze-d)",

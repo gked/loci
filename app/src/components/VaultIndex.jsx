@@ -10,6 +10,8 @@ function ToggleSwitch({ active, onToggle, label }) {
   return (
     <span
       onClick={onToggle}
+      data-testid={`toggle-${label}`}
+      data-active={active ? "true" : "false"}
       style={{
         cursor: "pointer",
         display: "flex", alignItems: "center", gap: 5,
@@ -53,7 +55,11 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeT
     : nodes;
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", minWidth: 0 }} className="canvas">
+    <div
+      style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", minWidth: 0 }}
+      className="canvas"
+      data-testid="vault-index"
+    >
       <Meridian visible={false}/>
       <Corners
         bl={{ label: "focus · selectum", value: selectedUid || "—" }}
@@ -87,6 +93,9 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeT
             key={t}
             className="t-chip"
             onClick={() => onNav(t === "all" ? "all" : `t:${t}`)}
+            data-testid="type-filter"
+            data-type={t}
+            data-active={activeFilter === t ? "true" : "false"}
             style={{ cursor: "pointer", opacity: activeFilter === t ? 1 : 0.45 }}
           >
             {t !== "all" && <TypeDot type={t} size={6}/>}
@@ -157,6 +166,9 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeT
             key={n.uid}
             className={`list-row ${selectedUid === n.uid ? "selected" : ""}`}
             onClick={() => !isGhost && onOpen(n.uid)}
+            data-testid="node-row"
+            data-uid={n.uid}
+            data-state={isGhost ? "ghost" : isArchived ? "archived" : "active"}
             style={isGhost ? { opacity: 0.35, cursor: "default" } : isArchived ? { opacity: 0.45 } : undefined}
           >
             <TypeDot type={n.type}/>
@@ -187,7 +199,7 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeT
           );
         })}
         {displayNodes.length === 0 && (
-          <div style={{ padding: "48px 24px", textAlign: "center", fontFamily: "var(--font-display)", fontStyle: "italic", color: "var(--t-fg-faint)", fontSize: 14 }}>
+          <div data-testid="index-empty" style={{ padding: "48px 24px", textAlign: "center", fontFamily: "var(--font-display)", fontStyle: "italic", color: "var(--t-fg-faint)", fontSize: 14 }}>
             {q ? `vacuum · no match for "${filterQ}"` : "vacuum · no loci found"}
           </div>
         )}

@@ -142,7 +142,7 @@ export default function App() {
       {/* main content area */}
       <div style={{ flex: 1, position: "relative", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
         {nodesError && (
-          <div style={{
+          <div data-testid="api-error" style={{
             padding: "10px 20px", background: "rgba(192,57,43,0.15)",
             borderBottom: "1px solid rgba(192,57,43,0.4)", flexShrink: 0,
             fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--vault-danger)",

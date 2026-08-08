@@ -18,6 +18,9 @@ server/
     loci-save/SKILL.md      Save skill instructions (versioned)
     loci-query/SKILL.md     Query skill instructions (versioned)
   tests/                    Python test suite
+    e2e/                    Browser end-to-end suite (Playwright) — see its README.md
+    fixtures/vault/         Base fixture vault (unit suite; do not reshape)
+    fixtures/e2e-overlay/   Extra nodes layered on top for e2e only
 ```
 
 ## Skill ↔ Tool sync rule
@@ -80,11 +83,37 @@ After any code change, check whether the `app/` frontend is affected:
 
 If yes: inspect the relevant files under `app/` and update them (or flag to the user that UI changes are needed).
 
+**Then run the e2e suite** (`make test-e2e`) — it is the enforcement mechanism
+for this rule. If you changed a component the suite selects on, also update the
+selector table in `server/tests/e2e/README.md`.
+
+## Browser e2e suite
+
+`server/tests/e2e/` drives the real app in Chromium against a real uvicorn
+backend and a temp vault. **Read `server/tests/e2e/README.md` before touching
+it** — it documents four traps that will otherwise cost you an hour (fixture
+dates are rewritten per run; many fixture uids 404 on `/api/nodes/{uid}`; the
+command palette shows recent nodes until search debounces; expected counts live
+only in `vault_facts.py`).
+
+Rules of thumb:
+
+- Selecting on UI state → add a `data-testid`, never match on the Latin display
+  text (`praeceptum · command` etc.), and record it in the README's table.
+- Adding or removing a fixture node → update `server/tests/e2e/vault_facts.py`;
+  `test_fixture_composition.py` fails first and tells you what changed.
+- Need a UI state the base fixture vault lacks (archived, ghost, asset) → add a
+  node to `server/tests/fixtures/e2e-overlay/`, **not** to `fixtures/vault/`
+  (that one backs the unit suite and its counts are asserted on).
+
 ## Running tests
 
 ```
-make test                        # install dev deps + run full suite
-uv run pytest server/tests/ -v          # same, verbose
+make test                        # full suite: Python unit + browser e2e
+make test-fast                   # unit only (-m "not e2e") — no Node/browser
+make test-e2e                    # browser suite only
+make e2e-install                 # one-time: download the Chromium binary
+uv run pytest server/tests/ -v          # like make test, but skips the npm ci step
 uv run pytest server/tests/test_foo.py  # single file
 make test-cov                    # with coverage report
 ```

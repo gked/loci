@@ -10,3 +10,5 @@ settings.local.json
 .claude/
 app/node_modules/
 app/dist/
+# Playwright traces/screenshots from the e2e suite
+test-results/
