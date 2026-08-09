@@ -6,12 +6,14 @@
 </picture>
 
 <br/>
+<br/>
+<br/>
 
-![status: work in progress](https://img.shields.io/badge/status-work_in_progress-a4421f?style=flat-square)
-![python 3.13+](https://img.shields.io/badge/python-3.13+-1f3a68?style=flat-square)
-![interface: MCP + web UI](https://img.shields.io/badge/interface-MCP_%2B_web_UI-7a5a2e?style=flat-square)
-![tests: unit + browser e2e](https://img.shields.io/badge/tests-unit_%2B_browser_e2e-2d6a4f?style=flat-square)
-![vault: plain Markdown](https://img.shields.io/badge/vault-plain_Markdown-4a4a4a?style=flat-square)
+![status: work in progress](https://img.shields.io/badge/status-work_in_progress-a4421f?style=flat)
+![python 3.13+](https://img.shields.io/badge/python-3.13+-1f3a68?style=flat)
+![interface: MCP + web UI](https://img.shields.io/badge/interface-MCP_%2B_web_UI-7a5a2e?style=flat)
+![tests: unit + browser e2e](https://img.shields.io/badge/tests-unit_%2B_browser_e2e-2d6a4f?style=flat)
+![vault: plain Markdown](https://img.shields.io/badge/vault-plain_Markdown-4a4a4a?style=flat)
 
 <!--
   These are static badges. The live ones (CI result, latest release, licence,
@@ -22,7 +24,7 @@
   When the repo goes public (vault task 72c0063f), swap the first badge for:
 
   [![Tests](https://github.com/gked/loci/actions/workflows/test.yml/badge.svg)](https://github.com/gked/loci/actions/workflows/test.yml)
-  [![License](https://img.shields.io/github/license/gked/loci?style=flat-square)](LICENSE)
+  [![License](https://img.shields.io/github/license/gked/loci?style=flat)](LICENSE)
 
   The licence badge needs a LICENSE file first; there isn't one.
 -->
