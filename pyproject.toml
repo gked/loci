@@ -1,6 +1,10 @@
 [project]
 name = "loci"
 version = "0.1.0"
+# Source-available, not open source: noncommercial use is free, commercial use
+# needs a separate licence. See LICENSE and CONTRIBUTING.md.
+license = "PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.13"
 dependencies = [
     "pyyaml>=6.0",

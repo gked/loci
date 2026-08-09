@@ -1,0 +1,66 @@
+name: CLA
+
+# Blocks a pull request until its author has signed the Contributor Licence
+# Agreement in CLA.md.
+#
+# Why this is enforced rather than advisory: Loci is released under PolyForm
+# Noncommercial, so commercial use requires a separate licence from the owner.
+# Granting one means holding rights to the whole codebase. A contribution
+# merged without a CLA arrives under PolyForm Noncommercial itself, leaving the
+# project with only noncommercial rights to part of its own source and no way
+# to license the whole commercially. That damage is silent and permanent, so
+# the gate sits before the merge rather than in a document nobody reads.
+#
+# Signatures are recorded in signatures/cla.json on the cla-signatures branch,
+# which the action creates on first use. Signing is once per person, not per PR.
+
+on:
+  # pull_request_target, not pull_request: the job needs write access to comment
+  # on the PR and to commit the signature file, which a fork-triggered
+  # `pull_request` run does not get. It checks out no PR code, so the elevated
+  # token is never exposed to a contributor's branch.
+  pull_request_target:
+    types: [opened, synchronize, reopened, closed]
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: cla-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  cla:
+    runs-on: ubuntu-latest
+    # Run on PR events, and on comments only when they are on a PR and either
+    # sign or recheck. Without this every issue comment in the repo starts a job.
+    if: >
+      (github.event_name == 'pull_request_target') ||
+      (github.event.issue.pull_request != null &&
+       (contains(github.event.comment.body, 'I have read the CLA Document and I hereby sign the CLA') ||
+        github.event.comment.body == 'recheck'))
+    steps:
+      - name: Check or record CLA signature
+        uses: contributor-assistant/github-action@v2.6.1
+        env:
+          # The action's own token. No PAT is needed while the signature branch
+          # lives in this same repository.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-signatures: signatures/cla.json
+          path-to-document: https://github.com/gked/loci/blob/main/CLA.md
+          branch: cla-signatures
+          allowlist: gked,dependabot[bot]
+          custom-notsigned-prcomment: >
+            Thanks for the pull request. Before it can be merged, please read
+            the [Contributor Licence Agreement](https://github.com/gked/loci/blob/main/CLA.md)
+            and sign it by posting exactly this as a new comment:
+          custom-pr-sign-comment: >
+            I have read the CLA Document and I hereby sign the CLA
+          custom-allsigned-prcomment: >
+            All contributors have signed the CLA. Thank you.

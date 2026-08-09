@@ -14,6 +14,7 @@
 ![interface: MCP + web UI](https://img.shields.io/badge/interface-MCP_%2B_web_UI-7a5a2e?style=flat)
 ![tests: unit + browser e2e](https://img.shields.io/badge/tests-unit_%2B_browser_e2e-2d6a4f?style=flat)
 ![vault: plain Markdown](https://img.shields.io/badge/vault-plain_Markdown-4a4a4a?style=flat)
+![licence: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm_NC_1.0.0-a4421f?style=flat)
 
 <!--
   These are static badges. The live ones (CI result, latest release, licence,
@@ -26,7 +27,8 @@
   [![Tests](https://github.com/gked/loci/actions/workflows/test.yml/badge.svg)](https://github.com/gked/loci/actions/workflows/test.yml)
   [![License](https://img.shields.io/github/license/gked/loci?style=flat)](LICENSE)
 
-  The licence badge needs a LICENSE file first; there isn't one.
+  The dynamic licence badge reads GitHub's detection, which reports
+  "Other" for PolyForm; the static one above is more useful.
 -->
 
 <br/>
@@ -803,3 +805,35 @@ The vault meta files are user-owned, accumulating customizations (new tags, loca
 ## Design Decisions
 
 Key decisions are documented in the Loci vault itself, in the requirements note for the project (`search_vault("locus requirements")`). If you are contributing or extending Loci, read that and [CLAUDE.md](CLAUDE.md) first.
+
+---
+
+## Licence
+
+[PolyForm Noncommercial 1.0.0](LICENSE).
+
+**Noncommercial use is free.** Personal use, research, teaching, and charities
+are all permitted purposes, including modifying and redistributing.
+
+**Commercial use needs a separate licence** from the owner. If you want to use
+Loci in or for a business, open an issue and ask.
+
+This makes Loci source-available rather than open source: the OSI definition
+forbids restricting commercial use, so it will not carry an OSI badge and
+GitHub reports its licence as "Other". The choice is deliberate, and it is the
+restrictive end on purpose, since a licence can be loosened later but never
+tightened.
+
+Your vault is yours. The licence covers this software, not the notes you write
+with it.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Pull requests are gated on a signed [Contributor Licence Agreement](CLA.md). A
+bot posts the sentence to reply with; you sign once. You keep your copyright,
+and the grant is what keeps commercial licensing and a future move to AGPL or
+MIT possible.
