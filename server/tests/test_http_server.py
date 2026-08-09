@@ -10,6 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import http_server
+import api as vault_api
 from http_server import _parse_file
 
 
@@ -235,3 +236,41 @@ class TestOpenLocalAuth:
 
         assert response.status_code == 200
         launch.assert_called_once()
+
+
+class TestHealthVersion:
+    """
+    /api/health carries the app version so the UI has one number to render.
+
+    Before this, VaultRail hardcoded "v0.4" while pyproject.toml said 0.1.0 and
+    nothing reconciled them. These tests pin the contract the rail depends on.
+    """
+
+    def test_health_reports_the_version_from_pyproject(self, client):
+        response = client.get("/api/health")
+
+        assert response.status_code == 200
+        assert response.json()["version"] == vault_api.app_version()
+
+    def test_version_matches_pyproject_exactly(self, client):
+        pyproject = Path(__file__).parent.parent.parent / "pyproject.toml"
+        declared = next(
+            line.split("=")[1].strip().strip('"')
+            for line in pyproject.read_text(encoding="utf-8").splitlines()
+            if line.startswith("version")
+        )
+
+        assert client.get("/api/health").json()["version"] == declared
+
+    def test_version_is_present_even_when_the_graph_fails(self, client, monkeypatch):
+        # The error branch returns its own dict, so it has to carry the version
+        # too — otherwise the rail loses the number whenever the vault is broken,
+        # which is exactly when you want to know what you are running.
+        monkeypatch.setattr(
+            http_server, "_vault_root", lambda: (_ for _ in ()).throw(RuntimeError("no vault"))
+        )
+
+        payload = client.get("/api/health").json()
+
+        assert payload["status"] == "error"
+        assert payload["version"] == vault_api.app_version()

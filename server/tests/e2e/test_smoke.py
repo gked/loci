@@ -78,3 +78,22 @@ def test_recent_endpoint_is_populated(base_url):
     with urllib.request.urlopen(f"{base_url}/api/nodes/recent") as r:
         recent = json.load(r)
     assert len(recent) > 0, "recent is empty — date freshening in conftest broke"
+
+
+def test_rail_shows_the_version_the_api_reports(app_page, base_url):
+    """
+    The rail renders the backend's version rather than a literal of its own.
+
+    Deployment-portable on purpose: the expectation is read from /api/health at
+    run time, not from a constant, so this passes against any vault or version.
+    It guards the drift that prompted the change — the rail once said "v0.4"
+    while pyproject.toml said 0.1.0.
+    """
+    with urllib.request.urlopen(f"{base_url}/api/health") as response:
+        expected = json.load(response)["version"]
+
+    assert expected, "/api/health returned no version"
+
+    badge = app_page.locator("[data-testid='app-version']")
+    expect(badge).to_have_attribute("data-version", expected)
+    expect(badge).to_contain_text(f"v{expected}")

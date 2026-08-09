@@ -906,7 +906,7 @@ def define_relation(
     return {"defined": True, "name": name, "warnings": result["warnings"]}
 
 
-def _app_version() -> str:
+def app_version() -> str:
     """Read the app version from pyproject.toml."""
     p = Path(__file__).parent.parent / "pyproject.toml"
     for line in p.read_text(encoding="utf-8").splitlines():
@@ -924,7 +924,7 @@ def read_meta(file: str) -> str:
     """
     if file == "config":
         cfg = load_config() or {}
-        return f"app_version: {_app_version()}\nvault_root: {cfg.get('vault_root', '')}\n"
+        return f"app_version: {app_version()}\nvault_root: {cfg.get('vault_root', '')}\n"
 
     vault_root = _vault_root()
     file_map = {

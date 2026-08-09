@@ -1,7 +1,19 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { getHealth } from "../lib/api.js";
 
 export function VaultRail({ active, onNav, nodes, activeTag, onTagSelect }) {
   const [tagFilter, setTagFilter] = useState("");
+
+  // The version comes from the backend, which reads it out of pyproject.toml.
+  // Keeping a literal here is what let the rail drift to a "v0.4" that existed
+  // nowhere else in the project. Until the request lands there is no number to
+  // show, so the roman year stands alone rather than flashing a wrong one.
+  const { data: health } = useQuery({
+    queryKey: ["health"],
+    queryFn: getHealth,
+    staleTime: Infinity,
+  });
 
   const tags = useMemo(() => {
     const counts = {};
@@ -58,7 +70,9 @@ export function VaultRail({ active, onNav, nodes, activeTag, onTagSelect }) {
     <aside className="rail">
       <div className="rail-head">
         <span className="wm">Loci</span>
-        <span className="ver">v0.4 · mmxxvi</span>
+        <span className="ver" data-testid="app-version" data-version={health?.version || ""}>
+          {health?.version ? `v${health.version} · mmxxvi` : "mmxxvi"}
+        </span>
       </div>
 
       <div style={{ padding: "8px 0", display: "flex", flexDirection: "column", overflowY: "auto", flex: 1 }}>

@@ -63,6 +63,10 @@ export function getGraph() {
   return request("/graph");
 }
 
+export function getHealth() {
+  return request("/health");
+}
+
 export async function openLocalPath(path, fetchImpl = fetch) {
   const url = `${BASE}/open-local${qs({ path })}`;
   const res = await fetchImpl(url, {

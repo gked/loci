@@ -305,12 +305,27 @@ def open_local_path(
 
 @app.get("/api/health")
 def health():
+    # `version` is the single source of truth for what the app calls itself:
+    # vault_api.app_version() reads it straight out of pyproject.toml. The UI reads
+    # it from here rather than carrying its own literal, so there is one number
+    # to bump and no way for the two to disagree.
     try:
         vr = _vault_root()
         g = graph.get(vr)
-        return {"status": "ok", "vault_root": str(vr), "node_count": g.number_of_nodes()}
+        return {
+            "status": "ok",
+            "version": vault_api.app_version(),
+            "vault_root": str(vr),
+            "node_count": g.number_of_nodes(),
+        }
     except Exception as e:
-        return {"status": "error", "error": str(e), "vault_root": "", "node_count": 0}
+        return {
+            "status": "error",
+            "error": str(e),
+            "version": vault_api.app_version(),
+            "vault_root": "",
+            "node_count": 0,
+        }
 
 
 @app.get("/api/nodes/recent")
