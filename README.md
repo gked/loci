@@ -211,6 +211,8 @@ Edges are typed, directional, and drawn from a closed vocabulary of 27 relations
 
 Inverses are collapsed: store one directed edge and derive the reverse rather than writing both. For `depends-on` / `enables`, the edge lives on the dependent node. Anything outside this vocabulary is rejected on write; add your own to `relation-dictionary-user.yaml` via `define_relation` first.
 
+For the full walkthrough — types, relations, schemes, how to extend them, and when each rule is enforced — see [the ontology guide](server/skills/references/ontology-guide.md). A copy is seeded into every vault at `meta/ontology-guide.md`, so it travels with your notes.
+
 ---
 
 ## Setup: Local (Python)
@@ -627,6 +629,8 @@ loci/
         tag-dictionary.md           ← seed: initial tag vocabulary
         relation-dictionary.md      ← seed: typed edge vocabulary (human-readable)
         foreign-definitions.md      ← seed: external source schemas
+        ontology-guide.md           ← seed: the user's guide to the ontology
+        ontology-system.md          ← developer guide to the registries (not seeded)
     tools/                          ← core business logic
       uid_generator.py
       slug.py

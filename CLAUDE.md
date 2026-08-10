@@ -15,6 +15,8 @@ server/
       relation-dictionary.yaml  Relation registry source
       ontology-user.yaml    User type extensions stub
       relation-dictionary-user.yaml  User relation extensions stub
+      ontology-guide.md     User's guide to the ontology; seeded to vault/meta/
+      ontology-system.md    Developer guide to the registries; never seeded
     loci-save/SKILL.md      Save skill instructions (versioned)
     loci-query/SKILL.md     Query skill instructions (versioned)
   tests/                    Python test suite
@@ -68,6 +70,11 @@ When adding a new meta file:
 4. Add the key to the `file_map` in `api.py` → `read_meta()`
 5. Update `server.py` docstring for `read_meta`
 6. Update any skill that should read the new file
+
+A seeded file must live under `server/` — `deploy/Dockerfile` copies only
+`server/`, so anything sourced from `docs/` is missing in the image and seeding
+fails for every Docker user. This is why the user's ontology guide sits in
+`references/` rather than `docs/`.
 
 ## UI impact check
 

@@ -237,7 +237,7 @@ def read_meta(file: str) -> str:
     file: type-dictionary | tag-dictionary | field-dictionary |
           relation-dictionary | relation-dictionary-user |
           foreign-definitions | ontology | ontology-user |
-          scheme-dictionary | scheme-dictionary-user | config
+          scheme-dictionary | scheme-dictionary-user | ontology-guide | config
 
     ontology              — machine-readable canonical type definitions (required fields,
                             optional fields, enum values). Source of truth for structure.
@@ -253,6 +253,10 @@ def read_meta(file: str) -> str:
                             required/optional fields, capabilities). Read before constructing
                             any has_asset entry to confirm valid schemes and required fields.
     scheme-dictionary-user — user-defined location scheme additions.
+    ontology-guide        — the user's prose guide to the ontology: what each type is for,
+                            how relations and schemes work, how to extend them. Read this
+                            when the user asks how the ontology works rather than what a
+                            specific type requires — for structure, read ontology instead.
     """
     try:
         return loci.read_meta(file)

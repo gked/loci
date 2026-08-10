@@ -132,6 +132,36 @@ def test_reseed_meta_restores_all_files(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# ontology-guide.md — the user's guide travels with the vault
+# ---------------------------------------------------------------------------
+
+def test_ontology_guide_is_seeded_on_setup(tmp_path):
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    guide = vault_root / "meta" / "ontology-guide.md"
+    assert guide.exists(), "the user's ontology guide must be seeded into the vault"
+    assert guide.read_text(encoding="utf-8").startswith("# The Ontology")
+
+
+def test_ontology_guide_is_refreshed_on_version_bump(tmp_path):
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    guide = vault_root / "meta" / "ontology-guide.md"
+    guide.write_text("# stale guide\n", encoding="utf-8")
+    reseed_meta(vault_root)
+    assert guide.read_text(encoding="utf-8") != "# stale guide\n"
+
+
+def test_ontology_guide_ships_under_server(tmp_path):
+    # deploy/Dockerfile copies only server/ — a seed source outside it is missing
+    # in the image, so seeding would fail for every Docker user.
+    repo_root = Path(vault_init.__file__).parent.parent.parent
+    src = vault_init.REFERENCES_DIR / "ontology-guide.md"
+    assert src.exists()
+    assert src.is_relative_to(repo_root / "server")
+
+
+# ---------------------------------------------------------------------------
 # check_meta_version
 # ---------------------------------------------------------------------------
 

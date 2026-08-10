@@ -920,7 +920,7 @@ def read_meta(file: str) -> str:
     Read a vault meta file.
     file: type-dictionary | tag-dictionary | field-dictionary | relation-dictionary |
           foreign-definitions | ontology | ontology-user | scheme-dictionary |
-          scheme-dictionary-user | config
+          scheme-dictionary-user | ontology-guide | config
     """
     if file == "config":
         cfg = load_config() or {}
@@ -938,18 +938,22 @@ def read_meta(file: str) -> str:
         "ontology-user":             vault_root / "meta" / "ontology-user.yaml",
         "scheme-dictionary":         vault_root / "meta" / "scheme-dictionary.yaml",
         "scheme-dictionary-user":    vault_root / "meta" / "scheme-dictionary-user.yaml",
+        "ontology-guide":            vault_root / "meta" / "ontology-guide.md",
     }
     _references_dir = Path(__file__).parent / "skills" / "references"
-    _scheme_fallbacks = {
+    # Vaults that were never seeded (Docker runs on LOCI_VAULT_ROOT and skips
+    # create_vault_structure) fall back to the canonical copy in references/.
+    _reference_fallbacks = {
         "scheme-dictionary":      _references_dir / "scheme-dictionary.yaml",
         "scheme-dictionary-user": _references_dir / "scheme-dictionary-user.yaml",
+        "ontology-guide":         _references_dir / "ontology-guide.md",
     }
 
     p = file_map.get(file)
     if not p:
         raise ValueError(f"Unknown meta file: {file!r}")
     if not p.exists():
-        fallback = _scheme_fallbacks.get(file)
+        fallback = _reference_fallbacks.get(file)
         if fallback and fallback.exists():
             return fallback.read_text(encoding="utf-8")
         raise FileNotFoundError(f"Meta file not found: {p}")

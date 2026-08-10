@@ -390,6 +390,20 @@ def test_read_meta_ontology_user(tmp_vault):
     assert "types" in result
 
 
+def test_read_meta_ontology_guide_from_vault(tmp_vault):
+    meta = _make_meta_dir(tmp_vault)
+    (meta / "ontology-guide.md").write_text("# vault copy\n", encoding="utf-8")
+    assert api.read_meta("ontology-guide") == "# vault copy\n"
+
+
+def test_read_meta_ontology_guide_falls_back_to_references(tmp_vault):
+    # Unseeded vault (the Docker case): the canonical copy in references/ answers.
+    _make_meta_dir(tmp_vault)
+    assert not (tmp_vault / "meta" / "ontology-guide.md").exists()
+    result = api.read_meta("ontology-guide")
+    assert "# The Ontology" in result
+
+
 def test_write_meta_writable_file(tmp_vault):
     _make_meta_dir(tmp_vault)
     path = api.write_meta("tag-dictionary", "# updated\nnew content\n")
