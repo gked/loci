@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent / "tools"))
 
 from vault_init import CONFIG_PATH, load_config
 import nx_graph as graph
+from frontmatter import split_frontmatter
 import api as vault_api
 
 log = logging.getLogger(__name__)
@@ -184,16 +185,14 @@ def _parse_file(raw: str) -> dict:
         result["body"] = raw
         return result
 
-    parts = raw.split("---", 2)
-    if len(parts) < 3:
+    fm_text, remainder = split_frontmatter(raw)
+    if fm_text is None:
         return result
 
     try:
-        result["frontmatter"] = yaml.safe_load(parts[1]) or {}
+        result["frontmatter"] = yaml.safe_load(fm_text) or {}
     except Exception:
         pass
-
-    remainder = parts[2]
 
     # Text asset case: embedded second --- block with asset info + content
     m = re.search(

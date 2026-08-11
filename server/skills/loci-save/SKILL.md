@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 19
+skill_version: 20
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, topic, asset, or log — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 19`.
+This skill is at `skill_version: 20`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -406,6 +406,10 @@ always archive the old value before setting the new one.
   ```
   Create the `## History` section if it doesn't exist. This is where context and reasons can be added.
 
+  The body is **not** a frontmatter field. Read the current body with
+  `loci__read_vault`, append your line to it, and pass the whole result as the
+  separate `body=` argument in U4 — never inside `updates`.
+
 ### U3 — Confirm with the user
 
 Show a brief summary of what will change before patching:
@@ -417,7 +421,19 @@ Proceed? [yes / no]
 
 ### U4 — Patch the file
 
-Call `loci__patch_vault(path=<path>, updates={<only changed fields>})`.
+Call `loci__patch_vault(path=<path>, updates={<only changed frontmatter fields>})`.
+
+If the body changed too — the `## History` line from U2, or any other edit to the
+prose — pass it as its own argument:
+
+```
+loci__patch_vault(path=<path>, updates={<only changed frontmatter fields>}, body=<full new body>)
+```
+
+`body` always carries the **complete** new body text, not a fragment. Putting it
+inside `updates` writes it into the frontmatter as a quoted YAML scalar, and a
+`---` line anywhere in it stops the node parsing at all. The tool reroutes a
+misplaced `body` key and warns, but don't rely on that.
 
 `path` accepts the node's 8-character UID as well as a file path — when you already
 know the UID, pass it directly instead of looking the path up first. The same is true

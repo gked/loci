@@ -17,6 +17,7 @@ from write_file import (
     validate_required_fields,
 )
 from type_registry import TypeRegistry, REFERENCES_DIR
+from frontmatter import split_frontmatter
 
 
 # ---------------------------------------------------------------------------
@@ -532,3 +533,194 @@ def test_patch_item_no_relation_warnings_for_valid_type(tmp_vault):
     p = _make_vault_file(tmp_vault)
     result = patch_item(str(p), {"relations": [{"uid": "deadbeef", "type": "belongs-to"}]})
     assert "relation_warnings" not in result
+
+
+# ---------------------------------------------------------------------------
+# patch_item — 'body' passed inside updates
+#
+# This is how vault nodes got corrupted: body merged into the frontmatter dict
+# and serialised as a quoted scalar. When that body contained a '---' line the
+# node stopped parsing for every reader at once.
+# ---------------------------------------------------------------------------
+
+def test_patch_item_reroutes_body_from_updates_to_the_body(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"body": "Replacement body."})
+
+    raw = p.read_text(encoding="utf-8")
+    fm_text, body = split_frontmatter(raw)
+    fm = yaml.safe_load(fm_text)
+
+    assert "body" not in fm
+    assert body.strip() == "Replacement body."
+    assert any("body" in w for w in result["body_warnings"])
+
+
+def test_patch_item_body_argument_wins_over_updates_copy(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"body": "From updates."}, body="From the argument.")
+
+    fm_text, body = split_frontmatter(p.read_text(encoding="utf-8"))
+    assert "body" not in yaml.safe_load(fm_text)
+    assert body.strip() == "From the argument."
+    assert any("argument won" in w for w in result["body_warnings"])
+
+
+def test_patch_item_body_in_updates_never_reaches_the_frontmatter(tmp_vault):
+    """The corruption case: a body containing a '---' line must stay out of the block."""
+    p = _make_vault_file(tmp_vault)
+    patch_item(str(p), {"body": "Intro.\n\n---\n\nAfter the rule."})
+
+    raw = p.read_text(encoding="utf-8")
+    fm_text, body = split_frontmatter(raw)
+    assert fm_text is not None
+    assert "body" not in yaml.safe_load(fm_text)
+    assert "After the rule." in body
+
+
+def test_patch_item_without_body_key_emits_no_body_warnings(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"tags": ["x"]})
+    assert "body_warnings" not in result
+
+
+def test_patch_item_does_not_mutate_the_callers_updates_dict(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    updates = {"body": "New body.", "tags": ["x"]}
+    patch_item(str(p), updates)
+    assert updates == {"body": "New body.", "tags": ["x"]}
+
+
+def test_patch_item_null_body_in_updates_clears_the_body(tmp_vault):
+    """A null must not report success while silently keeping the old body."""
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"body": None})
+
+    fm_text, body = split_frontmatter(p.read_text(encoding="utf-8"))
+    assert "body" not in yaml.safe_load(fm_text)
+    assert body.strip() == ""
+    assert any("cleared" in w for w in result["body_warnings"])
+
+
+# ---------------------------------------------------------------------------
+# patch_item — repairing a node already carrying a 'body' key
+#
+# The reroute above stops new damage. These cover the nodes damaged before it
+# existed: without the strip, patch_vault is the tool that caused the
+# corruption and also the only tool that cannot undo it.
+# ---------------------------------------------------------------------------
+
+def _make_corrupt_vault_file(tmp_vault: Path, uid: str = "test0002") -> Path:
+    """Write a vault file whose frontmatter wrongly carries a 'body' key."""
+    p = tmp_vault / f"{uid}-corrupt-note.md"
+    fm = {
+        "uid": uid,
+        "type": "document",
+        "title": "Corrupt Note",
+        "tags": ["old-tag"],
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "body": "Stale body.\n\n---\n\nAfter the rule.",
+    }
+    p.write_text("---\n" + yaml.dump(fm) + "---\n\nReal body.", encoding="utf-8")
+    return p
+
+
+def test_patch_item_strips_a_stale_body_key_from_the_frontmatter(tmp_vault):
+    p = _make_corrupt_vault_file(tmp_vault)
+    result = patch_item(str(p), {"body": "Repaired body."})
+
+    fm_text, body = split_frontmatter(p.read_text(encoding="utf-8"))
+    assert "body" not in yaml.safe_load(fm_text)
+    assert body.strip() == "Repaired body."
+    assert any("stale" in w for w in result["body_warnings"])
+
+
+def test_patch_item_strips_stale_body_key_on_an_unrelated_patch(tmp_vault):
+    """Repair must not require the caller to know the node is damaged."""
+    p = _make_corrupt_vault_file(tmp_vault)
+    result = patch_item(str(p), {"tags": ["new-tag"]})
+
+    fm_text, body = split_frontmatter(p.read_text(encoding="utf-8"))
+    fm = yaml.safe_load(fm_text)
+    assert "body" not in fm
+    assert fm["tags"] == ["new-tag"]
+    assert body.strip() == "Real body."
+    assert any("stale" in w for w in result["body_warnings"])
+
+
+# ---------------------------------------------------------------------------
+# write_item — 'body' passed inside extra_fields
+#
+# Same corruption vector as patch_item's updates, on the save path.
+# ---------------------------------------------------------------------------
+
+def test_write_item_reroutes_body_from_extra_fields(tmp_vault):
+    result = write_item(
+        type="document",
+        title="Rerouted Body",
+        body="",
+        extra_fields={"status": "draft", "body": "Body from extra_fields."},
+        skip_duplicate_check=True,
+    )
+
+    fm_text, body = split_frontmatter(Path(result["path"]).read_text(encoding="utf-8"))
+    assert "body" not in yaml.safe_load(fm_text)
+    assert body.strip() == "Body from extra_fields."
+    assert any("extra_fields" in w for w in result["body_warnings"])
+
+
+def test_write_item_body_argument_wins_over_extra_fields_copy(tmp_vault):
+    result = write_item(
+        type="document",
+        title="Argument Wins",
+        body="Real body.",
+        extra_fields={"status": "draft", "body": "Body from extra_fields."},
+        skip_duplicate_check=True,
+    )
+
+    fm_text, body = split_frontmatter(Path(result["path"]).read_text(encoding="utf-8"))
+    assert "body" not in yaml.safe_load(fm_text)
+    assert body.strip() == "Real body."
+    assert any("argument won" in w for w in result["body_warnings"])
+
+
+def test_write_item_body_in_extra_fields_never_reaches_the_frontmatter(tmp_vault):
+    """The corruption case on save: a '---' in the body must not split the node."""
+    result = write_item(
+        type="document",
+        title="Rule In Body",
+        body="",
+        extra_fields={"status": "draft", "body": "Intro.\n\n---\n\nAfter the rule."},
+        skip_duplicate_check=True,
+    )
+
+    fm_text, body = split_frontmatter(Path(result["path"]).read_text(encoding="utf-8"))
+    assert fm_text is not None
+    fm = yaml.safe_load(fm_text)
+    assert "body" not in fm
+    assert fm["title"] == "Rule In Body"
+    assert "After the rule." in body
+
+
+def test_write_item_without_body_in_extra_fields_emits_no_body_warnings(tmp_vault):
+    result = write_item(
+        type="document",
+        title="Clean Save",
+        body="Just a body.",
+        extra_fields={"status": "draft"},
+        skip_duplicate_check=True,
+    )
+    assert "body_warnings" not in result
+
+
+def test_write_item_does_not_mutate_the_callers_extra_fields_dict(tmp_vault):
+    extra = {"status": "draft", "body": "Body from extra_fields."}
+    write_item(
+        type="document",
+        title="No Mutation",
+        body="",
+        extra_fields=extra,
+        skip_duplicate_check=True,
+    )
+    assert extra == {"status": "draft", "body": "Body from extra_fields."}

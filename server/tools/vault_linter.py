@@ -33,6 +33,7 @@ from typing import Literal, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from vault_init import load_config
+from frontmatter import split_frontmatter
 from type_registry import TypeRegistry, get_registry, REFERENCES_DIR
 from relation_registry import RelationRegistry, get_relation_registry
 from scheme_registry import SchemeRegistry, get_scheme_registry
@@ -92,14 +93,16 @@ def lint_file(
     if not raw.startswith("---"):
         return [LintIssue(name, "error", "no-frontmatter", "No YAML frontmatter found")]
 
-    parts = raw.split("---", 2)
-    if len(parts) < 3:
+    fm_text, _ = split_frontmatter(raw)
+    if fm_text is None:
         return [LintIssue(name, "error", "malformed-frontmatter", "Frontmatter block is not closed")]
 
     try:
-        fm = yaml.safe_load(parts[1]) or {}
+        fm = yaml.safe_load(fm_text) or {}
     except yaml.YAMLError as exc:
         return [LintIssue(name, "error", "invalid-yaml", f"YAML parse error: {exc}")]
+    if not isinstance(fm, dict):
+        return [LintIssue(name, "error", "invalid-yaml", "Frontmatter is not a mapping")]
 
     # type — must be present and known before any further checks
     node_type = fm.get("type")
@@ -245,14 +248,14 @@ def lint_vault(vault_root: Path) -> dict:
     uid_map: dict[str, list[str]] = {}
     for path in md_files:
         raw = path.read_text(encoding="utf-8")
-        if not raw.startswith("---"):
-            continue
-        parts = raw.split("---", 2)
-        if len(parts) < 3:
+        fm_text, _ = split_frontmatter(raw)
+        if fm_text is None:
             continue
         try:
-            fm = yaml.safe_load(parts[1]) or {}
+            fm = yaml.safe_load(fm_text) or {}
         except yaml.YAMLError:
+            continue
+        if not isinstance(fm, dict):
             continue
         uid = fm.get("uid")
         if uid:

@@ -29,19 +29,22 @@ with a clear diff.** Update these constants, then re-run. To recompute:
 """
 
 # Total nodes in the graph, including the implicit ghost.
-TOTAL_GRAPH_NODES = 31
+TOTAL_GRAPH_NODES = 32
 
-# Nodes with a file on disk (base 27 + 3 overlay).
-TOTAL_FILES = 30
+# Nodes with a file on disk (base 27 + 4 overlay).
+TOTAL_FILES = 31
 
 # Rendered by default: active state AND has a path.
 # App.jsx filters archived and pathless nodes out of the index unless toggled.
-DEFAULT_VISIBLE = 29
+DEFAULT_VISIBLE = 30
 
 ARCHIVED_UIDS = ["e2e00001"]
 GHOST_UIDS = ["e2e0dead"]
 ASSET_UID = "e2e00002"
 GHOST_PARENT_UID = "e2e00003"
+# Frontmatter value containing a horizontal rule. Dropped from the graph
+# entirely before the line-anchored frontmatter split.
+RULE_IN_FRONTMATTER_UID = "e2e00004"
 
 # The local asset carried by ASSET_UID. conftest writes ASSET_FILENAME with
 # ASSET_CONTENT into <loci_root>/assets/ so these cannot drift from the file.
@@ -52,7 +55,7 @@ ASSET_CONTENT = "Sample asset content for the e2e suite.\n"
 
 # Counts among default-visible nodes, keyed as the UI's type filter uses them.
 TYPE_COUNTS = {
-    "document": 15,
+    "document": 16,
     "task": 5,
     "topic": 4,
     "article": 3,
@@ -65,7 +68,7 @@ TAG_COUNTS = {
     "python": 7,
     "testing": 5,
     "ml": 4,
-    "e2e": 2,
+    "e2e": 3,
 }
 
 # ---------------------------------------------------------------------------
@@ -89,7 +92,7 @@ OPENABLE_UIDS = [
     "bbb00001", "bbb00002", "bbb00003",
     "ccc00001", "ccc00002",
     "ddd00001", "eee00001", "eee00002", "fff00001",
-    "e2e00001", "e2e00002", "e2e00003",
+    "e2e00001", "e2e00002", "e2e00003", "e2e00004",
 ]
 UNRESOLVABLE_UID_COUNT = 14
 

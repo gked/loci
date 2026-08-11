@@ -7,7 +7,7 @@ via a has_asset local location.
 import os
 from pathlib import Path
 
-import yaml
+from frontmatter import load_frontmatter
 
 _IGNORED_NAMES = {".DS_Store", ".localized", "Thumbs.db", "desktop.ini"}
 
@@ -40,13 +40,9 @@ def _local_path_index(vault_root: Path) -> dict[str, str]:
     index: dict[str, str] = {}
     for vf in vault_root.glob("*.md"):
         try:
-            text = vf.read_text(encoding="utf-8")
-            if not text.startswith("---"):
+            fm, _ = load_frontmatter(vf.read_text(encoding="utf-8"))
+            if fm is None:
                 continue
-            parts = text.split("---", 2)
-            if len(parts) < 3:
-                continue
-            fm = yaml.safe_load(parts[1]) or {}
             uid = fm.get("uid")
             has_asset = fm.get("has_asset")
             if not uid or not isinstance(has_asset, list):

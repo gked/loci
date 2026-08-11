@@ -63,6 +63,7 @@ def test_overlay_fixtures_present(base_url):
     assert "e2e00001" in uids, "archived overlay node missing"
     assert "e2e00002" in uids, "asset overlay node missing"
     assert "e2e00003" in uids, "ghost-parent overlay node missing"
+    assert "e2e00004" in uids, "rule-in-frontmatter overlay node missing"
     assert "e2e0dead" in uids, "ghost node missing — did someone create e2e0dead.md?"
 
 

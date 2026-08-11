@@ -29,6 +29,7 @@ from write_file import (
 )
 from type_registry import get_registry
 from relation_registry import get_relation_registry
+from frontmatter import load_frontmatter
 import nx_graph as graph
 from vault_linter import lint_vault as _lint_vault
 import asset_registry as ar
@@ -64,16 +65,8 @@ def _frontmatter_uid(p: Path):
         raw = p.read_text(encoding="utf-8")
     except OSError:
         return None
-    if not raw.startswith("---"):
-        return None
-    parts = raw.split("---", 2)
-    if len(parts) < 3:
-        return None
-    try:
-        fm = yaml.safe_load(parts[1]) or {}
-    except yaml.YAMLError:
-        return None
-    return fm.get("uid") if isinstance(fm, dict) else None
+    fm, _ = load_frontmatter(raw)
+    return fm.get("uid") if fm else None
 
 
 def _resolve_vault_path(path: str) -> Path:
@@ -184,13 +177,8 @@ def delete(path: str) -> dict:
     if not p.exists():
         raise FileNotFoundError(f"Vault file not found: {p}")
     # Read uid before deleting so we can drop the node from the graph
-    uid = None
-    raw = p.read_text(encoding="utf-8")
-    if raw.startswith("---"):
-        parts = raw.split("---", 2)
-        if len(parts) >= 3:
-            fm = yaml.safe_load(parts[1]) or {}
-            uid = fm.get("uid")
+    fm, _ = load_frontmatter(p.read_text(encoding="utf-8"))
+    uid = fm.get("uid") if fm else None
     p.unlink()
     if uid:
         graph.drop_node(uid)
@@ -253,49 +241,47 @@ def get(path: str) -> str:
 
     text = p.read_text(encoding="utf-8")
 
-    if text.startswith("---"):
-        parts = text.split("---", 2)
-        if len(parts) >= 3:
-            fm = yaml.safe_load(parts[1]) or {}
-            uid = fm.get("uid")
-            has_asset = fm.get("has_asset")
-            if uid and isinstance(has_asset, list) and has_asset:
-                resolved = None
-                last_err = None
-                for variant in has_asset:
-                    if not isinstance(variant, dict):
+    fm, _ = load_frontmatter(text)
+    if fm:
+        uid = fm.get("uid")
+        has_asset = fm.get("has_asset")
+        if uid and isinstance(has_asset, list) and has_asset:
+            resolved = None
+            last_err = None
+            for variant in has_asset:
+                if not isinstance(variant, dict):
+                    continue
+                for loc in variant.get("locations", []):
+                    if not isinstance(loc, dict):
                         continue
-                    for loc in variant.get("locations", []):
-                        if not isinstance(loc, dict):
-                            continue
-                        try:
-                            resolved = dispatch_resolve(loc, _loci_root())
-                            break
-                        except (FileNotFoundError, ValueError) as e:
-                            last_err = e
-                    if resolved:
+                    try:
+                        resolved = dispatch_resolve(loc, _loci_root())
                         break
+                    except (FileNotFoundError, ValueError) as e:
+                        last_err = e
                 if resolved:
-                    size = resolved["size_bytes"]
-                    mime = resolved["mime_type"]
-                    apath = resolved["path"]
-                    if size <= ar.SIZE_THRESHOLD_BYTES and mime.startswith("text/"):
-                        content = Path(apath).read_text(encoding="utf-8", errors="replace")
-                        text += (
-                            f"\n\n---\nasset_path: {apath}\n"
-                            f"asset_mime_type: {mime}\n"
-                            f"asset_size_bytes: {size}\n---\n\n"
-                            f"{content}"
-                        )
-                    else:
-                        text += (
-                            f"\n\nasset_path: {apath}\n"
-                            f"asset_mime_type: {mime}\n"
-                            f"asset_size_bytes: {size}"
-                        )
+                    break
+            if resolved:
+                size = resolved["size_bytes"]
+                mime = resolved["mime_type"]
+                apath = resolved["path"]
+                if size <= ar.SIZE_THRESHOLD_BYTES and mime.startswith("text/"):
+                    content = Path(apath).read_text(encoding="utf-8", errors="replace")
+                    text += (
+                        f"\n\n---\nasset_path: {apath}\n"
+                        f"asset_mime_type: {mime}\n"
+                        f"asset_size_bytes: {size}\n---\n\n"
+                        f"{content}"
+                    )
                 else:
-                    err_msg = str(last_err) if last_err else "no locations defined"
-                    text += f"\n\nasset_content: null\nasset_error: {err_msg}"
+                    text += (
+                        f"\n\nasset_path: {apath}\n"
+                        f"asset_mime_type: {mime}\n"
+                        f"asset_size_bytes: {size}"
+                    )
+            else:
+                err_msg = str(last_err) if last_err else "no locations defined"
+                text += f"\n\nasset_content: null\nasset_error: {err_msg}"
 
     return text
 
@@ -316,10 +302,9 @@ def resolve_asset(uid: str, format: str = None) -> dict:
         raise FileNotFoundError(f"No file path in vault node: {uid}")
 
     text = Path(node_path).read_text(encoding="utf-8")
-    parts = text.split("---", 2)
-    if not text.startswith("---") or len(parts) < 3:
+    fm, _ = load_frontmatter(text)
+    if fm is None:
         raise FileNotFoundError(f"No valid frontmatter in vault node: {node_path}")
-    fm = yaml.safe_load(parts[1]) or {}
     has_asset = fm.get("has_asset")
 
     if not isinstance(has_asset, list) or not has_asset:
@@ -369,13 +354,9 @@ def find_unregistered_assets() -> list:
     registered: set[str] = set()
     for vf in vault_root.glob("*.md"):
         try:
-            text = vf.read_text(encoding="utf-8")
-            if not text.startswith("---"):
+            fm, _ = load_frontmatter(vf.read_text(encoding="utf-8"))
+            if fm is None:
                 continue
-            parts = text.split("---", 2)
-            if len(parts) < 3:
-                continue
-            fm = yaml.safe_load(parts[1]) or {}
             has_asset = fm.get("has_asset")
             if not isinstance(has_asset, list):
                 continue
@@ -793,13 +774,9 @@ def list_items(type: str = None) -> dict:
     vault_root = _vault_root()
     result: dict = {}
     for path in sorted(vault_root.glob("*.md")):
-        raw = path.read_text(encoding="utf-8")
-        if not raw.startswith("---"):
+        fm, _ = load_frontmatter(path.read_text(encoding="utf-8"))
+        if fm is None:
             continue
-        parts = raw.split("---", 2)
-        if len(parts) < 3:
-            continue
-        fm = yaml.safe_load(parts[1]) or {}
         node_type = fm.get("type")
         if not node_type:
             continue

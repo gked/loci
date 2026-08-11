@@ -29,6 +29,7 @@ from slug import filename as make_filename
 from vault_init import load_config
 from type_registry import get_registry
 from relation_registry import get_relation_registry
+from frontmatter import split_frontmatter
 
 
 def serialize_frontmatter(fields: dict) -> str:
@@ -126,11 +127,13 @@ def write_item(
         author: Author identifier (default: "self")
         relations: List of {uid, type} dicts
         references: List of {url, title, source_type} dicts
-        extra_fields: Type-specific frontmatter fields
+        extra_fields: Type-specific frontmatter fields. A 'body' key here is
+                      rerouted to the body argument — it is not a frontmatter field.
         skip_duplicate_check: Skip duplicate detection
 
     Returns:
         Dict with saved item metadata: uid, path, type, title.
+        Adds "body_warnings" if a body was found in extra_fields.
         Returns {"errors": [...]} if required field validation fails.
     """
     vault_root = resolve_vault_root()
@@ -139,6 +142,26 @@ def write_item(
         raise ValueError(
             f"Unknown type '{type}'. Must be one of: {sorted(registry.type_names())}"
         )
+
+    # 'body' is not a frontmatter field, and no type declares one. Letting it
+    # through extra_fields serialises the whole body as a quoted YAML scalar,
+    # and a '---' line inside it stops the node parsing — the same corruption
+    # patch_item guards against. Reroute it here too rather than write it.
+    body_warnings: list[str] = []
+    extra_fields = dict(extra_fields or {})
+    if "body" in extra_fields:
+        misrouted = extra_fields.pop("body")
+        if body:
+            body_warnings.append(
+                "'body' was passed inside extra_fields; it is not a frontmatter "
+                "field. The body argument won and the extra_fields copy was discarded."
+            )
+        else:
+            body = misrouted or ""
+            body_warnings.append(
+                "'body' was passed inside extra_fields; treated as the body argument. "
+                "Pass body=... directly — it is not a frontmatter field."
+            )
 
     type_def = registry.get(type)
     subtype = (extra_fields or {}).get("subtype")
@@ -216,6 +239,8 @@ def write_item(
         "type": type,
         "title": title,
     }
+    if body_warnings:
+        result["body_warnings"] = body_warnings
 
     print(f"\nSaved: {file_path}")
     print(f"UID:   {uid}")
@@ -234,6 +259,7 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
         updates: Frontmatter fields to merge into the existing frontmatter.
                  Pass the complete new value for any field you want to change
                  (e.g. the full new relations list, not just the delta).
+                 A 'body' key here is rerouted to the body argument — see below.
         body: If provided, replaces the existing body text.
 
     Returns:
@@ -242,6 +268,36 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Vault file not found: {p}")
+
+    updates = dict(updates or {})
+    body_warnings: list[str] = []
+
+    # 'body' is not a frontmatter field. Merging it into the frontmatter dict
+    # serialises the whole body as a quoted YAML scalar, and if that body
+    # contains a '---' line the node stops parsing entirely. Callers that meant
+    # body= get what they meant, with a warning, rather than a corrupted node.
+    if "body" in updates:
+        misrouted = updates.pop("body")
+        if body is not None:
+            body_warnings.append(
+                "'body' was passed both inside updates and as the body argument; "
+                "the body argument won and the updates copy was discarded."
+            )
+        elif misrouted is None:
+            # An explicit null means "empty this body". Falling through to the
+            # `body is not None` check below would keep the old body while still
+            # reporting the call as applied, so make the clear explicit.
+            body = ""
+            body_warnings.append(
+                "'body' was passed inside updates as null; the body has been cleared. "
+                "Pass body='' directly — it is not a frontmatter field."
+            )
+        else:
+            body = misrouted
+            body_warnings.append(
+                "'body' was passed inside updates; treated as the body argument. "
+                "Pass body=... directly — it is not a frontmatter field."
+            )
 
     relation_warnings: list[str] = []
     if "relations" in updates:
@@ -261,17 +317,23 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
     raw = p.read_text(encoding="utf-8")
 
     # Split frontmatter from body
-    if raw.startswith("---"):
-        parts = raw.split("---", 2)
-        if len(parts) >= 3:
-            fm = yaml.safe_load(parts[1]) or {}
-            existing_body = parts[2].lstrip("\n")
-        else:
-            fm = {}
-            existing_body = raw
-    else:
+    fm_text, rest = split_frontmatter(raw)
+    if fm_text is None:
         fm = {}
         existing_body = raw
+    else:
+        fm = yaml.safe_load(fm_text) or {}
+        existing_body = rest.lstrip("\n")
+
+    # A 'body' key in the frontmatter is always damage from an earlier misrouted
+    # call — no type declares one. Strip it on every patch, otherwise the tool
+    # that caused the corruption is also the one tool that cannot repair it.
+    if "body" in fm:
+        fm.pop("body")
+        body_warnings.append(
+            "Removed a stale 'body' key from this node's frontmatter; "
+            "'body' is not a frontmatter field."
+        )
 
     # Merge updates
     fm.update(updates)
@@ -300,6 +362,8 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
     }
     if relation_warnings:
         result["relation_warnings"] = relation_warnings
+    if body_warnings:
+        result["body_warnings"] = body_warnings
     return result
 
 

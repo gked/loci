@@ -59,8 +59,9 @@ origin.
 asserts on the e2e fixture vault — exact counts from `vault_facts.py`, overlay
 uids like `e2e00002`, the mnemonic uids the navigation specs open — and none of
 that exists on a real deployment. Those specs carry the `fixture_bound` marker:
-all of `test_fixture_composition.py`, `test_filtering.py`, and
-`test_navigation.py`, plus `test_smoke.py::test_overlay_fixtures_present` and
+all of `test_fixture_composition.py`, `test_filtering.py`,
+`test_navigation.py`, and `test_frontmatter_parsing.py`, plus
+`test_smoke.py::test_overlay_fixtures_present` and
 `::test_recent_endpoint_is_populated`.
 
 What is left is genuinely deployment-portable: the error and empty states in
@@ -79,10 +80,12 @@ fixture vault carries static January 2026 dates, so as real time passes every
 node falls outside the window and `/api/nodes/recent` returns `[]` — leaving
 the Recent section and the palette's default list permanently empty.
 
-`_freshen_dates()` in `conftest.py` stamps each node `today - N days`, ordered
+`_freshen_dates()` in `conftest.py` stamps each node `now - N hours`, ordered
 by **filename** so the result is deterministic — renaming a fixture file
 reshuffles which node is "most recent". `test_smoke.py::
-test_recent_endpoint_is_populated` guards it.
+test_recent_endpoint_is_populated` guards it. Hourly steps, not daily: a day per
+node capped the vault at 30 nodes and the 31st failed the assert in
+`_freshen_dates` rather than anything real.
 
 ### 2. Many fixture uids cannot be opened
 

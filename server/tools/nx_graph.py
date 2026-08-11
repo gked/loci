@@ -19,7 +19,8 @@ from pathlib import Path
 from typing import Optional
 
 import networkx as nx
-import yaml
+
+from frontmatter import load_frontmatter
 
 _graph: Optional[nx.DiGraph] = None
 _vault_root: Optional[Path] = None
@@ -34,13 +35,8 @@ _lock = threading.Lock()
 def _parse_frontmatter(path: Path) -> Optional[dict]:
     """Parse YAML frontmatter from a markdown file. Returns None on failure."""
     try:
-        text = path.read_text(encoding="utf-8")
-        if not text.startswith("---"):
-            return None
-        parts = text.split("---", 2)
-        if len(parts) < 3:
-            return None
-        return yaml.safe_load(parts[1]) or {}
+        fm, _ = load_frontmatter(path.read_text(encoding="utf-8"))
+        return fm
     except Exception:
         return None
 

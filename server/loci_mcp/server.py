@@ -143,7 +143,10 @@ def write_vault(
         author: "self" for user-produced content; entity name/UID for external
         relations: List of {uid: str, type: str} dicts
         references: List of {url: str, title: str, source_type: str} dicts
-        extra_fields: Type-specific frontmatter fields
+        extra_fields: Type-specific frontmatter fields. Do NOT put the body here —
+                      'body' is not a frontmatter field. A 'body' key in
+                      extra_fields is rerouted to the body argument and a
+                      warning is returned.
     """
     return loci.save(
         type=type, title=title, body=body, tags=tags, domains=domains,
@@ -193,7 +196,13 @@ def patch_vault(path: str, updates: dict, body: str = None) -> dict:
                    tags: ["tag-a", "tag-b"]
                    status: "done"
                    summary: "Updated summary."
-        body: If provided, replaces the full body text.
+                 Do NOT put the body here — 'body' is not a frontmatter field.
+                 A 'body' key in updates is rerouted to the body argument and a
+                 warning is returned; a null value there clears the body.
+                 Any stale 'body' key already in the file's frontmatter is
+                 stripped on every patch.
+        body: If provided, replaces the full body text. Always pass new body
+              text here, never inside updates. Pass "" to clear it.
     """
     try:
         return loci.patch(path, updates, body)

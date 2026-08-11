@@ -91,17 +91,19 @@ def _freshen_dates(vault: Path) -> None:
     empty.
 
     Nodes are sorted by **filename** (stable, filesystem-order independent) and
-    stamped `today - N days` for N = 0, 1, 2, ... so the resulting order is
+    stamped `now - N hours` for N = 0, 1, 2, ... so the resulting order is
     deterministic across runs and machines. Assertions on ordering are therefore
     safe, but renaming a fixture file reshuffles which node is "most recent".
 
     Only files that actually get stamped consume an offset — a non-node .md in
-    the vault must not push every real node a day further into the past.
+    the vault must not push every real node an hour further into the past.
 
-    All nodes land inside a 30-day window as long as the vault has < 30 nodes.
-    Day 30 is deliberately unused: `recent()` recomputes `now` server-side, so a
-    node stamped exactly `now - 30 days` sits on the cutoff and drops out of
-    /api/nodes/recent when a run straddles UTC midnight.
+    Hours rather than days: a day per node capped the fixture vault at 30 nodes
+    total, and the 31st failed the assert below rather than anything real. The
+    window that matters is `recent()`'s 30 days, and hourly steps keep ~700
+    nodes inside it while preserving the deterministic ordering. The last day is
+    deliberately unused: `recent()` recomputes `now` server-side, so a node
+    stamped exactly at the cutoff drops out when a run straddles UTC midnight.
     """
     now = datetime.now(timezone.utc)
     offset = 0
@@ -109,7 +111,7 @@ def _freshen_dates(vault: Path) -> None:
         text = md_file.read_text(encoding="utf-8")
         if not text.startswith("---"):
             continue
-        stamp = (now - timedelta(days=offset)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        stamp = (now - timedelta(hours=offset)).strftime("%Y-%m-%dT%H:%M:%SZ")
         offset += 1
         out = []
         in_frontmatter = False
@@ -129,9 +131,9 @@ def _freshen_dates(vault: Path) -> None:
         md_file.write_text("".join(out), encoding="utf-8")
 
     # Fail loudly rather than letting the tail silently fall out of `recent()`.
-    # `offset` is now the node count; the oldest node carries offset - 1 days,
-    # so 30 nodes is the most that stays strictly inside the 30-day window.
-    assert offset <= 30, (
+    # `offset` is now the node count; the oldest node carries offset - 1 hours,
+    # so anything up to 29 days' worth stays strictly inside the 30-day window.
+    assert offset <= 24 * 29, (
         f"{offset} nodes stamped — the oldest sits at or beyond recent()'s "
         "30-day cutoff. Widen the window or trim the fixture vault."
     )
