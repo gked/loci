@@ -155,6 +155,26 @@ every push and PR, so a red suite blocks the merge anyway.
    `git checkout main && git pull && git branch -d my-branch`.
    Leave the repo on an up-to-date `main` before starting the next change.
 
+### Fixing review findings on an existing PR
+
+Steps 1–3 describe *new* work. When the task is addressing review findings on a
+PR that is already open, there is nothing to create:
+
+1. Check out that PR's branch (`gh pr checkout <n>`) — do **not** branch off
+   `main` and do **not** open a second PR.
+2. Fix, run `make test`, commit, and `git push`. The push updates the open PR.
+
+Never review a PR by checking its branch out over the working tree
+(`git checkout <ref> -- .`) — read it with `git diff`, `git show <ref>:<path>`,
+or a worktree. Overwriting the tree risks the user's uncommitted work.
+
+**If a finding turns out to be separate work — a different concern, a shared
+file this PR had no reason to touch, a fix noticed along the way — stop and ask
+before doing it.** Present it as a yes/no choice with the options; don't decide
+unilaterally and report it afterwards, and don't fold it silently into the PR.
+This holds even when the extra work looks obviously right or blocks the finding:
+say what is blocked and let the user pick.
+
 If the PR was stacked on another PR, check it after the base merges — GitHub
 closes a PR whose base branch is deleted rather than retargeting it (this is what
 happened to #51).
