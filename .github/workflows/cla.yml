@@ -11,8 +11,16 @@ name: CLA
 # to license the whole commercially. That damage is silent and permanent, so
 # the gate sits before the merge rather than in a document nobody reads.
 #
-# Signatures are recorded in signatures/cla.json on the cla-signatures branch,
-# which the action creates on first use. Signing is once per person, not per PR.
+# Signatures are recorded in signatures/cla.json on the cla-signatures branch.
+# That branch must already exist and must not be protected — the action commits
+# to it but does not create it, and fails the run with "Branch cla-signatures
+# not found" if it is missing. It is kept as an orphan branch holding signatures
+# only. Signing is once per person, not per PR.
+#
+# Note on the allowlist below: it matches GitHub logins, resolved from each
+# commit's author email. A commit whose email is not attached to a GitHub
+# account resolves to no login, so the allowlist cannot match it and even the
+# owner is asked to sign. Commit with an email your account owns.
 
 on:
   # pull_request_target, not pull_request: the job needs write access to comment
