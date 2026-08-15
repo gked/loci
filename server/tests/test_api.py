@@ -404,6 +404,30 @@ def test_read_meta_ontology_guide_falls_back_to_references(tmp_vault):
     assert "# The Ontology" in result
 
 
+@pytest.mark.parametrize("key", [
+    "type-dictionary",
+    "tag-dictionary",
+    "field-dictionary",
+    "relation-dictionary",
+    "relation-dictionary-user",
+    "foreign-definitions",
+    "ontology",
+    "ontology-user",
+    "scheme-dictionary",
+    "scheme-dictionary-user",
+    "ontology-guide",
+])
+def test_read_meta_every_key_falls_back_to_references(tmp_vault, key):
+    """An unseeded vault must still answer every meta key.
+
+    The registries already fall back to references/, so without this the model
+    cannot read the ontology it is nonetheless validated against on write.
+    """
+    # No meta/ at all — exactly what a fresh Docker bind mount looks like.
+    assert not (tmp_vault / "meta").exists()
+    assert api.read_meta(key).strip()
+
+
 def test_write_meta_writable_file(tmp_vault):
     _make_meta_dir(tmp_vault)
     path = api.write_meta("tag-dictionary", "# updated\nnew content\n")
@@ -415,6 +439,16 @@ def test_write_meta_ontology_user(tmp_vault):
     content = "types:\n  - name: recipe\n    extends: procedure\n"
     path = api.write_meta("ontology-user", content)
     assert Path(path).read_text(encoding="utf-8") == content
+
+
+def test_write_meta_creates_missing_meta_dir(tmp_vault):
+    """read_meta answers from references/ for an unseeded vault, so the model
+    can reach the write with no meta/ on disk (the HTTP-only Docker case)."""
+    assert not (tmp_vault / "meta").exists()
+
+    path = api.write_meta("tag-dictionary", "# my tags\n")
+
+    assert Path(path).read_text(encoding="utf-8") == "# my tags\n"
 
 
 def test_write_meta_readonly_file_raises(tmp_vault):
@@ -731,9 +765,13 @@ def test_list_items_skips_no_type_field(tmp_vault):
 # read_meta — FileNotFoundError path
 # ---------------------------------------------------------------------------
 
-def test_read_meta_raises_when_file_missing(tmp_vault):
-    # meta dir exists but file doesn't
+def test_read_meta_raises_when_no_vault_copy_and_no_reference(tmp_vault, monkeypatch, tmp_path):
+    """Missing in the vault now falls back; only a missing reference raises."""
     (tmp_vault / "meta").mkdir(exist_ok=True)
+    empty_references = tmp_path / "no-references"
+    empty_references.mkdir()
+    monkeypatch.setattr(api, "REFERENCES_DIR", empty_references)
+
     with pytest.raises(FileNotFoundError, match="Meta file not found"):
         api.read_meta("tag-dictionary")
 

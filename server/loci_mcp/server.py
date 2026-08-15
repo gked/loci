@@ -37,7 +37,19 @@ import asset_registry as ar
 from mcp.server.fastmcp import FastMCP
 from vault_init import check_meta_version
 
-_startup_notice: str | None = check_meta_version()
+_startup_notice: str | None
+try:
+    _startup_notice = check_meta_version()
+except Exception as _meta_exc:
+    # Seeding writes to the vault, which may be read-only or owned by another
+    # uid (a Docker mount, typically). That must not stop the server from
+    # starting — every read still works off the reference copies.
+    _startup_notice = (
+        f"Vault meta files could not be seeded or updated: {_meta_exc}. "
+        f"Loci is running on its built-in reference copies; check that the "
+        f"vault directory is writable."
+    )
+    print(f"[loci] Vault meta setup failed (skipped): {_meta_exc}", file=sys.stderr)
 
 # Run linter at startup to catch manual edits made outside MCP.
 # Only errors (not warnings) are surfaced — warnings are available via lint_vault tool.

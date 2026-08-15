@@ -328,6 +328,26 @@ def test_list_vault_includes_startup_notice_once(tmp_vault, monkeypatch):
     assert server._startup_notice is None  # cleared after first show
 
 
+def test_import_survives_meta_setup_failure():
+    """Seeding writes to the vault. A read-only mount, or one owned by another
+    uid, must leave the server running on the reference copies — not dead."""
+    import importlib
+    import vault_init
+
+    original = vault_init.check_meta_version
+
+    def boom():
+        raise PermissionError("Read-only file system: '/knowledge-vault/meta'")
+
+    vault_init.check_meta_version = boom
+    try:
+        reloaded = importlib.reload(server)
+        assert "Read-only file system" in (reloaded._startup_notice or "")
+    finally:
+        vault_init.check_meta_version = original
+        importlib.reload(server)
+
+
 def test_fetch_url_metadata_returns_dict(tmp_vault):
     expected = {"url": "https://example.com", "title": "Example", "site_name": None, "description": None}
     with patch("loci_mcp.server.loci.fetch_url_metadata", return_value=expected):

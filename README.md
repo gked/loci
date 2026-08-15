@@ -348,6 +348,31 @@ The vault is **not inside the container**. Docker runs the MCP server process an
 
 Your rclone config is mounted in read-only from the host, so credentials are never baked into the image.
 
+### First start seeds the vault
+
+On startup the server checks the mounted vault and seeds `meta/` — the ontology,
+the dictionaries, the ontology guide — if it isn't there yet. An existing vault
+is left alone unless its `meta/.meta-version` marker is behind the current
+version, in which case the canonical files are refreshed; the files you own
+(`ontology-user.yaml`, `tag-dictionary.md`, `foreign-definitions.md`, and the
+rest) are never overwritten. What happened is reported in the logs:
+
+```bash
+docker compose -f deploy/docker-compose.yml logs | grep -i vault
+```
+
+Two things worth knowing if you start the container by hand rather than through
+`setup_docker.py`, which creates the directory for you:
+
+- **The vault directory must exist and be writable.** If `/knowledge-vault`
+  isn't there, the server assumes you forgot the volume and seeds nothing —
+  creating it would put your notes inside the container, where they are
+  discarded on the next `docker run`. The log says so; fix it by passing
+  `-v /host/path/vault:/knowledge-vault`.
+- **A read-only mount still works, minus writes.** The server starts, says it
+  couldn't seed, and reads the ontology from the copies built into the image, so
+  queries behave normally. Saves will fail until the mount is writable.
+
 ### Managing the container
 
 **Terminal:**
@@ -559,6 +584,7 @@ The vault is **flat**: every node is a Markdown file at the vault root, named by
       tag-dictionary.md              ← freeform tag vocabulary        (reseeded)
       relation-dictionary.md         ← human-readable relation guide  (reseeded)
       foreign-definitions.md         ← external source schemas        (reseeded)
+      .meta-version                  ← which META_VERSION this vault was seeded at
 
   assets/                       ← binary/rich files adopted into the vault
     <uid>.<ext>                 ← one file per asset, named by vault node UID

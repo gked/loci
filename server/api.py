@@ -58,6 +58,9 @@ def _stage_root() -> Path:
 
 _UID_RE = re.compile(r"[0-9a-f]{8}")
 
+# Canonical meta files, used to answer read_meta for vaults that were never seeded.
+REFERENCES_DIR = Path(__file__).parent / "skills" / "references"
+
 
 def _frontmatter_uid(p: Path):
     """Return the `uid` field from a node file's frontmatter, or None."""
@@ -917,21 +920,17 @@ def read_meta(file: str) -> str:
         "scheme-dictionary-user":    vault_root / "meta" / "scheme-dictionary-user.yaml",
         "ontology-guide":            vault_root / "meta" / "ontology-guide.md",
     }
-    _references_dir = Path(__file__).parent / "skills" / "references"
-    # Vaults that were never seeded (Docker runs on LOCI_VAULT_ROOT and skips
-    # create_vault_structure) fall back to the canonical copy in references/.
-    _reference_fallbacks = {
-        "scheme-dictionary":      _references_dir / "scheme-dictionary.yaml",
-        "scheme-dictionary-user": _references_dir / "scheme-dictionary-user.yaml",
-        "ontology-guide":         _references_dir / "ontology-guide.md",
-    }
-
     p = file_map.get(file)
     if not p:
         raise ValueError(f"Unknown meta file: {file!r}")
     if not p.exists():
-        fallback = _reference_fallbacks.get(file)
-        if fallback and fallback.exists():
+        # Vaults that were never seeded fall back to the canonical copy in
+        # references/ — every meta file keeps its basename there, so this
+        # covers each key in file_map and any key added to it later. This is
+        # the same fallback the registries apply when loading their YAML, so
+        # what the model reads matches what write/lint validate against.
+        fallback = REFERENCES_DIR / p.name
+        if fallback.exists():
             return fallback.read_text(encoding="utf-8")
         raise FileNotFoundError(f"Meta file not found: {p}")
     return p.read_text(encoding="utf-8")
@@ -1060,5 +1059,9 @@ def write_meta(file: str, content: str) -> str:
             f"Unknown or read-only meta file: {file!r}. "
             f"Writable files: tag-dictionary, foreign-definitions, ontology-user"
         )
+    # read_meta falls back to references/ for a vault that was never seeded, so
+    # the model can reach this call with no meta/ directory on disk. Create it
+    # rather than failing the write with a bare FileNotFoundError.
+    p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")
     return str(p)

@@ -15,6 +15,9 @@ from vault_init import (
     create_vault_structure,
     reseed_meta,
     check_meta_version,
+    ensure_env_vault,
+    read_vault_meta_version,
+    write_vault_meta_version,
     META_VERSION,
     META_FILES,
     USER_META_FILES,
@@ -162,13 +165,232 @@ def test_ontology_guide_ships_under_server(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# ensure_env_vault — the LOCI_VAULT_ROOT (Docker) path
+# ---------------------------------------------------------------------------
+
+def test_ensure_env_vault_seeds_empty_vault(tmp_path):
+    """A bare bind mount is what Docker gives us on first run."""
+    vault_root = tmp_path / "vault"
+    vault_root.mkdir()
+
+    notice = ensure_env_vault(vault_root)
+
+    assert notice is not None and "seeded" in notice
+    for filename in META_FILES + USER_META_FILES:
+        assert (vault_root / "meta" / filename).exists(), filename
+    assert read_vault_meta_version(vault_root) == META_VERSION
+
+
+def test_ensure_env_vault_does_not_seed_a_missing_vault_dir(tmp_path):
+    """No directory means no mount: seeding it would write to the container's
+    own layer and report success for files that vanish on the next run."""
+    vault_root = tmp_path / "not-yet-there"
+
+    notice = ensure_env_vault(vault_root)
+
+    assert not vault_root.exists()
+    assert notice is not None
+    assert "not mounted" in notice or "does not exist" in notice
+
+
+def test_ensure_env_vault_missing_dir_notice_names_the_path(tmp_path, capsys):
+    vault_root = tmp_path / "not-yet-there"
+
+    ensure_env_vault(vault_root)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert str(vault_root) in captured.err
+
+
+def test_ensure_env_vault_does_not_create_siblings(tmp_path):
+    """Siblings would land outside the bind mount and vanish on restart."""
+    vault_root = tmp_path / "parent" / "vault"
+    vault_root.mkdir(parents=True)
+
+    ensure_env_vault(vault_root)
+
+    assert not (vault_root.parent / "assets").exists()
+    assert not (vault_root.parent / "asset-registry").exists()
+    assert not (vault_root.parent / "loci-stage").exists()
+
+
+def test_ensure_env_vault_no_op_when_current(tmp_path):
+    """Scenario 2: vault already set up at the current version — leave it alone."""
+    vault_root = tmp_path / "vault"
+    vault_root.mkdir()
+    ensure_env_vault(vault_root)  # seed it
+    (vault_root / "meta" / "ontology.yaml").write_text("user edited\n")
+
+    notice = ensure_env_vault(vault_root)
+
+    assert notice is None
+    assert (vault_root / "meta" / "ontology.yaml").read_text() == "user edited\n"
+
+
+def test_ensure_env_vault_reseeds_when_outdated(tmp_path):
+    """Scenario 3: existing vault, older meta — reseed canonical files only."""
+    vault_root = tmp_path / "vault"
+    vault_root.mkdir()
+    ensure_env_vault(vault_root)
+    write_vault_meta_version(vault_root, META_VERSION - 1)
+    (vault_root / "meta" / "ontology.yaml").write_text("stale\n")
+    (vault_root / "meta" / "ontology-user.yaml").write_text("mine\n")
+
+    notice = ensure_env_vault(vault_root)
+
+    assert notice is not None and "updated" in notice
+    assert (vault_root / "meta" / "ontology.yaml").read_text() != "stale\n"
+    # user-owned files survive the upgrade
+    assert (vault_root / "meta" / "ontology-user.yaml").read_text() == "mine\n"
+    assert read_vault_meta_version(vault_root) == META_VERSION
+
+
+def test_ensure_env_vault_adopts_complete_unversioned_vault(tmp_path):
+    """A wizard-made vault has a full meta/ but no marker — only this path
+    writes one. Reseeding it would destroy the user's own dictionaries."""
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)  # the local setup flow, no marker written
+    tags = vault_root / "meta" / "tag-dictionary.md"
+    tags.write_text("# my curated tags\n", encoding="utf-8")
+
+    notice = ensure_env_vault(vault_root)
+
+    assert notice is None
+    assert tags.read_text(encoding="utf-8") == "# my curated tags\n"
+    assert read_vault_meta_version(vault_root) == META_VERSION
+
+
+def test_ensure_env_vault_adoption_fills_missing_user_meta_files(tmp_path):
+    """Adopting must still complete the vault, just never overwrite it."""
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    (vault_root / "meta" / "ontology-user.yaml").unlink()
+
+    ensure_env_vault(vault_root)
+
+    assert (vault_root / "meta" / "ontology-user.yaml").exists()
+
+
+def test_ensure_env_vault_reseeds_when_unversioned_and_incomplete(tmp_path):
+    """A partial meta/ is not evidence of a current vault — repair it."""
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    (vault_root / "meta" / "ontology.yaml").unlink()
+
+    notice = ensure_env_vault(vault_root)
+
+    assert notice is not None and "unversioned" in notice
+    assert (vault_root / "meta" / "ontology.yaml").exists()
+    assert read_vault_meta_version(vault_root) == META_VERSION
+
+
+def test_ensure_env_vault_writes_nothing_to_stdout(tmp_path, capsys):
+    """Under stdio transport stdout is the JSON-RPC channel — keep it clean."""
+    vault_root = tmp_path / "vault"
+    vault_root.mkdir()
+
+    ensure_env_vault(vault_root)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "seeded" in captured.err
+
+
+def test_describe_vault_location_plain_path_when_not_a_mount(tmp_path):
+    """A normal directory is not a mount point, so report it as-is."""
+    assert vault_init.describe_vault_location(tmp_path) == str(tmp_path)
+
+
+def test_describe_vault_location_reports_host_path(tmp_path, monkeypatch):
+    """In a container the mount point alone doesn't tell the user where to look."""
+    monkeypatch.setattr(
+        vault_init,
+        "_host_path_for_mount",
+        lambda _root: "/Users/someone/loci/vault",
+    )
+    result = vault_init.describe_vault_location(Path("/knowledge-vault"))
+    assert "/Users/someone/loci/vault" in result
+    assert "/knowledge-vault" in result
+
+
+def test_host_path_for_mount_reads_bind_mount_source(tmp_path):
+    """The real format, as produced by the container during verification."""
+    mountinfo = tmp_path / "mountinfo"
+    mountinfo.write_text(
+        "433 424 0:37 /Users/you/loci/vault /knowledge-vault "
+        "rw,relatime - virtiofs mac rw\n"
+    )
+    result = vault_init._host_path_for_mount(Path("/knowledge-vault"), mountinfo)
+    assert result == "/Users/you/loci/vault"
+
+
+def test_host_path_for_mount_ignores_docker_named_volumes(tmp_path):
+    mountinfo = tmp_path / "mountinfo"
+    mountinfo.write_text(
+        "433 424 0:37 /var/lib/docker/volumes/loci/_data /vault rw - ext4 x rw\n"
+    )
+    assert vault_init._host_path_for_mount(Path("/vault"), mountinfo) is None
+
+
+def test_host_path_for_mount_returns_none_when_unmounted(tmp_path):
+    mountinfo = tmp_path / "mountinfo"
+    mountinfo.write_text("433 424 0:37 /elsewhere /other rw - ext4 x rw\n")
+    assert vault_init._host_path_for_mount(Path("/vault"), mountinfo) is None
+
+
+def test_host_path_for_mount_matches_mount_point_containing_a_space(tmp_path):
+    """mountinfo octal-escapes whitespace; an unescaped compare never matches."""
+    mountinfo = tmp_path / "mountinfo"
+    mountinfo.write_text(
+        "433 424 0:37 /Users/me/My\\040Files/vault /knowledge\\040vault "
+        "rw,relatime - virtiofs mac rw\n"
+    )
+    result = vault_init._host_path_for_mount(Path("/knowledge vault"), mountinfo)
+    assert result == "/Users/me/My Files/vault"
+
+
+def test_host_path_for_mount_leaves_literal_backslash_alone(tmp_path):
+    mountinfo = tmp_path / "mountinfo"
+    mountinfo.write_text("433 424 0:37 /srv/a\\134b /vault rw - ext4 x rw\n")
+    assert vault_init._host_path_for_mount(Path("/vault"), mountinfo) == "/srv/a\\b"
+
+
+def test_host_path_for_mount_takes_the_last_matching_line(tmp_path):
+    """A later entry for the same mount point overmounts the earlier one."""
+    mountinfo = tmp_path / "mountinfo"
+    mountinfo.write_text(
+        "433 424 0:37 /host/old /vault rw - ext4 x rw\n"
+        "440 424 0:38 /host/new /vault rw - ext4 x rw\n"
+    )
+    assert vault_init._host_path_for_mount(Path("/vault"), mountinfo) == "/host/new"
+
+
+def test_read_vault_meta_version_handles_corrupt_marker(tmp_path):
+    vault_root = tmp_path / "vault"
+    vault_root.mkdir()
+    ensure_env_vault(vault_root)
+    (vault_root / "meta" / vault_init.VERSION_MARKER).write_text("not-a-number\n")
+
+    assert read_vault_meta_version(vault_root) is None
+
+
+# ---------------------------------------------------------------------------
 # check_meta_version
 # ---------------------------------------------------------------------------
 
-def test_check_meta_version_skips_when_env_var_set(monkeypatch, fake_config_path):
-    monkeypatch.setenv("LOCI_VAULT_ROOT", "/some/path")
-    result = check_meta_version()
-    assert result is None
+def test_check_meta_version_seeds_env_vault(monkeypatch, fake_config_path, tmp_path):
+    """Docker mounts an empty vault: startup must seed it rather than skip."""
+    vault_root = tmp_path / "vault"
+    vault_root.mkdir()
+    monkeypatch.setenv("LOCI_VAULT_ROOT", str(vault_root))
+
+    notice = check_meta_version()
+
+    assert notice is not None and "seeded" in notice
+    for filename in META_FILES + USER_META_FILES:
+        assert (vault_root / "meta" / filename).exists(), filename
+    assert read_vault_meta_version(vault_root) == META_VERSION
 
 
 def test_check_meta_version_skips_when_no_config_file(fake_config_path):
@@ -208,6 +430,53 @@ def test_check_meta_version_reseeds_when_outdated(tmp_path, fake_config_path, mo
     assert updated_config["meta_version"] == META_VERSION
     # Stale file reseeded
     assert stale.read_text(encoding="utf-8") != "# stale content\n"
+
+
+def test_check_meta_version_records_marker_in_vault_on_reseed(tmp_path, fake_config_path):
+    """Config mode must leave the same marker the Docker path reads, or that
+    path sees the vault as unversioned and reseeds over the user's files."""
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    fake_config_path.write_text(
+        yaml.dump({"vault_root": str(vault_root), "meta_version": META_VERSION - 1}),
+        encoding="utf-8",
+    )
+
+    check_meta_version()
+
+    assert read_vault_meta_version(vault_root) == META_VERSION
+
+
+def test_check_meta_version_records_marker_when_already_current(tmp_path, fake_config_path):
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    fake_config_path.write_text(
+        yaml.dump({"vault_root": str(vault_root), "meta_version": META_VERSION}),
+        encoding="utf-8",
+    )
+
+    assert check_meta_version() is None
+    assert read_vault_meta_version(vault_root) == META_VERSION
+
+
+def test_check_meta_version_config_branch_writes_nothing_to_stdout(tmp_path, fake_config_path, capsys):
+    """reseed_meta and save_config both print — and stdout is the JSON-RPC
+    channel under stdio transport, in config mode just as much as in Docker."""
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    fake_config_path.write_text(
+        yaml.dump({"vault_root": str(vault_root), "meta_version": META_VERSION - 1}),
+        encoding="utf-8",
+    )
+    capsys.readouterr()  # discard create_vault_structure's own output
+
+    assert check_meta_version() is not None
+    assert capsys.readouterr().out == ""
+
+
+def test_check_meta_version_ignores_config_without_vault_root(fake_config_path):
+    fake_config_path.write_text(yaml.dump({"meta_version": 1}), encoding="utf-8")
+    assert check_meta_version() is None
 
 
 def test_check_meta_version_reseeds_when_unversioned(tmp_path, fake_config_path):

@@ -262,9 +262,24 @@ Recorded so the next person doesn't rediscover them the hard way.
   Any new code that round-trips frontmatter must do the same or it will rewrite
   timestamp formats across the vault.
 - **Reseeding is silent and automatic.** `check_meta_version()` runs at server
-  startup and overwrites every `META_FILES` entry when the vault's
-  `meta_version` is behind. It is skipped entirely when `LOCI_VAULT_ROOT` is set
-  (Docker / tests), which is why env-var mode can run against stale meta files.
+  startup and overwrites every `META_FILES` entry when the vault is behind.
+  Which version it compares against depends on the mode: a `config.yml` install
+  reads `meta_version` from the config, while `LOCI_VAULT_ROOT` (Docker) reads
+  `meta/.meta-version` inside the vault, since the image's `config.yml` does not
+  survive a restart. Both modes write the in-vault marker, so a vault can move
+  between them without being mistaken for stale.
+- **An unversioned vault with a complete `meta/` is adopted, not reseeded.**
+  The marker did not always exist, so its absence is not evidence of staleness —
+  and reseeding on that assumption would destroy `tag-dictionary.md` and
+  `foreign-definitions.md`, which the user owns. A vault holding every
+  `META_FILES` entry is taken as current and the marker is backfilled. The
+  cost: a genuinely old vault that is merely file-complete never gets upgraded.
+- **Seeding is skipped when the vault directory is absent**, rather than
+  creating it. Under Docker a missing directory means the volume was not
+  mounted, and seeding into the container's own filesystem would report success
+  for files discarded on the next run. `http_server.py` never calls
+  `check_meta_version` at all, so an HTTP-only vault is never seeded — reads
+  fall back to this directory, and `write_meta` creates `meta/` on demand.
 
 ---
 
