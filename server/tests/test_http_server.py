@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import http_server
 import api as vault_api
+import vault_init
 from http_server import _parse_file
 
 
@@ -236,6 +237,33 @@ class TestOpenLocalAuth:
 
         assert response.status_code == 200
         launch.assert_called_once()
+
+
+class TestConfigReadsDoNotWriteToDisk:
+    """
+    _read_config_file() runs from the per-request auth dependency. The legacy
+    config migration it used to call copies and renames files, so an ordinary
+    GET could rewrite the user's disk whenever the user-level config happened to
+    be missing. Migration belongs to startup, and happens once at import.
+    """
+
+    def test_reading_the_config_never_migrates_a_legacy_file(self, tmp_path, monkeypatch):
+        legacy = tmp_path / "checkout" / "config.yml"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text("vault_root: /somewhere\n", encoding="utf-8")
+        monkeypatch.setattr(vault_init, "LEGACY_CONFIG_PATH", legacy)
+        monkeypatch.delenv("LOCI_CONFIG", raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+        http_server._read_config_file()
+
+        assert legacy.exists(), "a config read must not rename the legacy file"
+        assert not (tmp_path / "xdg" / "loci" / "config.yml").exists()
+
+    def test_migration_runs_once_at_import(self):
+        # The notice is captured at import and logged from lifespan(), where
+        # uvicorn has already configured logging.
+        assert hasattr(http_server, "_MIGRATION_NOTICE")
 
 
 class TestHealthVersion:

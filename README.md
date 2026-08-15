@@ -242,6 +242,12 @@ This will:
 - Create the vault folder structure and seed meta dictionaries
 - Register the MCP server with Claude Code and Claude Desktop
 
+Answers are written to `~/.config/loci/config.yml` (or
+`$XDG_CONFIG_HOME/loci/config.yml`), outside the checkout so that an install
+without one keeps its settings. If you have an older `config.yml` at the project
+root, the first run copies it across and renames it `config.yml.migrated`.
+Set `LOCI_CONFIG` to use a different file.
+
 ### 3. Configure a remote (optional)
 
 ```bash
@@ -424,7 +430,10 @@ Things to know before trusting it:
 - **The Docker container backs up, it does not sync.** With `BACKUP_REMOTE` set,
   `deploy/entrypoint.sh` runs a one-way `rclone sync` from the vault to the
   remote every `BACKUP_INTERVAL` seconds (default daily). It never pulls.
-- **None of this is covered by tests.** The suite does not touch rclone.
+- **The sync itself is not covered by tests.** The suite checks that `sync.sh`
+  finds your config (`LOCI_CONFIG`, then `$XDG_CONFIG_HOME/loci/config.yml` or
+  `~/.config/loci/config.yml`, then a project-root `config.yml`), but it never
+  runs rclone.
 
 If you need the vault on more than one machine today, the more reliable option
 is to put it inside a folder your existing sync client already manages
@@ -460,7 +469,8 @@ Server env vars (`server/loci_mcp/server.py`):
 | Var | Meaning |
 |---|---|
 | `LOCI_TRANSPORT` | `stdio` (default) or `sse` |
-| `LOCI_VAULT_ROOT` | Path to the knowledge vault, overriding `config.yml` |
+| `LOCI_VAULT_ROOT` | Path to the knowledge vault, overriding the config file |
+| `LOCI_CONFIG` | Path to the config file, overriding `~/.config/loci/config.yml` |
 | `LOCI_PORT` | SSE only, default `8000` |
 | `LOCI_TOKEN` | SSE only, optional bearer auth |
 
@@ -709,8 +719,9 @@ loci/
   setup.py                          ← local setup wizard
   setup_docker.py                   ← Docker setup wizard
   run_server.sh
-  config.yml                        ← local config (gitignored, see config.sample.yml)
-  config.sample.yml
+  config.sample.yml                 ← template for ~/.config/loci/config.yml
+  dev-config.yml                    ← scratch config for `make dev` (gitignored)
+  dev-vault/                        ← scratch vault for `make dev` (gitignored)
   Makefile
   pyproject.toml
   CLAUDE.md                         ← working rules for Claude in this repo
@@ -737,6 +748,11 @@ make dev-ui         # Vite only:     cd app && npm run dev
 ./run_server.sh     # MCP server in stdio mode (Claude Code / Claude Desktop)
 ```
 
+The `dev` targets run against `dev-config.yml` and `dev-vault/` in the project
+root, both gitignored and created on first use, so a stray `make dev` cannot
+write into the vault you keep real notes in. `./run_server.sh` and an installed
+server use the config file proper.
+
 ### Testing
 
 ```bash
@@ -762,7 +778,7 @@ Meta files are seeded into `vault/meta/` from `server/skills/references/`, which
 - `META_FILES`: reseeded on every `META_VERSION` bump
 - `USER_META_FILES`: seeded once and never overwritten (the `-user.yaml` extension files)
 
-`config.yml` tracks the `meta_version` the vault was last seeded at. On startup, a vault behind `META_VERSION` is reseeded and its config updated.
+The config file tracks the `meta_version` the vault was last seeded at. On startup, a vault behind `META_VERSION` is reseeded and its config updated.
 
 ### Adding a new type, relation, scheme, or field (non-breaking)
 

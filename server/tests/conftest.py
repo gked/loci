@@ -6,12 +6,26 @@ Shared fixtures for the Loci test suite.
 import os
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
 
 SERVER_ROOT = Path(__file__).parent.parent
 FIXTURE_VAULT = Path(__file__).parent / "fixtures" / "vault"
+
+# Set at conftest import — before any test module is imported, and so before
+# loci_mcp/server.py runs check_meta_version() at *its* import. A fixture is too
+# late for that: collection would already have read the developer's real
+# ~/.config/loci/config.yml and migrated a project-root config.yml out from
+# under them. Subprocesses the e2e suite spawns inherit this too.
+#
+# test_vault_init.py guards this line: it captures LOCI_CONFIG at *its* import,
+# which happens after this and before the isolated_config fixture below, so
+# deleting the assignment fails the suite rather than silently migrating.
+os.environ["LOCI_CONFIG"] = str(
+    Path(tempfile.mkdtemp(prefix="loci-test-config-")) / "config.yml"
+)
 
 # Put server/ and server/tools/ on sys.path so api, loci_mcp, and tools
 # modules can be imported directly by test files.
@@ -22,6 +36,24 @@ import nx_graph as _nx_graph  # noqa: E402  (must follow sys.path insert)
 from type_registry import reset_registry as _reset_type_registry  # noqa: E402
 from relation_registry import reset_relation_registry as _reset_relation_registry  # noqa: E402
 from scheme_registry import reset_scheme_registry as _reset_scheme_registry  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def isolated_config(tmp_path_factory, monkeypatch):
+    """
+    Give each test its own throwaway config file.
+
+    The module-level LOCI_CONFIG above already keeps the suite off the real one;
+    this narrows it further so a test that writes config (the API token, a
+    save_config call) cannot be seen by the next one. Setting LOCI_CONFIG also
+    suppresses migrate_legacy_config(), which is what keeps the developer's
+    project-root config.yml untouched.
+
+    Tests that exercise resolution or migration override LOCI_CONFIG themselves.
+    """
+    config = tmp_path_factory.mktemp("loci-config") / "config.yml"
+    monkeypatch.setenv("LOCI_CONFIG", str(config))
+    yield config
 
 
 @pytest.fixture

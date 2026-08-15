@@ -13,11 +13,28 @@
 #   LOCI_VAULT_ROOT   local vault path
 #   LOCI_REMOTE       rclone remote name
 #   LOCI_REMOTE_PATH  path on the remote
+#   LOCI_CONFIG       config file path
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG="$SCRIPT_DIR/../config.yml"
+
+# Mirrors config_path() in server/tools/vault_init.py: LOCI_CONFIG wins, then
+# the user-level file under XDG_CONFIG_HOME (or ~/.config). The project-root
+# config.yml is kept as a last resort for a checkout whose server has not run
+# yet — the first server start migrates that file to the user-level location,
+# and this script must keep working on both sides of that move.
+expand_home() { echo "${1/#\~/$HOME}"; }
+
+if [[ -n "${LOCI_CONFIG:-}" ]]; then
+    CONFIG="$(expand_home "$LOCI_CONFIG")"
+else
+    XDG_BASE="$(expand_home "${XDG_CONFIG_HOME:-$HOME/.config}")"
+    CONFIG="$XDG_BASE/loci/config.yml"
+    if [[ ! -f "$CONFIG" && -f "$SCRIPT_DIR/../config.yml" ]]; then
+        CONFIG="$SCRIPT_DIR/../config.yml"
+    fi
+fi
 
 # --- resolve vault root ---
 if [[ -n "${LOCI_VAULT_ROOT:-}" ]]; then
@@ -25,7 +42,7 @@ if [[ -n "${LOCI_VAULT_ROOT:-}" ]]; then
 elif command -v python3 &>/dev/null && [[ -f "$CONFIG" ]]; then
     VAULT_ROOT="$(python3 -c "import yaml; print(yaml.safe_load(open('$CONFIG'))['vault_root'])")"
 else
-    echo "Error: cannot determine vault root. Set LOCI_VAULT_ROOT or ensure config.yml exists." >&2
+    echo "Error: cannot determine vault root. Set LOCI_VAULT_ROOT, or create $CONFIG with a vault_root." >&2
     exit 1
 fi
 
@@ -41,7 +58,7 @@ else
 fi
 
 if [[ -z "$REMOTE" ]]; then
-    echo "Error: no rclone remote configured. Set sync_remote in config.yml or pass as argument." >&2
+    echo "Error: no rclone remote configured. Set sync_remote in $CONFIG or pass as argument." >&2
     exit 1
 fi
 

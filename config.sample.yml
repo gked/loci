@@ -1,8 +1,17 @@
 # Loci Configuration Sample
-# Copy this file to config.yml and update the values.
-# Do NOT commit config.yml to git — it contains machine-specific paths.
+#
+# Copy this file to ~/.config/loci/config.yml and update the values.
+# ($XDG_CONFIG_HOME/loci/config.yml is used instead when that variable is set.)
+#
+# Config lives outside the checkout so an install that has no checkout — uvx
+# unpacks the package into a cache it wipes on update — keeps its settings.
+# Set LOCI_CONFIG to point at a different file; `make dev` uses that to run
+# against a scratch config instead of this one.
+#
+# A config.yml left over at the project root is copied here automatically on
+# first run and renamed to config.yml.migrated.
 
-vault_root: /absolute/path/to/loci/knowledge-vault   # default: <project_root>/knowledge-vault
+vault_root: /absolute/path/to/knowledge-vault   # required; no default
 sync_remote: nextcloud                      # rclone remote name (see sync/rclone.conf.sample)
 sync_remote_path: loci                      # path on the remote to sync knowledge-vault/ to/from
 created_at: 2026-03-21T14:32:00Z

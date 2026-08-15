@@ -3,12 +3,13 @@ vault_init.py
 Initializes the Loci vault folder structure and config file.
 
 Run this once on first setup, or to repair a missing vault structure.
-Config is stored at <project_root>/config.yml
+Config is stored at ~/.config/loci/config.yml — see config_path().
 """
 
 import contextlib
 import io
 import os
+import shutil
 import sys
 import yaml
 from datetime import datetime, timezone
@@ -16,7 +17,10 @@ from pathlib import Path
 from typing import Optional
 
 
-CONFIG_PATH = Path(__file__).parent.parent.parent / "config.yml"
+# Where config lived before it moved out of the checkout. A uvx install has no
+# checkout — the package is unpacked into an ephemeral uv cache — so a path
+# relative to __file__ would be wiped on every update. Kept only to migrate off.
+LEGACY_CONFIG_PATH = Path(__file__).parent.parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "skills" / "references"
 
 META_VERSION = 8
@@ -50,22 +54,78 @@ USER_META_FILES = [
 ]
 
 
+def config_path() -> Path:
+    """
+    Resolve the config file location.
+
+    LOCI_CONFIG wins — that is how `make dev` points at a scratch config and how
+    the tests stay off the real one. Otherwise the user-level file, under
+    XDG_CONFIG_HOME when set so the XDG convention is honoured on Linux.
+
+    Resolved per call rather than bound at import so the environment can change
+    between them; callers must not cache the result.
+    """
+    override = os.environ.get("LOCI_CONFIG")
+    if override:
+        return Path(override).expanduser()
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg).expanduser() if xdg else Path.home() / ".config"
+    return base / "loci" / "config.yml"
+
+
+def migrate_legacy_config() -> Optional[str]:
+    """
+    Move a pre-existing <project_root>/config.yml to the user-level location.
+
+    Runs at most once in effect: after the copy the destination exists, so every
+    later call returns early. The legacy file is renamed rather than deleted —
+    the values are recoverable, and leaving it in place would give the install
+    two configs that silently drift.
+
+    Skipped when LOCI_CONFIG is set: an explicit override means "use exactly
+    this file", so migrating into it would be a surprise.
+    """
+    if os.environ.get("LOCI_CONFIG"):
+        return None
+    dest = config_path()
+    if dest.exists() or not LEGACY_CONFIG_PATH.exists():
+        return None
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(LEGACY_CONFIG_PATH, dest)
+
+    retired = LEGACY_CONFIG_PATH.with_name(LEGACY_CONFIG_PATH.name + ".migrated")
+    if retired.exists():
+        # Somebody migrated before and put a config.yml back. Copying is done;
+        # leave both files alone rather than clobbering the older backup.
+        return f"Loci config was copied to {dest}. {LEGACY_CONFIG_PATH} is now unused."
+    LEGACY_CONFIG_PATH.rename(retired)
+    return (
+        f"Loci config moved from {LEGACY_CONFIG_PATH} to {dest}. "
+        f"The old file is kept as {retired.name} and is no longer read."
+    )
+
+
 def load_config() -> Optional[dict]:
     """Load existing config if present. LOCI_VAULT_ROOT env var takes precedence."""
     vault_root_env = os.environ.get("LOCI_VAULT_ROOT")
     if vault_root_env:
         return {"vault_root": vault_root_env}
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH) as f:
+    migrate_legacy_config()
+    path = config_path()
+    if path.exists():
+        with open(path) as f:
             return yaml.safe_load(f)
     return None
 
 
 def save_config(config: dict) -> None:
-    """Save config to <project_root>/config.yml"""
-    with open(CONFIG_PATH, "w") as f:
+    """Save config to the user-level config file, creating its directory."""
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
         yaml.dump(config, f, default_flow_style=False)
-    print(f"Config saved to {CONFIG_PATH}")
+    print(f"Config saved to {path}")
 
 
 def create_vault_structure(vault_root: Path, include_siblings: bool = True) -> None:
@@ -327,13 +387,18 @@ def _check_meta_version() -> str | None:
     vault_root_env = os.environ.get("LOCI_VAULT_ROOT")
     if vault_root_env:
         return ensure_env_vault(Path(vault_root_env))
-    if not CONFIG_PATH.exists():
-        return None
-    with open(CONFIG_PATH) as f:
+    # The migration renames a file the user may still be pointing tools at
+    # (sync.sh, their own scripts), so its notice rides out with whatever else
+    # startup has to say rather than being dropped.
+    migration_notice = migrate_legacy_config()
+    path = config_path()
+    if not path.exists():
+        return migration_notice
+    with open(path) as f:
         config = yaml.safe_load(f) or {}
     configured_root = config.get("vault_root")
     if not configured_root:
-        return None
+        return migration_notice
     vault_root = Path(configured_root)
     vault_meta_version = config.get("meta_version")
     if vault_meta_version is None or vault_meta_version < META_VERSION:
@@ -342,17 +407,18 @@ def _check_meta_version() -> str | None:
         save_config(config)
         write_vault_meta_version(vault_root, META_VERSION)
         from_version = f"v{vault_meta_version}" if vault_meta_version is not None else "unversioned"
-        return (
+        return "\n".join(filter(None, [
+            migration_notice,
             f"Vault meta files were automatically updated from {from_version} "
-            f"to v{META_VERSION}. No action needed."
-        )
+            f"to v{META_VERSION}. No action needed.",
+        ]))
     # Config mode tracks the version in config.yml, but the vault itself may
     # later be addressed by LOCI_VAULT_ROOT (the same files, run under Docker).
     # Keep the in-vault marker in step so that path doesn't read the vault as
     # unversioned and reseed over the user's dictionaries.
     if read_vault_meta_version(vault_root) != META_VERSION and (vault_root / "meta").is_dir():
         write_vault_meta_version(vault_root, META_VERSION)
-    return None
+    return migration_notice
 
 
 def init(force: bool = False) -> dict:

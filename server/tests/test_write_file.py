@@ -261,8 +261,7 @@ def test_check_duplicate_returns_none_when_no_match(tmp_vault):
 
 def test_resolve_vault_root_raises_when_no_config(monkeypatch, tmp_path):
     monkeypatch.delenv("LOCI_VAULT_ROOT", raising=False)
-    import vault_init
-    monkeypatch.setattr(vault_init, "CONFIG_PATH", tmp_path / "nonexistent.yml")
+    monkeypatch.setenv("LOCI_CONFIG", str(tmp_path / "nonexistent.yml"))
     from write_file import resolve_vault_root
     with pytest.raises(RuntimeError, match="not configured"):
         resolve_vault_root()

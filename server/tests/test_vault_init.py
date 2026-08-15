@@ -23,6 +23,11 @@ from vault_init import (
     USER_META_FILES,
 )
 
+# Captured during collection — after conftest.py's import-time assignment and
+# before any fixture (including the autouse one that repoints LOCI_CONFIG) has
+# had a chance to run. See test_suite_never_resolves_the_developers_real_config.
+_LOCI_CONFIG_AT_IMPORT = os.environ.get("LOCI_CONFIG")
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -36,9 +41,9 @@ def clear_loci_vault_root_env(monkeypatch):
 
 @pytest.fixture
 def fake_config_path(tmp_path, monkeypatch):
-    """Point vault_init.CONFIG_PATH at a temp file."""
+    """Point config_path() at a temp file via the same env var `make dev` uses."""
     config_file = tmp_path / "config.yml"
-    monkeypatch.setattr(vault_init, "CONFIG_PATH", config_file)
+    monkeypatch.setenv("LOCI_CONFIG", str(config_file))
     return config_file
 
 
@@ -614,3 +619,201 @@ def test_init_no_config_creates_new(tmp_path, fake_config_path, monkeypatch):
     assert result["vault_root"] == vault_path
     assert fake_config_path.exists()
     assert Path(vault_path).is_dir()
+
+
+# ---------------------------------------------------------------------------
+# config_path — resolution order
+# ---------------------------------------------------------------------------
+
+def test_config_path_prefers_loci_config_env(tmp_path, monkeypatch):
+    target = tmp_path / "elsewhere" / "config.yml"
+    monkeypatch.setenv("LOCI_CONFIG", str(target))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    assert vault_init.config_path() == target
+
+
+def test_config_path_expands_tilde_in_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("LOCI_CONFIG", "~/somewhere/config.yml")
+    assert vault_init.config_path() == tmp_path / "somewhere" / "config.yml"
+
+
+def test_config_path_uses_xdg_config_home(tmp_path, monkeypatch):
+    monkeypatch.delenv("LOCI_CONFIG", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    assert vault_init.config_path() == tmp_path / "xdg" / "loci" / "config.yml"
+
+
+def test_config_path_falls_back_to_home_dot_config(tmp_path, monkeypatch):
+    monkeypatch.delenv("LOCI_CONFIG", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    assert vault_init.config_path() == tmp_path / ".config" / "loci" / "config.yml"
+
+
+def test_config_path_is_not_inside_the_checkout(monkeypatch, tmp_path):
+    """The whole point of the move: a uvx install has no checkout to live in."""
+    monkeypatch.delenv("LOCI_CONFIG", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    checkout = vault_init.LEGACY_CONFIG_PATH.parent
+    assert checkout not in vault_init.config_path().parents
+
+
+# ---------------------------------------------------------------------------
+# migrate_legacy_config
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def legacy_config(tmp_path, monkeypatch):
+    """Stand in for a project-root config.yml left over from an older install."""
+    legacy = tmp_path / "checkout" / "config.yml"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(
+        yaml.dump({"vault_root": "/real/vault", "api_token": "keep-me"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vault_init, "LEGACY_CONFIG_PATH", legacy)
+    return legacy
+
+
+def test_migrate_copies_legacy_and_retires_it(tmp_path, legacy_config, monkeypatch):
+    monkeypatch.delenv("LOCI_CONFIG", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    notice = vault_init.migrate_legacy_config()
+
+    dest = tmp_path / "xdg" / "loci" / "config.yml"
+    assert yaml.safe_load(dest.read_text(encoding="utf-8")) == {
+        "vault_root": "/real/vault",
+        "api_token": "keep-me",
+    }
+    assert not legacy_config.exists()
+    assert (legacy_config.parent / "config.yml.migrated").exists()
+    assert notice is not None and str(dest) in notice
+
+
+def test_migrate_is_a_noop_once_destination_exists(tmp_path, legacy_config, monkeypatch):
+    monkeypatch.delenv("LOCI_CONFIG", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    dest = tmp_path / "xdg" / "loci" / "config.yml"
+    dest.parent.mkdir(parents=True)
+    dest.write_text("vault_root: /already/here\n", encoding="utf-8")
+
+    assert vault_init.migrate_legacy_config() is None
+    assert dest.read_text(encoding="utf-8") == "vault_root: /already/here\n"
+    assert legacy_config.exists(), "legacy file must not be touched once migrated"
+
+
+def test_migrate_skipped_when_loci_config_is_set(tmp_path, legacy_config, monkeypatch):
+    """An explicit override means 'use exactly this file' — don't migrate into it."""
+    override = tmp_path / "scratch.yml"
+    monkeypatch.setenv("LOCI_CONFIG", str(override))
+
+    assert vault_init.migrate_legacy_config() is None
+    assert not override.exists()
+    assert legacy_config.exists()
+
+
+def test_migrate_without_legacy_file_does_nothing(tmp_path, monkeypatch):
+    monkeypatch.delenv("LOCI_CONFIG", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setattr(vault_init, "LEGACY_CONFIG_PATH", tmp_path / "absent.yml")
+
+    assert vault_init.migrate_legacy_config() is None
+    assert not (tmp_path / "xdg" / "loci" / "config.yml").exists()
+
+
+def test_migrate_keeps_existing_backup(tmp_path, legacy_config, monkeypatch):
+    """A second config.yml appearing after a migration must not clobber the backup."""
+    monkeypatch.delenv("LOCI_CONFIG", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    backup = legacy_config.parent / "config.yml.migrated"
+    backup.write_text("vault_root: /the/original\n", encoding="utf-8")
+
+    notice = vault_init.migrate_legacy_config()
+
+    assert backup.read_text(encoding="utf-8") == "vault_root: /the/original\n"
+    assert legacy_config.exists()
+    assert notice is not None
+
+
+def test_load_config_reads_the_migrated_file(tmp_path, legacy_config, monkeypatch):
+    monkeypatch.delenv("LOCI_CONFIG", raising=False)
+    monkeypatch.delenv("LOCI_VAULT_ROOT", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    assert load_config()["vault_root"] == "/real/vault"
+
+
+def _legacy_config_pointing_at(tmp_path, monkeypatch, vault, **extra):
+    """A project-root config.yml for a vault that really exists on disk."""
+    legacy = tmp_path / "checkout" / "config.yml"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(
+        yaml.dump({"vault_root": str(vault), **extra}), encoding="utf-8"
+    )
+    monkeypatch.setattr(vault_init, "LEGACY_CONFIG_PATH", legacy)
+    monkeypatch.delenv("LOCI_CONFIG", raising=False)
+    monkeypatch.delenv("LOCI_VAULT_ROOT", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    return legacy
+
+
+def test_check_meta_version_surfaces_the_migration_notice(tmp_path, monkeypatch):
+    """
+    The migration renames a file the user may still point their own tooling at
+    (sync.sh, scripts). Silently succeeding leaves them debugging a file that
+    moved for reasons they were never told.
+    """
+    vault = tmp_path / "vault"
+    (vault / "meta").mkdir(parents=True)
+    _legacy_config_pointing_at(
+        tmp_path, monkeypatch, vault, meta_version=META_VERSION
+    )
+
+    notice = check_meta_version()
+
+    assert notice is not None
+    assert str(tmp_path / "xdg" / "loci" / "config.yml") in notice
+
+
+def test_check_meta_version_reports_migration_and_reseed_together(tmp_path, monkeypatch):
+    """Both things happened; the user needs to hear about both."""
+    vault = tmp_path / "vault"
+    (vault / "meta").mkdir(parents=True)
+    _legacy_config_pointing_at(tmp_path, monkeypatch, vault)  # no meta_version
+
+    notice = check_meta_version()
+
+    assert notice is not None
+    assert str(tmp_path / "xdg" / "loci" / "config.yml") in notice
+    assert f"v{META_VERSION}" in notice
+
+
+def test_save_config_creates_the_config_directory(tmp_path, monkeypatch):
+    target = tmp_path / "brand" / "new" / "config.yml"
+    monkeypatch.setenv("LOCI_CONFIG", str(target))
+
+    vault_init.save_config({"vault_root": "/somewhere"})
+
+    assert yaml.safe_load(target.read_text(encoding="utf-8")) == {"vault_root": "/somewhere"}
+
+
+def test_suite_never_resolves_the_developers_real_config():
+    """
+    Regression guard. loci_mcp/server.py calls check_meta_version() at import,
+    which runs during collection — before any fixture. conftest.py therefore
+    sets LOCI_CONFIG at import time; if that is ever removed, a test run
+    migrates and rewrites the developer's own config.
+
+    Asserting on the value captured at *this module's* import, not on
+    os.environ: the autouse isolated_config fixture repoints LOCI_CONFIG at a
+    temp path before every test body, so reading the environment here would only
+    ever describe the fixture and would stay green with conftest's import-time
+    line deleted.
+    """
+    assert _LOCI_CONFIG_AT_IMPORT, "conftest must set LOCI_CONFIG before test modules import"
+    configured = Path(_LOCI_CONFIG_AT_IMPORT)
+    assert configured != vault_init.LEGACY_CONFIG_PATH
+    assert vault_init.LEGACY_CONFIG_PATH.parent not in configured.parents

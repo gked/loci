@@ -1,26 +1,46 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-
 // e2e runs the API on an ephemeral port, so the proxy target is overridable.
 const API_TARGET = process.env.LOCI_API_URL || "http://localhost:8765";
 
-// The API requires a token on /api/open-local. Read it out of config.yml so
-// `make dev` needs no extra setup — the server writes the token there on first
-// start. A hand-set LOCI_API_TOKEN wins, matching the server's own precedence.
+// Python's Path.expanduser(): config_path() applies it to both env vars, so a
+// value that reaches us with a literal leading ~ (quoted in a shell rc, set in
+// a .env, handed over by a launcher) must resolve the same way here. Without
+// it readFileSync throws, the catch below swallows it, and the UI runs with an
+// empty token and no diagnostic.
+function expandHome(value) {
+  const home = process.env.HOME || homedir();
+  if (value === "~") return home;
+  if (value.startsWith("~/")) return resolve(home, value.slice(2));
+  return value;
+}
+
+// Mirrors config_path() in server/tools/vault_init.py. Config lives outside the
+// checkout so a uvx install — which has no checkout — keeps its settings.
+function configPath() {
+  if (process.env.LOCI_CONFIG) return expandHome(process.env.LOCI_CONFIG);
+  const base = process.env.XDG_CONFIG_HOME
+    ? expandHome(process.env.XDG_CONFIG_HOME)
+    : resolve(process.env.HOME || homedir(), ".config");
+  return resolve(base, "loci", "config.yml");
+}
+
+// The API requires a token on /api/open-local. Read it out of the config file
+// so `make dev` needs no extra setup — the Makefile writes the token there.
+// A hand-set LOCI_API_TOKEN wins, matching the server's own precedence.
 function readApiToken() {
   if (process.env.LOCI_API_TOKEN) return process.env.LOCI_API_TOKEN;
   try {
-    const config = readFileSync(resolve(projectRoot, "config.yml"), "utf8");
+    const config = readFileSync(configPath(), "utf8");
     const match = config.match(/^api_token:\s*(.+)$/m);
     return match ? match[1].trim().replace(/^["']|["']$/g, "") : "";
   } catch {
-    // No config.yml yet — the server has not been started for the first time.
+    // No config file yet — the server has not been started for the first time.
     return "";
   }
 }

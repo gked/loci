@@ -472,8 +472,7 @@ def test_write_meta_unknown_file_raises(tmp_vault):
 
 def test_vault_root_raises_when_no_config(monkeypatch, tmp_path):
     monkeypatch.delenv("LOCI_VAULT_ROOT", raising=False)
-    import vault_init
-    monkeypatch.setattr(vault_init, "CONFIG_PATH", tmp_path / "nonexistent.yml")
+    monkeypatch.setenv("LOCI_CONFIG", str(tmp_path / "nonexistent.yml"))
     with pytest.raises(RuntimeError, match="not configured"):
         api._vault_root()
 

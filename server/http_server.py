@@ -25,7 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "tools"))
 
-from vault_init import CONFIG_PATH, load_config
+from vault_init import config_path, load_config, migrate_legacy_config
 import nx_graph as graph
 from frontmatter import split_frontmatter
 import api as vault_api
@@ -33,6 +33,13 @@ import api as vault_api
 log = logging.getLogger(__name__)
 
 _VAULT_ROOT: Path | None = None
+
+# Migrate at import — once per process, and before the CORSMiddleware below
+# reads the config. Doing it inside _read_config_file() put a file copy and
+# rename on the per-request auth path, where a config that went missing between
+# requests would have made an ordinary GET rewrite files on disk. Logged from
+# lifespan() instead of here, because uvicorn configures logging after import.
+_MIGRATION_NOTICE = migrate_legacy_config()
 
 DEFAULT_ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:4173"]
 
@@ -77,15 +84,17 @@ def _read_config_file() -> dict:
 
     load_config() short-circuits to {"vault_root": ...} when LOCI_VAULT_ROOT is
     set, which would hide api_token/allowed_origins, so auth settings are read
-    straight from the file instead.
+    straight from the file instead. The legacy-config migration load_config()
+    would have run happens once at import; this is a pure read.
     """
-    if not CONFIG_PATH.exists():
+    path = config_path()
+    if not path.exists():
         return {}
     try:
-        with open(CONFIG_PATH) as f:
+        with open(path) as f:
             return yaml.safe_load(f) or {}
     except (OSError, yaml.YAMLError) as exc:
-        log.warning("Could not read %s: %s", CONFIG_PATH, exc)
+        log.warning("Could not read %s: %s", path, exc)
         return {}
 
 
@@ -107,14 +116,15 @@ def _load_or_create_token() -> str:
         return str(token)
 
     token = secrets.token_urlsafe(32)
-    if CONFIG_PATH.exists():
+    path = config_path()
+    if path.exists():
         config["api_token"] = token
         try:
-            with open(CONFIG_PATH, "w") as f:
+            with open(path, "w") as f:
                 yaml.dump(config, f, default_flow_style=False)
-            log.info("Generated a new API token and saved it to %s", CONFIG_PATH)
+            log.info("Generated a new API token and saved it to %s", path)
         except OSError as exc:
-            log.warning("Could not persist API token to %s: %s", CONFIG_PATH, exc)
+            log.warning("Could not persist API token to %s: %s", path, exc)
     return token
 
 
@@ -148,6 +158,8 @@ def _authorize_local_request(origin: str | None, token: str | None) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _VAULT_ROOT
+    if _MIGRATION_NOTICE:
+        log.warning(_MIGRATION_NOTICE)
     try:
         _VAULT_ROOT = _resolve_vault_root()
         graph.get(_VAULT_ROOT)
