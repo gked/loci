@@ -129,13 +129,41 @@ def ensure_docker() -> None:
 # ---------------------------------------------------------------------------
 
 def ask_vault_path() -> Path:
+    """
+    Ask for the vault location. No default — see prompt_vault_root() in
+    server/tools/vault_init.py, which this mirrors so the two wizards agree
+    about what a vault path is. The path is bind-mounted into the container,
+    so it belongs somewhere the user keeps, not somewhere in this checkout.
+    """
     print("\nStep 2 — Vault location")
-    default = PROJECT_ROOT / "knowledge-vault"
-    raw = ask("  Where should the vault live?", str(default))
-    path = Path(raw).expanduser().resolve()
-    path.mkdir(parents=True, exist_ok=True)
-    print(f"  Vault path: {path}")
-    return path
+    print("  This directory is mounted into the container and holds your data,")
+    print("  so it has to be a path you choose — there is no default.")
+    while True:
+        try:
+            raw = input("  Where should the vault live? (absolute path, required): ").strip()
+        except EOFError:
+            print()
+            sys.exit("  No vault path given. Re-run this script on a terminal.")
+        if not raw:
+            print("  A vault path is required — there is no default.")
+            continue
+        try:
+            path = Path(raw).expanduser()
+        except (RuntimeError, KeyError):
+            # No such user, or no home directory to expand ~ against.
+            print(f"  Could not work out what {raw} expands to. Start from / or ~/.")
+            continue
+        if not path.is_absolute():
+            print(f"  {path} is not an absolute path. Start from / or ~.")
+            continue
+        path = path.resolve()
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            print(f"  Cannot create {path}: {exc}")
+            continue
+        print(f"  Vault path: {path}")
+        return path
 
 
 # ---------------------------------------------------------------------------

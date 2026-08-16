@@ -188,18 +188,77 @@ def reseed_meta(vault_root: Path) -> None:
         print(f"  Re-seeded: {dest}")
 
 
+def prompt_optional(text: str) -> str:
+    """
+    Ask for something that may be left blank.
+
+    EOF means the same thing as an empty line here: skip it. That is what makes
+    `echo /path/to/vault | loci-setup` work — the vault path is consumed, and
+    the optional sync prompts that follow are simply skipped instead of dying on
+    a bare EOFError after the user has already given the one required answer.
+    """
+    try:
+        return input(text).strip()
+    except EOFError:
+        print()
+        return ""
+
+
+def prompt_vault_root() -> Path:
+    """
+    Ask for the vault location. There is deliberately no default.
+
+    Any default we could pick would be wrong: a path next to this file lands in
+    the uv cache that uvx wipes on every update, and a guess like ~/loci would
+    quietly put the vault somewhere the user never syncs. So keep asking until
+    an absolute path is given. `~` is expanded, since a shell is not doing it.
+
+    Every rejection re-prompts. This is the one answer setup cannot proceed
+    without, so a typo must never end the run — including a typo in the tilde
+    (`~typo/vault`), which raises rather than returning something unusable, and
+    a path that cannot be created, which would otherwise only surface after the
+    config was written and leave no way back to this prompt.
+    """
+    while True:
+        try:
+            raw = input("Where should the vault live? (absolute path, required): ").strip()
+        except EOFError:
+            raise SystemExit(
+                "\nNo vault path given. Run setup on a terminal, or set "
+                "vault_root in " + str(config_path()) + " by hand."
+            )
+        if not raw:
+            print("  A vault path is required — there is no default.")
+            continue
+        try:
+            candidate = Path(raw).expanduser()
+        except (RuntimeError, KeyError):
+            # No such user, or no home directory to expand ~ against.
+            print(f"  Could not work out what {raw} expands to. Start from / or ~/.")
+            continue
+        if not candidate.is_absolute():
+            print(f"  {candidate} is not an absolute path. Start from / or ~.")
+            continue
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            print(f"  Cannot create {candidate}: {exc}")
+            continue
+        return candidate
+
+
 def setup_interactive() -> dict:
     """Interactive first-run setup flow."""
     print("\nLoci is not configured yet. Let's set it up.\n")
 
-    default_vault = Path(__file__).parent.parent / "knowledge-vault"
-    vault_input = input(f"Where should the vault live? (default: {default_vault}): ").strip()
-    vault_root = Path(vault_input) if vault_input else default_vault
+    vault_root = prompt_vault_root()
 
-    remote = input("rclone remote name for sync (e.g. nextcloud, dropbox — leave blank to skip): ").strip()
+    remote = prompt_optional(
+        "rclone remote name for sync (e.g. nextcloud, dropbox — leave blank to skip): "
+    )
     remote_path = ""
     if remote:
-        remote_path = input("Path on the remote (default: loci): ").strip() or "loci"
+        remote_path = prompt_optional("Path on the remote (default: loci): ") or "loci"
 
     config = {
         "vault_root": str(vault_root),
@@ -449,11 +508,16 @@ def init(force: bool = False) -> dict:
         return existing
 
     config = setup_interactive()
-    save_config(config)
 
+    # Build the vault before saving the config, not after. A config pointing at
+    # a vault that could not be created is worse than no config at all: the next
+    # run takes the "already configured" branch above and fails there, with no
+    # way back to the prompt short of editing the file by hand.
     vault_root = Path(config["vault_root"])
     print(f"\nCreating vault structure at {vault_root}...")
     create_vault_structure(vault_root)
+
+    save_config(config)
 
     print(f"\nLoci is ready. Vault at: {vault_root}\n")
     return config

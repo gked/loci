@@ -568,13 +568,118 @@ def test_setup_interactive_with_vault_and_remote(tmp_path, monkeypatch):
     assert config["meta_version"] == META_VERSION
 
 
-def test_setup_interactive_with_defaults(tmp_path, monkeypatch):
+def test_setup_interactive_remote_defaults(tmp_path, monkeypatch):
     from vault_init import setup_interactive
-    # Empty input → use defaults
-    monkeypatch.setattr("builtins.input", lambda _: "")
+    # Empty remote input → sync is skipped; the vault path is still required.
+    responses = iter([str(tmp_path / "vault"), "", ""])
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
     config = setup_interactive()
-    assert "knowledge-vault" in config["vault_root"]
+    assert config["vault_root"] == str(tmp_path / "vault")
     assert config["sync_remote"] is None
+    assert config["sync_remote_path"] == "loci"
+
+
+def test_setup_interactive_reprompts_until_vault_given(tmp_path, monkeypatch):
+    """Empty input must not fall back to a default — it must ask again."""
+    from vault_init import setup_interactive
+    vault_path = str(tmp_path / "vault")
+    responses = iter(["", "   ", vault_path, ""])
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
+    config = setup_interactive()
+    assert config["vault_root"] == vault_path
+
+
+def test_prompt_vault_root_rejects_relative_path(tmp_path, monkeypatch):
+    from vault_init import prompt_vault_root
+    responses = iter(["some/relative/vault", str(tmp_path / "vault")])
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
+    assert prompt_vault_root() == tmp_path / "vault"
+
+
+def test_prompt_vault_root_expands_tilde(tmp_path, monkeypatch):
+    from vault_init import prompt_vault_root
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr("builtins.input", lambda _: "~/loci/knowledge-vault")
+    assert prompt_vault_root() == tmp_path / "loci" / "knowledge-vault"
+
+
+def test_prompt_vault_root_reprompts_on_unexpandable_tilde(tmp_path, monkeypatch):
+    """A typo in the tilde must re-prompt, not abort setup with a traceback."""
+    from vault_init import prompt_vault_root
+    responses = iter(["~nosuchuser-typo/vault", str(tmp_path / "vault")])
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
+    assert prompt_vault_root() == tmp_path / "vault"
+
+
+def test_prompt_vault_root_reprompts_when_path_cannot_be_created(tmp_path, monkeypatch):
+    """
+    An uncreatable path must be caught here, while the user can still fix it.
+    Accepting it would persist it to the config, and the next run reports
+    'already configured' instead of asking again.
+    """
+    from vault_init import prompt_vault_root
+    blocker = tmp_path / "a-file"
+    blocker.write_text("not a directory", encoding="utf-8")
+    responses = iter([str(blocker / "vault"), str(tmp_path / "vault")])
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
+    assert prompt_vault_root() == tmp_path / "vault"
+
+
+def test_prompt_vault_root_creates_the_directory(tmp_path, monkeypatch):
+    from vault_init import prompt_vault_root
+    target = tmp_path / "nested" / "vault"
+    monkeypatch.setattr("builtins.input", lambda _: str(target))
+    assert prompt_vault_root() == target
+    assert target.is_dir()
+
+
+def test_prompt_vault_root_exits_on_eof(monkeypatch):
+    """Non-interactive stdin must fail with a message, not loop forever."""
+    from vault_init import prompt_vault_root
+
+    def raise_eof(_):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", raise_eof)
+    with pytest.raises(SystemExit):
+        prompt_vault_root()
+
+
+def test_setup_interactive_survives_eof_after_the_vault_path(tmp_path, monkeypatch):
+    """
+    `echo /path/to/vault | loci-setup` must complete. EOF on the optional sync
+    prompts means 'skip', not a traceback that throws away the path just given.
+    """
+    from vault_init import setup_interactive
+    vault_path = str(tmp_path / "vault")
+    responses = iter([vault_path])
+
+    def piped(_):
+        try:
+            return next(responses)
+        except StopIteration:
+            raise EOFError
+
+    monkeypatch.setattr("builtins.input", piped)
+    config = setup_interactive()
+    assert config["vault_root"] == vault_path
+    assert config["sync_remote"] is None
+
+
+def test_setup_interactive_never_defaults_inside_the_package(tmp_path, monkeypatch):
+    """
+    The old default lived in the installed package, which uvx wipes on update.
+
+    The empty first response is the point of the test: it is the input that used
+    to be answered by that default, so a reintroduced one shows up here.
+    """
+    from vault_init import setup_interactive
+    import vault_init
+    responses = iter(["", str(tmp_path / "vault"), ""])
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
+    config = setup_interactive()
+    package_dir = Path(vault_init.__file__).parent.parent
+    assert package_dir not in Path(config["vault_root"]).parents
 
 
 # ---------------------------------------------------------------------------
@@ -619,6 +724,27 @@ def test_init_no_config_creates_new(tmp_path, fake_config_path, monkeypatch):
     assert result["vault_root"] == vault_path
     assert fake_config_path.exists()
     assert Path(vault_path).is_dir()
+
+
+def test_init_writes_no_config_when_the_vault_cannot_be_built(
+    tmp_path, fake_config_path, monkeypatch
+):
+    """
+    A config saved for a vault that failed to build is unrecoverable: the next
+    run reports 'already configured' and fails the same way, without prompting.
+    """
+    from vault_init import init
+    vault_path = str(tmp_path / "new-vault")
+    responses = iter([vault_path, "", ""])
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
+
+    def boom(_root):
+        raise OSError(30, "Read-only file system")
+
+    monkeypatch.setattr(vault_init, "create_vault_structure", boom)
+    with pytest.raises(OSError):
+        init()
+    assert not fake_config_path.exists()
 
 
 # ---------------------------------------------------------------------------

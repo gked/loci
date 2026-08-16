@@ -237,7 +237,8 @@ uv run setup.py
 
 This will:
 - Install dependencies via uv
-- Ask where the vault should live (default: `vault/` inside the project)
+- Ask where the vault should live — an absolute path, required, no default
+  (keep it outside the checkout; `~` is expanded for you)
 - Ask which rclone remote to use, if you want one
 - Create the vault folder structure and seed meta dictionaries
 - Register the MCP server with Claude Code and Claude Desktop
@@ -326,7 +327,7 @@ uv run setup_docker.py
 
 The script will:
 - Check for Docker or OrbStack, and offer to install one via Homebrew if neither is found
-- Ask where the vault should live
+- Ask where the vault should live — an absolute path, required, no default
 - Optionally point rclone at a remote for the daily backup (Nextcloud, Dropbox, Google Drive, S3, and more)
 - Build the image and start the container
 - Symlink the Loci skills into `~/.claude/skills/`
