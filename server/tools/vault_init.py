@@ -288,6 +288,26 @@ def _canonical_meta_complete(vault_root: Path) -> bool:
     return all((vault_root / "meta" / name).exists() for name in META_FILES)
 
 
+def _meta_needs_upgrade(vault_root: Path) -> bool:
+    """
+    True when an existing vault's canonical meta files are behind the packaged
+    ones and have to be overwritten.
+
+    Must be called *before* create_vault_structure(): that fills in whatever is
+    missing, which makes an out-of-date vault look complete.
+    """
+    if not (vault_root / "meta").is_dir():
+        return False  # nothing seeded yet — seeding writes the current files
+    current = read_vault_meta_version(vault_root)
+    if current is not None:
+        return current < META_VERSION
+    # No marker at all. A complete canonical set is a vault the local wizard
+    # set up before markers existed: adopt it. Overwriting would take
+    # tag-dictionary.md and foreign-definitions.md with it, and those are the
+    # user's to edit. Same reasoning as ensure_env_vault().
+    return not _canonical_meta_complete(vault_root)
+
+
 def describe_vault_location(vault_root: Path) -> str:
     """
     Describe the vault path in terms the user can act on.
@@ -445,7 +465,7 @@ def check_meta_version() -> str | None:
 def _check_meta_version() -> str | None:
     vault_root_env = os.environ.get("LOCI_VAULT_ROOT")
     if vault_root_env:
-        return ensure_env_vault(Path(vault_root_env))
+        return ensure_env_vault(Path(vault_root_env).expanduser())
     # The migration renames a file the user may still be pointing tools at
     # (sync.sh, their own scripts), so its notice rides out with whatever else
     # startup has to say rather than being dropped.
@@ -458,7 +478,12 @@ def _check_meta_version() -> str | None:
     configured_root = config.get("vault_root")
     if not configured_root:
         return migration_notice
-    vault_root = Path(configured_root)
+    # expanduser() to match resolve_configured_root() and api._vault_root().
+    # A hand-written `vault_root: ~/vault` — which prompt_vault_root's own EOF
+    # message tells the user to write — otherwise passes ensure_ready()'s
+    # is_dir() check against the expanded path and then reseeds into a literal
+    # ./~/vault/meta relative to the cwd.
+    vault_root = Path(configured_root).expanduser()
     vault_meta_version = config.get("meta_version")
     if vault_meta_version is None or vault_meta_version < META_VERSION:
         reseed_meta(vault_root)
@@ -478,6 +503,253 @@ def _check_meta_version() -> str | None:
     if read_vault_meta_version(vault_root) != META_VERSION and (vault_root / "meta").is_dir():
         write_vault_meta_version(vault_root, META_VERSION)
     return migration_notice
+
+
+# ---------------------------------------------------------------------------
+# Readiness
+#
+# The MCP server cannot prompt: it is a subprocess talking JSON-RPC over stdio,
+# with no channel to the user that isn't a tool result. So a server that has no
+# vault yet has to fail every vault-touching tool in a way the *model* can act
+# on, and the model asks on the server's behalf. These two codes are that
+# contract — they are matched on by the model, so treat them as API.
+# ---------------------------------------------------------------------------
+
+NOT_CONFIGURED = "LOCI_NOT_CONFIGURED"
+VAULT_UNREACHABLE = "LOCI_VAULT_UNREACHABLE"
+
+
+class VaultNotReady(RuntimeError):
+    """
+    Raised by ensure_ready() when no vault can be used yet.
+
+    Raised rather than returned because the tools it guards return str, dict,
+    and list[dict] alike — there is no one success shape to put an error key
+    into, and a sentinel dict would have to be understood by 29 call sites.
+    FastMCP surfaces the exception text to the model either way.
+    """
+
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(f"{code}: {message}")
+
+
+_NOT_CONFIGURED_HELP = (
+    "Loci has no vault configured, so there is nothing to read or write yet. "
+    "Ask the user for an absolute path where their vault should live, then "
+    "call set_vault_root with it. Do not guess a path and do not pick a "
+    "default — the location is the user's choice, and a wrong guess puts their "
+    "notes somewhere they will never look."
+)
+
+
+def _pinned_vault_root() -> Optional[str]:
+    """The LOCI_VAULT_ROOT override, if a managed deployment set one."""
+    return os.environ.get("LOCI_VAULT_ROOT") or None
+
+
+def resolve_configured_root() -> tuple[Optional[Path], bool]:
+    """
+    Resolve the vault root without touching the filesystem.
+
+    Returns (root, pinned). `pinned` means the root came from LOCI_VAULT_ROOT —
+    a managed deployment (Docker), where the path is fixed by whoever wrote the
+    -v flag and must not be changed from chat.
+    """
+    pinned = _pinned_vault_root()
+    if pinned:
+        return Path(pinned).expanduser(), True
+    config = load_config() or {}
+    configured = config.get("vault_root")
+    if not configured:
+        return None, False
+    return Path(configured).expanduser(), False
+
+
+# Readiness is per-vault-root, not a plain bool: the tests move
+# LOCI_VAULT_ROOT between temp vaults, and set_vault_root changes it at
+# runtime. Keying on the resolved path means a moved vault re-checks instead of
+# reporting the previous one's state.
+_ready_for: Optional[str] = None
+
+
+def reset_ready_state() -> None:
+    """Forget that readiness was established. For tests and set_vault_root."""
+    global _ready_for
+    _ready_for = None
+
+
+def ensure_ready() -> Optional[str]:
+    """
+    Confirm a usable vault exists, seeding and upgrading it on first call.
+
+    Returns a notice string when the first call had something to report
+    (meta files seeded or upgraded), else None. Raises VaultNotReady when
+    there is no vault to use.
+
+    The work runs at most once per vault root per process — this sits in front
+    of every vault-touching tool, so it has to be cheap on the 2nd call
+    onwards.
+    """
+    global _ready_for
+
+    root, pinned = resolve_configured_root()
+    if root is None:
+        raise VaultNotReady(NOT_CONFIGURED, _NOT_CONFIGURED_HELP)
+
+    if _ready_for == str(root):
+        return None
+
+    if not root.is_dir():
+        if pinned:
+            raise VaultNotReady(
+                VAULT_UNREACHABLE,
+                f"The configured vault path {root} does not exist inside this "
+                f"deployment. LOCI_VAULT_ROOT is set, so this is a managed "
+                f"install and the path cannot be changed from chat — it almost "
+                f"always means the volume was not mounted. Tell the user to "
+                f"re-run the container with -v /host/path/vault:{root}.",
+            )
+        raise VaultNotReady(
+            VAULT_UNREACHABLE,
+            f"The configured vault path {root} does not exist. It may be on a "
+            f"drive that is not mounted, or in a sync folder that has not "
+            f"downloaded yet. Ask the user whether to wait for that path to "
+            f"come back or to point Loci somewhere else with set_vault_root — "
+            f"do not silently create a new vault at a path they already chose.",
+        )
+
+    try:
+        notice = check_meta_version()
+    finally:
+        # Record the attempt even when seeding raised. A vault we cannot write
+        # to — a read-only mount, or one owned by another uid — fails the same
+        # way on every call, and the caller treats that as a notice rather than
+        # a failure. Without this, _ready_for is never set, so every guarded
+        # tool retries the seeding and appends the same sentence to the notice
+        # again. Callers that want a genuine retry call reset_ready_state().
+        _ready_for = str(root)
+    return notice
+
+
+def set_vault_root(path: str, create: bool = True) -> dict:
+    """
+    Point Loci at a vault and make it usable in one call.
+
+    Records the path, creates the directory when asked, seeds or upgrades the
+    meta files, and clears the caches — so the tool call after this one works,
+    with no restart. Doing only half of it (record now, seed on next use) would
+    push the seeding error onto some later unrelated tool, where neither the
+    user nor the model has the context to make sense of it.
+
+    create=False adopts an existing vault and refuses anything else, writing
+    nothing on the way out.
+
+    Returns {vault_root, created, configured_at}. Raises ValueError on a path
+    that cannot be used, and VaultNotReady when the deployment pins the root.
+    """
+    pinned = _pinned_vault_root()
+    if pinned:
+        raise VaultNotReady(
+            VAULT_UNREACHABLE,
+            f"This deployment pins the vault to {pinned} through "
+            f"LOCI_VAULT_ROOT, so it cannot be changed from chat. Whoever runs "
+            f"the container controls the path — a different one here would "
+            f"write to the container's own filesystem and be lost on the next "
+            f"restart. Tell the user to change the -v mount instead.",
+        )
+
+    raw = (path or "").strip()
+    if not raw:
+        raise ValueError("A vault path is required. Ask the user where the vault should live.")
+    try:
+        root = Path(raw).expanduser()
+    except (RuntimeError, KeyError):
+        raise ValueError(f"Could not work out what {raw} expands to. Ask for a path starting with / or ~/.")
+    if not root.is_absolute():
+        raise ValueError(f"{root} is not an absolute path. Ask for one starting with / or ~/.")
+    if root.exists() and not root.is_dir():
+        raise ValueError(f"{root} is a file, not a directory. Ask for a directory path.")
+
+    created = not root.exists()
+    # create=False means "touch nothing" — not just "don't mkdir". A path that
+    # exists but is not a vault is the more likely mistake of the two: seeding
+    # it would put a meta/ skeleton in the user's photos folder and three new
+    # directories beside it, while reporting created=False as if an existing
+    # vault had been adopted.
+    if not create and (created or not (root / "meta").is_dir()):
+        raise ValueError(
+            f"{root} is not an existing Loci vault. Confirm with the user that "
+            f"it should be set up as one, then call set_vault_root again with "
+            f"create=True."
+        )
+
+    # Decide before create_vault_structure() fills the gaps in.
+    needs_upgrade = _meta_needs_upgrade(root)
+
+    try:
+        # print()s its way through the seeding, and under stdio that is the
+        # JSON-RPC channel.
+        with contextlib.redirect_stdout(io.StringIO()):
+            create_vault_structure(root)
+            if needs_upgrade:
+                # create_vault_structure only writes files that are *missing*,
+                # so adopting a vault seeded at an older META_VERSION leaves its
+                # dictionaries untouched. Stamping the current version on that
+                # without reseeding would make every later check_meta_version()
+                # see it as up to date, and the vault could never be upgraded.
+                reseed_meta(root)
+            write_vault_meta_version(root, META_VERSION)
+    except OSError as exc:
+        raise ValueError(f"Cannot set up a vault at {root}: {exc}")
+
+    configured_at = datetime.now(timezone.utc).isoformat()
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            # load_config() rather than a raw read of config_path(): it runs the
+            # legacy-config migration first. Reading the destination directly
+            # would write a fresh config over a pre-#65 install and drop its
+            # sync_remote and created_at, stranding the old file unmigrated.
+            config = load_config() or {}
+            config.update({
+                "vault_root": str(root),
+                "meta_version": META_VERSION,
+                "version": config.get("version", 1),
+                "created_at": config.get("created_at", configured_at),
+            })
+            save_config(config)
+    except OSError as exc:
+        raise ValueError(
+            f"The vault at {root} is set up, but its location could not be "
+            f"recorded in {config_path()}: {exc}. Loci will not find it until "
+            f"that file is writable."
+        )
+
+    # The registries and the graph cache a vault root of their own. Without
+    # this the very next tool call answers from the vault we just left.
+    reset_ready_state()
+    _reset_vault_caches()
+
+    return {
+        "vault_root": str(root),
+        "created": created,
+        "configured_at": configured_at,
+    }
+
+
+def _reset_vault_caches() -> None:
+    """Drop every singleton that has a vault root baked into it."""
+    import nx_graph
+    from type_registry import reset_registry
+    from relation_registry import reset_relation_registry
+    from scheme_registry import reset_scheme_registry
+
+    nx_graph._graph = None
+    nx_graph._built_at = 0.0
+    reset_registry()
+    reset_relation_registry()
+    reset_scheme_registry()
 
 
 def init(force: bool = False) -> dict:

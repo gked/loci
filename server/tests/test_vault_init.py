@@ -928,10 +928,11 @@ def test_save_config_creates_the_config_directory(tmp_path, monkeypatch):
 
 def test_suite_never_resolves_the_developers_real_config():
     """
-    Regression guard. loci_mcp/server.py calls check_meta_version() at import,
-    which runs during collection — before any fixture. conftest.py therefore
-    sets LOCI_CONFIG at import time; if that is ever removed, a test run
-    migrates and rewrites the developer's own config.
+    Regression guard. Anything that resolves config during collection — an
+    import-time load_config(), a module-level constant — runs before any
+    fixture can redirect it. conftest.py therefore sets LOCI_CONFIG at import
+    time; if that is ever removed, a test run migrates and rewrites the
+    developer's own config.
 
     Asserting on the value captured at *this module's* import, not on
     os.environ: the autouse isolated_config fixture repoints LOCI_CONFIG at a

@@ -18,7 +18,21 @@ Retrieves and synthesizes content from the Loci vault using the graph layer.
 
 ## Step 0 — Verify vault is reachable
 
-Call `loci__list_vault` with no arguments. If it errors, tell the user:
+Call `loci__list_vault` with no arguments. If it errors, read the error code:
+
+**`LOCI_NOT_CONFIGURED`** — Loci has never been set up. Ask the user where their
+vault should live, then call `loci__set_vault_root(path=<their answer>)` and
+retry. No restart is needed. **Never guess a path and never offer a default** —
+the vault holds everything they save, and a location they did not choose is one
+they will never find again.
+
+**`LOCI_VAULT_UNREACHABLE`** — the vault is configured but its directory is
+missing right now, usually an unmounted drive or a sync folder that has not come
+down yet. Name the missing path and ask whether to wait or to point Loci
+elsewhere with `loci__set_vault_root`. **Do not create a new vault at that
+path** — the real one is probably just offline.
+
+**Anything else** — tell the user:
 
 ```
 The Loci vault is not reachable. Please run:

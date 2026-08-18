@@ -36,6 +36,7 @@ import nx_graph as _nx_graph  # noqa: E402  (must follow sys.path insert)
 from type_registry import reset_registry as _reset_type_registry  # noqa: E402
 from relation_registry import reset_relation_registry as _reset_relation_registry  # noqa: E402
 from scheme_registry import reset_scheme_registry as _reset_scheme_registry  # noqa: E402
+from vault_init import reset_ready_state as _reset_ready_state  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +63,10 @@ def tmp_vault(tmp_path):
     Copy the static fixture vault to a fresh temp directory.
     Sets LOCI_VAULT_ROOT so api.py and nx_graph pick up the right root.
     Resets the graph singleton before and after so each test gets a clean build.
+
+    Readiness is reset alongside them: ensure_ready() caches the root it last
+    verified, and every test here gets a different one, so a stale cache would
+    let one test's vault vouch for the next test's.
     """
     vault_path = tmp_path / "vault"
     shutil.copytree(FIXTURE_VAULT, vault_path)
@@ -72,6 +77,7 @@ def tmp_vault(tmp_path):
     _reset_type_registry()
     _reset_relation_registry()
     _reset_scheme_registry()
+    _reset_ready_state()
 
     yield vault_path
 
@@ -81,6 +87,7 @@ def tmp_vault(tmp_path):
     _reset_type_registry()
     _reset_relation_registry()
     _reset_scheme_registry()
+    _reset_ready_state()
 
 
 @pytest.fixture

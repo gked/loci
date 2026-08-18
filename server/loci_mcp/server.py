@@ -24,6 +24,9 @@ Claude Desktop registration (~/Library/Application Support/Claude/claude_desktop
 Run setup.py to register automatically. Restart Claude Code / Claude Desktop after any config change.
 """
 
+import contextlib as _contextlib
+import functools
+import io as _io
 import os
 import sys
 from pathlib import Path
@@ -35,76 +38,141 @@ import api as loci
 import nx_graph as graph
 import asset_registry as ar
 from mcp.server.fastmcp import FastMCP
-from vault_init import check_meta_version
+from vault_init import (
+    VaultNotReady,
+    ensure_ready,
+    set_vault_root as _set_vault_root,
+)
 
-_startup_notice: str | None
-try:
-    _startup_notice = check_meta_version()
-except Exception as _meta_exc:
-    # Seeding writes to the vault, which may be read-only or owned by another
-    # uid (a Docker mount, typically). That must not stop the server from
-    # starting — every read still works off the reference copies.
-    _startup_notice = (
-        f"Vault meta files could not be seeded or updated: {_meta_exc}. "
-        f"Loci is running on its built-in reference copies; check that the "
-        f"vault directory is writable."
-    )
-    print(f"[loci] Vault meta setup failed (skipped): {_meta_exc}", file=sys.stderr)
+# Pending notice, drained by list_vault. Filled in when the vault is first
+# reached, not at import: an install that has never been configured has no
+# vault to seed, lint, or recover into, and importing this module must not be
+# where it finds that out. uvx runs the server before the user has answered a
+# single question.
+_startup_notice: str | None = None
+_first_ready_work_done = False
 
-# Run linter at startup to catch manual edits made outside MCP.
-# Only errors (not warnings) are surfaced — warnings are available via lint_vault tool.
-try:
-    import api as _api_lint
-    _lint_result = _api_lint.lint_vault()
-    _lint_errors = _lint_result.get("errors", [])
-    if _lint_errors:
-        _error_summary = "; ".join(
-            f"{e['path']}: [{e['code']}] {e['message']}"
-            for e in _lint_errors[:5]
+
+def _run_first_ready_work() -> None:
+    """
+    The once-per-vault startup chores, run the first time a vault is reached.
+
+    Each one is wrapped on its own: a vault that cannot be linted must still be
+    readable, and a failed asset recovery must not take the linter down with
+    it. None of them may raise into a tool call.
+    """
+    global _startup_notice, _first_ready_work_done
+    _first_ready_work_done = True
+    notices = [_startup_notice]
+
+    # Catch manual edits made outside MCP. Only errors are surfaced here;
+    # warnings are available via the lint_vault tool.
+    try:
+        _lint_errors = loci.lint_vault().get("errors", [])
+        if _lint_errors:
+            _error_summary = "; ".join(
+                f"{e['path']}: [{e['code']}] {e['message']}"
+                for e in _lint_errors[:5]
+            )
+            _overflow = f" (+{len(_lint_errors) - 5} more)" if len(_lint_errors) > 5 else ""
+            notices.append(
+                f"Vault linter found {len(_lint_errors)} error(s) — "
+                f"call lint_vault for the full report. "
+                f"First errors: {_error_summary}{_overflow}"
+            )
+    except Exception as _lint_exc:  # pragma: no cover
+        print(f"[loci] Startup linter failed (skipped): {_lint_exc}", file=sys.stderr)
+
+    # Recover any interrupted asset saves from previous runs.
+    try:  # pragma: no cover
+        _recovered = ar.recover_pending(
+            loci._vault_root().parent, loci._vault_root(), _write_vault_proxy
         )
-        _overflow = f" (+{len(_lint_errors) - 5} more)" if len(_lint_errors) > 5 else ""
-        _lint_notice = (
-            f"Vault linter found {len(_lint_errors)} error(s) — "
-            f"call lint_vault for the full report. "
-            f"First errors: {_error_summary}{_overflow}"
-        )
-        _startup_notice = "\n".join(filter(None, [_startup_notice, _lint_notice]))
-except Exception as _lint_exc:
-    import sys as _sys
-    print(f"[loci] Startup linter failed (skipped): {_lint_exc}", file=_sys.stderr)
+        if _recovered:
+            print(
+                f"[loci] Recovered {len(_recovered)} interrupted asset write(s): {_recovered}",
+                file=sys.stderr,
+            )
+    except Exception as _e:  # pragma: no cover
+        print(f"[loci] Asset recovery skipped: {_e}", file=sys.stderr)
 
-# Recover any interrupted asset saves from previous runs
-try:  # pragma: no cover
-    import contextlib as _contextlib
-    import io as _io
+    _startup_notice = "\n".join(filter(None, notices)) or None
+
+
+def _write_vault_proxy(vault_root, uid, vault_node):  # pragma: no cover
     from write_file import write_item as _write_item
 
-    def _write_vault_proxy(vault_root, uid, vault_node):  # pragma: no cover
-        with _contextlib.redirect_stdout(_io.StringIO()):
-            result = _write_item(
-                type="document",
-                title=vault_node.get("title", uid),
-                body=f"# {vault_node.get('title', uid)}\n",
-                tags=vault_node.get("tags"),
-                domains=vault_node.get("domains"),
-                summary=vault_node.get("summary"),
-                relations=vault_node.get("relations"),
-                extra_fields={
-                    "uid": uid,
-                    "has_asset": vault_node.get("has_asset", []),
-                    "status": "evergreen",
-                },
-                skip_duplicate_check=True,
-            )
-        return result.get("path", "")
+    with _contextlib.redirect_stdout(_io.StringIO()):
+        result = _write_item(
+            type="document",
+            title=vault_node.get("title", uid),
+            body=f"# {vault_node.get('title', uid)}\n",
+            tags=vault_node.get("tags"),
+            domains=vault_node.get("domains"),
+            summary=vault_node.get("summary"),
+            relations=vault_node.get("relations"),
+            extra_fields={
+                "uid": uid,
+                "has_asset": vault_node.get("has_asset", []),
+                "status": "evergreen",
+            },
+            skip_duplicate_check=True,
+        )
+    return result.get("path", "")
 
-    _recovered = ar.recover_pending(loci._vault_root().parent, loci._vault_root(), _write_vault_proxy)
-    if _recovered:
-        import sys as _sys
-        print(f"[loci] Recovered {len(_recovered)} interrupted asset write(s): {_recovered}", file=_sys.stderr)
-except Exception as _e:  # pragma: no cover
-    import sys as _sys
-    print(f"[loci] Asset recovery skipped: {_e}", file=_sys.stderr)  # pragma: no cover
+
+def _check_ready() -> None:
+    """
+    Establish readiness, collecting anything the first call has to report.
+
+    Seeding writes to the vault, which may be read-only or owned by another uid
+    (a Docker mount, typically). That is a notice, not a failure: every read
+    still works off the built-in reference copies, so the tool proceeds.
+    """
+    global _startup_notice
+    try:
+        notice = ensure_ready()
+    except VaultNotReady:
+        raise
+    except Exception as exc:
+        notice = (
+            f"Vault meta files could not be seeded or updated: {exc}. "
+            f"Loci is running on its built-in reference copies; check that the "
+            f"vault directory is writable."
+        )
+        print(f"[loci] Vault meta setup failed (skipped): {exc}", file=sys.stderr)
+    if notice:
+        _startup_notice = "\n".join(filter(None, [_startup_notice, notice]))
+    if not _first_ready_work_done:
+        _run_first_ready_work()
+
+
+def requires_vault(fn: Callable) -> Callable:
+    """
+    Refuse a tool that needs a vault until there is one.
+
+    Applied under @mcp.tool() so FastMCP still reads the real signature
+    through functools.wraps, leaving the published schema unchanged.
+
+    Guarding is deliberately broad rather than letting each tool fail on its
+    own terms. The registries fall back to the packaged reference copies when
+    vault/meta/<file> is missing, so an unguarded read_meta or validate_type on
+    a machine with no vault at all answers *plausibly* off those copies and the
+    model never learns to ask. A wrong answer is worse than a refusal that says
+    what to do next.
+    """
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        _check_ready()
+        return fn(*args, **kwargs)
+
+    # An explicit marker, not functools.wraps' __wrapped__: test_readiness.py
+    # asserts every vault-touching tool is guarded, and __wrapped__ is set by
+    # any wraps-based decorator, so a tool wrapped by a cache or a timer would
+    # pass that check while being completely unguarded.
+    wrapper.__loci_guarded__ = True
+    return wrapper
+
 
 mcp = FastMCP("loci")
 
@@ -116,6 +184,46 @@ def generate_uid() -> str:
 
 
 @mcp.tool()
+def set_vault_root(path: str, create: bool = True) -> dict:
+    """
+    Point Loci at the user's vault directory. Returns {vault_root, created, configured_at}.
+
+    Call this when a tool has failed with LOCI_NOT_CONFIGURED, or when the user
+    asks to move Loci to a different vault. It records the path, creates and
+    seeds the directory, and takes effect immediately — no restart, and the
+    call that failed can simply be retried.
+
+    Ask the user for the path first. Never guess one and never offer a default:
+    the vault holds everything they save, and a path they did not choose is a
+    vault they will never find again. If they are unsure, ask whether they keep
+    notes in a synced folder (Dropbox, Nextcloud, iCloud) and suggest a `vault`
+    directory inside it — but let them confirm the full path.
+
+    Args:
+        path: Absolute path to the vault directory (~ is expanded).
+        create: Create and seed the directory. Pass False to adopt a vault that
+                already exists and nothing else: any other path — missing, or
+                there but not a vault — fails without writing anything, so you
+                can confirm it with the user first.
+
+    Fails when the deployment sets LOCI_VAULT_ROOT: that is a managed install
+    (typically Docker) where the operator fixed the path with a -v mount, and
+    it cannot be changed from chat.
+    """
+    global _startup_notice, _first_ready_work_done
+    try:
+        result = _set_vault_root(path, create)
+    except ValueError as e:
+        return {"error": str(e)}
+    # A different vault has its own lint state and its own interrupted writes,
+    # and the notice queued for the old one no longer describes anything.
+    _startup_notice = None
+    _first_ready_work_done = False
+    return result
+
+
+@mcp.tool()
+@requires_vault
 def check_duplicate(type: str, title: str, url: str = None) -> dict:
     """
     Check whether a similar vault item already exists before writing.
@@ -126,6 +234,7 @@ def check_duplicate(type: str, title: str, url: str = None) -> dict:
 
 
 @mcp.tool()
+@requires_vault
 def write_vault(
     type: str,
     title: str,
@@ -168,6 +277,7 @@ def write_vault(
 
 
 @mcp.tool()
+@requires_vault
 def delete_vault(path: str) -> dict:
     """
     Delete a vault item permanently.
@@ -185,6 +295,7 @@ def delete_vault(path: str) -> dict:
 
 
 @mcp.tool()
+@requires_vault
 def patch_vault(path: str, updates: dict, body: str = None) -> dict:
     """
     Patch frontmatter fields on an existing vault item. updated_at is always bumped.
@@ -223,6 +334,7 @@ def patch_vault(path: str, updates: dict, body: str = None) -> dict:
 
 
 @mcp.tool()
+@requires_vault
 def read_vault(path: str) -> str:
     """
     Read a vault file.
@@ -237,6 +349,7 @@ def read_vault(path: str) -> str:
 
 
 @mcp.tool()
+@requires_vault
 def list_vault(type: str = None) -> dict:
     """
     List items in a vault type folder. Omit type to list all folders.
@@ -278,7 +391,17 @@ def read_meta(file: str) -> str:
                             how relations and schemes work, how to extend them. Read this
                             when the user asks how the ontology works rather than what a
                             specific type requires — for structure, read ontology instead.
+    config                — where Loci is pointed and which version it runs. Answerable
+                            with no vault configured, so it also tells you *why* the other
+                            tools are refusing.
     """
+    # Every key but "config" reads the vault, and the registries fall back to
+    # the packaged reference copies when it is missing — so without this guard
+    # an unconfigured server answers those keys from its own defaults and looks
+    # configured. "config" is the exception on purpose: it is how the model
+    # sees the empty vault_root behind a LOCI_NOT_CONFIGURED refusal.
+    if file != "config":
+        _check_ready()
     try:
         return loci.read_meta(file)
     except (ValueError, FileNotFoundError) as e:
@@ -296,6 +419,7 @@ def fetch_url_metadata(url: str) -> dict:
 
 
 @mcp.tool()
+@requires_vault
 def scan_directory(path: str, recursive: bool = False) -> dict:
     """
     Scan a directory for files and identify which already have vault nodes.
@@ -348,6 +472,7 @@ def write_skill(content: str, skill: str = "loci-save") -> str:
 
 
 @mcp.tool()
+@requires_vault
 def validate_type(name: str, extends: str, fields: list[dict] = None) -> dict:
     """
     Validate a proposed user-defined type before writing it to ontology-user.yaml.
@@ -364,6 +489,7 @@ def validate_type(name: str, extends: str, fields: list[dict] = None) -> dict:
 
 
 @mcp.tool()
+@requires_vault
 def define_type(
     name: str,
     extends: str,
@@ -395,6 +521,7 @@ def define_type(
 
 
 @mcp.tool()
+@requires_vault
 def define_relation(
     name: str,
     description: str,
@@ -425,6 +552,7 @@ def define_relation(
 
 
 @mcp.tool()
+@requires_vault
 def lint_vault() -> dict:
     """
     Lint all vault files against the Loci schema.
@@ -436,6 +564,7 @@ def lint_vault() -> dict:
 
 
 @mcp.tool()
+@requires_vault
 def write_meta(file: str, content: str) -> str:
     """
     Overwrite a vault meta file.
@@ -452,6 +581,7 @@ def write_meta(file: str, content: str) -> str:
 
 
 @mcp.tool()
+@requires_vault
 def query_neighbors(uid: str) -> list[dict]:
     """
     Return the direct neighbors of a vault node — one hop only.
@@ -463,6 +593,7 @@ def query_neighbors(uid: str) -> list[dict]:
 
 
 @mcp.tool()
+@requires_vault
 def query_related(uid: str, depth: int = 2) -> list[dict]:
     """
     Return all vault nodes within `depth` hops of the given uid.
@@ -474,6 +605,7 @@ def query_related(uid: str, depth: int = 2) -> list[dict]:
 
 
 @mcp.tool()
+@requires_vault
 def query_path(uid_from: str, uid_to: str) -> list[dict]:
     """
     Return the shortest path between two vault nodes as an ordered list.
@@ -485,6 +617,7 @@ def query_path(uid_from: str, uid_to: str) -> list[dict]:
 
 
 @mcp.tool()
+@requires_vault
 def find_nodes(
     type: str = None,
     tag: str = None,
@@ -537,6 +670,7 @@ def find_nodes(
 
 
 @mcp.tool()
+@requires_vault
 def search_vault(query: str, state: str | None = "active") -> list[dict]:
     """
     Search vault nodes by title and summary text (case-insensitive substring match).
@@ -553,6 +687,7 @@ def search_vault(query: str, state: str | None = "active") -> list[dict]:
 
 
 @mcp.tool()
+@requires_vault
 def resolve_asset(uid: str, format: str = None) -> dict:
     """
     Resolve an asset UID to its file path and metadata.
@@ -566,6 +701,7 @@ def resolve_asset(uid: str, format: str = None) -> dict:
 
 
 @mcp.tool()
+@requires_vault
 def query_recent(days: int = 30, limit: int = 20, state: str | None = "active") -> list[dict]:
     """
     Return the most recently updated vault nodes.
@@ -583,6 +719,7 @@ def query_recent(days: int = 30, limit: int = 20, state: str | None = "active") 
 
 
 @mcp.tool()
+@requires_vault
 def query_insights(limit: int = 10) -> list[dict]:
     """
     Surface vault nodes that bridge different domains.
@@ -598,6 +735,7 @@ def query_insights(limit: int = 10) -> list[dict]:
 
 
 @mcp.tool()
+@requires_vault
 def find_unregistered_assets() -> list[str]:
     """
     Find files in assets/ that have no registry entry.
@@ -608,6 +746,7 @@ def find_unregistered_assets() -> list[str]:
 
 
 @mcp.tool()
+@requires_vault
 def save_asset(
     format: str,
     mime_type: str,
@@ -696,6 +835,7 @@ def save_asset(
 
 
 @mcp.tool()
+@requires_vault
 def scan_inbox() -> dict:
     """
     Phase 1 of the inbox workflow: scan loci-stage/, classify all files,
@@ -713,6 +853,7 @@ def scan_inbox() -> dict:
 
 
 @mcp.tool()
+@requires_vault
 def get_inbox_plan() -> dict:
     """
     Return the current inbox plan and progress.
@@ -726,6 +867,7 @@ def get_inbox_plan() -> dict:
 
 
 @mcp.tool()
+@requires_vault
 def approve_inbox_plan() -> dict:
     """
     Approve the pending inbox plan to enable execution.
@@ -740,6 +882,7 @@ def approve_inbox_plan() -> dict:
 
 
 @mcp.tool()
+@requires_vault
 def execute_inbox_file_batch() -> dict:
     """
     Execute the next batch of file-category items from the approved plan.
@@ -757,6 +900,7 @@ def execute_inbox_file_batch() -> dict:
 
 
 @mcp.tool()
+@requires_vault
 def get_inbox_content_batch() -> dict:
     """
     Return the next batch of content-category items for Claude to process.
@@ -774,6 +918,7 @@ def get_inbox_content_batch() -> dict:
 
 
 @mcp.tool()
+@requires_vault
 def update_inbox_item(path: str, status: str, uid: str = None) -> dict:
     """
     Update a content-category item's status after Claude processes it.

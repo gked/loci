@@ -261,9 +261,11 @@ Recorded so the next person doesn't rediscover them the hard way.
   `datetime` objects back to `YYYY-MM-DDTHH:MM:SSZ` strings before dumping.
   Any new code that round-trips frontmatter must do the same or it will rewrite
   timestamp formats across the vault.
-- **Reseeding is silent and automatic.** `check_meta_version()` runs at server
-  startup and overwrites every `META_FILES` entry when the vault is behind.
-  Which version it compares against depends on the mode: a `config.yml` install
+- **Reseeding is silent and automatic.** `check_meta_version()` runs on the
+  first vault-touching tool call of a process — `requires_vault` → `ensure_ready()`,
+  once per vault root — and overwrites every `META_FILES` entry when the vault
+  is behind. `set_vault_root` does the same upgrade inline for the vault it
+  adopts. Which version it compares against depends on the mode: a `config.yml` install
   reads `meta_version` from the config, while `LOCI_VAULT_ROOT` (Docker) reads
   `meta/.meta-version` inside the vault, since the image's `config.yml` does not
   survive a restart. Both modes write the in-vault marker, so a vault can move
@@ -277,9 +279,10 @@ Recorded so the next person doesn't rediscover them the hard way.
 - **Seeding is skipped when the vault directory is absent**, rather than
   creating it. Under Docker a missing directory means the volume was not
   mounted, and seeding into the container's own filesystem would report success
-  for files discarded on the next run. `http_server.py` never calls
-  `check_meta_version` at all, so an HTTP-only vault is never seeded — reads
-  fall back to this directory, and `write_meta` creates `meta/` on demand.
+  for files discarded on the next run. `http_server.py` has no `requires_vault`
+  guard and never calls `check_meta_version` at all, so an HTTP-only vault is
+  never seeded — reads fall back to this directory, and `write_meta` creates
+  `meta/` on demand.
 
 ---
 

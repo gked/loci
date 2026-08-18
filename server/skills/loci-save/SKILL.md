@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 20
+skill_version: 21
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, topic, asset, or log — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 20`.
+This skill is at `skill_version: 21`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -52,7 +52,28 @@ Do not proceed.
 
 ### Step 0 — Verify vault is reachable
 
-Call `loci__list_vault` with no arguments. If it errors, tell the user:
+Call `loci__list_vault` with no arguments. If it errors, read the error code:
+
+**`LOCI_NOT_CONFIGURED`** — Loci has never been set up. Ask the user where their
+vault should live, then call `loci__set_vault_root(path=<their answer>)` and
+retry. No restart is needed. Ask a real question and wait for a real answer:
+
+> Loci isn't set up yet. Where should your vault live? Give me an absolute path
+> — if you keep notes in a synced folder (Dropbox, Nextcloud, iCloud), a `vault`
+> directory inside it is a good choice.
+
+**Never guess a path, and never offer a default.** The vault holds everything
+the user saves; a location they did not choose is one they will never find
+again. If they are unsure, help them decide — do not decide for them.
+
+**`LOCI_VAULT_UNREACHABLE`** — the vault is configured but its directory is not
+there right now. Usually an unmounted drive or a sync folder that has not come
+down yet. Tell the user which path is missing and ask whether to wait for it or
+point Loci somewhere else with `loci__set_vault_root`. **Do not create a new
+vault at that path** — that starts an empty second vault while the real one is
+merely offline.
+
+**Anything else** — tell the user:
 
 ```
 The Loci vault is not reachable. Please run:

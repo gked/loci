@@ -322,30 +322,28 @@ def test_delete_vault_directory_returns_error(tmp_vault):
 
 def test_list_vault_includes_startup_notice_once(tmp_vault, monkeypatch):
     monkeypatch.setattr(server, "_startup_notice", "meta updated to v3")
+    monkeypatch.setattr(server, "_first_ready_work_done", True)
     with patch("loci_mcp.server.loci.list_items", return_value={}):
         result = list_vault()
-    assert result["_notice"] == "meta updated to v3"
+    assert "meta updated to v3" in result["_notice"]
     assert server._startup_notice is None  # cleared after first show
 
 
-def test_import_survives_meta_setup_failure():
+def test_tool_call_survives_meta_setup_failure(tmp_vault, monkeypatch):
     """Seeding writes to the vault. A read-only mount, or one owned by another
-    uid, must leave the server running on the reference copies — not dead."""
-    import importlib
-    import vault_init
-
-    original = vault_init.check_meta_version
+    uid, must leave the tool working off the reference copies — not failing."""
+    monkeypatch.setattr(server, "_startup_notice", None)
+    monkeypatch.setattr(server, "_first_ready_work_done", True)
 
     def boom():
         raise PermissionError("Read-only file system: '/knowledge-vault/meta'")
 
-    vault_init.check_meta_version = boom
-    try:
-        reloaded = importlib.reload(server)
-        assert "Read-only file system" in (reloaded._startup_notice or "")
-    finally:
-        vault_init.check_meta_version = original
-        importlib.reload(server)
+    monkeypatch.setattr(server, "ensure_ready", boom)
+    with patch("loci_mcp.server.loci.list_items", return_value={"notes": []}):
+        result = list_vault()
+
+    assert result["notes"] == []          # the tool still answered
+    assert "Read-only file system" in result["_notice"]
 
 
 def test_fetch_url_metadata_returns_dict(tmp_vault):
