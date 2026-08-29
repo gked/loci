@@ -275,11 +275,9 @@ for s in loci-save loci-query loci-inbox loci-ingest-directory; do
 done
 ```
 
-> **Note:** `setup.py` also tries to install the skills, but still looks for them
-> under a `loci-skill/` directory that no longer exists, so it leaves dangling
-> symlinks. Use the loop above until that's fixed. The Docker wizard
-> (`setup_docker.py`) reads the correct `src/loci/skills/` path, but only installs
-> `loci-save` and `loci-query`.
+> **Note:** `setup.py` and the Docker wizard (`setup_docker.py`) also install
+> skills, but only `loci-save` and `loci-query`. Use the loop above to get all
+> four.
 
 ### 5. Restart the MCP server
 
@@ -596,9 +594,9 @@ The vault is **flat**: every node is a Markdown file at the vault root, named by
       scheme-dictionary-user.yaml    ← user-defined schemes           (user-owned)
       type-dictionary.md             ← human-readable type vocabulary (reseeded)
       field-dictionary.md            ← field definitions per type     (reseeded)
-      tag-dictionary.md              ← freeform tag vocabulary        (reseeded)
+      tag-dictionary.md              ← freeform tag vocabulary        (user-owned)
       relation-dictionary.md         ← human-readable relation guide  (reseeded)
-      foreign-definitions.md         ← external source schemas        (reseeded)
+      foreign-definitions.md         ← external source schemas        (user-owned)
       .meta-version                  ← which META_VERSION this vault was seeded at
 
   assets/                       ← binary/rich files adopted into the vault
@@ -812,10 +810,12 @@ Tests point at a temp copy of `tests/fixtures/vault/` via the `LOCI_VAULT_ROOT` 
 
 ## Schema Versioning
 
-Meta files are seeded into `vault/meta/` from `src/loci/skills/references/`, which is the source of truth for what a fresh vault gets. `vault_init.py` holds the current `META_VERSION` (currently **7**) and two lists:
+Meta files are seeded into `vault/meta/` from `src/loci/skills/references/`, which is the source of truth for what a fresh vault gets. `vault_init.py` holds the current `META_VERSION` and two lists:
 
 - `META_FILES`: reseeded on every `META_VERSION` bump
-- `USER_META_FILES`: seeded once and never overwritten (the `-user.yaml` extension files)
+- `USER_META_FILES`: seeded once and never overwritten — the `-user.yaml` extension
+  files, plus `tag-dictionary.md` and `foreign-definitions.md`, which the model
+  writes to at runtime
 
 The config file tracks the `meta_version` the vault was last seeded at. On startup, a vault behind `META_VERSION` is reseeded and its config updated.
 

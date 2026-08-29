@@ -7,10 +7,10 @@ What this does:
   2. Initializes the vault structure
   3. Registers the Loci MCP server in Claude Code  (~/.claude.json, user scope via `claude mcp add`)
   4. Registers the Loci MCP server in Claude Desktop (~/Library/Application Support/Claude/claude_desktop_config.json)
-  5. Creates symlink ~/.claude/skills/loci-save/ → skill/
+  5. Creates symlink ~/.claude/skills/<skill>/ → src/loci/skills/<skill>/
 
-Usage:
-  python setup.py
+Usage (from the loci checkout):
+  uv run setup.py
 """
 
 import json
@@ -18,13 +18,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
-# Install dependencies before any local imports that require them
-subprocess.run(["uv", "sync"], cwd=Path(__file__).parent, check=True)
-
-# uv sync above installed the project, so the package is importable.
-from loci.tools.vault_init import init as vault_init
-
 PROJECT_ROOT  = Path(__file__).parent.resolve()
+SKILLS_DIR    = PROJECT_ROOT / "src" / "loci" / "skills"
 SKILLS        = ["loci-save", "loci-query"]
 
 CLAUDE_DESKTOP_CONFIG  = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
@@ -91,8 +86,15 @@ def install_skill_symlink() -> None:
     skills_root.mkdir(parents=True, exist_ok=True)
 
     for skill_name in SKILLS:
-        src = PROJECT_ROOT / "loci-skill" / skill_name
+        src = SKILLS_DIR / skill_name
         dst = skills_root / skill_name
+
+        if not src.is_dir():
+            # Unlinking dst and then pointing it at a path that does not exist
+            # replaces a working skill install with a dangling symlink — and one
+            # of these skills is how the user was told to run this script.
+            print(f"  Skipped {skill_name}: {src} does not exist")
+            continue
 
         if dst.is_symlink():
             dst.unlink()
@@ -113,7 +115,7 @@ def print_desktop_fallback() -> None:
     print("=" * 60)
     print("Paste the following into your Project's custom instructions:")
     for skill_name in SKILLS:
-        skill_md = PROJECT_ROOT / "loci-skill" / skill_name / "SKILL.md"
+        skill_md = SKILLS_DIR / skill_name / "SKILL.md"
         print(f"\n--- {skill_name} ---\n")
         print(skill_md.read_text() if skill_md.exists() else f"Skill file not found: {skill_md}")
     print("=" * 60)
@@ -123,11 +125,24 @@ def print_desktop_fallback() -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+def sync_and_init_vault() -> None:
+    """Install dependencies, then seed the vault.
+
+    Both live here rather than at module scope so the module can be imported
+    without running `uv sync` — that is what lets the tests exercise the skill
+    installer. vault_init is imported inside the function for the same reason:
+    it only becomes importable once `uv sync` has installed the project.
+    """
+    subprocess.run(["uv", "sync"], cwd=PROJECT_ROOT, check=True)
+    from loci.tools.vault_init import init as vault_init
+    vault_init()
+
+
 def main() -> None:
     print("\nLoci Setup\n")
 
-    print("Step 1 — Vault init")
-    vault_init()
+    print("Step 1 — Dependencies and vault init")
+    sync_and_init_vault()
     print()
 
     print("Step 2 — Claude Code MCP registration")

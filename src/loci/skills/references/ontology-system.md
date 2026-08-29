@@ -55,15 +55,19 @@ source of truth. Copies under `<vault>/meta/` are derived.
 | `type-decision.md` | guidance | **not wired** — see §8 | nothing |
 | `field-dictionary.md` | guidance | yes | LLM via `read_meta` |
 | `relation-dictionary.md` | guidance | yes | LLM via `read_meta` |
-| `tag-dictionary.md` | guidance | yes, but user-appendable via `write_meta` | LLM via `read_meta` |
-| `foreign-definitions.md` | guidance | yes, appended at runtime | LLM via `read_meta` |
+| `tag-dictionary.md` | guidance | no — user-appendable via `write_meta` | LLM via `read_meta` |
+| `foreign-definitions.md` | guidance | no — appended at runtime | LLM via `read_meta` |
 | `ontology-guide.md` | user prose | yes | the user, in their vault; LLM via `read_meta` |
 | `ontology-system.md` | dev doc | no | humans / agents reading the repo |
 
 `META_FILES` is overwritten wholesale on every `META_VERSION` bump.
 `USER_META_FILES` is copied once at init and never touched again — that is the
 only reason user extensions survive upgrades. Putting a file in the wrong list
-either freezes canonical vocabulary or destroys user data.
+either freezes canonical vocabulary or destroys user data. The test is simple:
+if anything can write the file after seeding — `api.write_meta` accepts it, or
+a skill appends to it — it belongs in `USER_META_FILES`. That is why
+`tag-dictionary.md` and `foreign-definitions.md` live there despite being
+canonical in origin.
 
 ---
 
@@ -271,18 +275,27 @@ Recorded so the next person doesn't rediscover them the hard way.
   survive a restart. Both modes write the in-vault marker, so a vault can move
   between them without being mistaken for stale.
 - **An unversioned vault with a complete `meta/` is adopted, not reseeded.**
-  The marker did not always exist, so its absence is not evidence of staleness —
-  and reseeding on that assumption would destroy `tag-dictionary.md` and
-  `foreign-definitions.md`, which the user owns. A vault holding every
-  `META_FILES` entry is taken as current and the marker is backfilled. The
-  cost: a genuinely old vault that is merely file-complete never gets upgraded.
+  The marker did not always exist, so its absence is not evidence of staleness.
+  A vault holding every `META_FILES` entry is taken as current and the marker is
+  backfilled. The cost: a genuinely old vault that is merely file-complete never
+  gets upgraded.
 - **Seeding is skipped when the vault directory is absent**, rather than
   creating it. Under Docker a missing directory means the volume was not
   mounted, and seeding into the container's own filesystem would report success
   for files discarded on the next run. `http_server.py` has no `requires_vault`
   guard and never calls `check_meta_version` at all, so an HTTP-only vault is
   never seeded — reads fall back to this directory, and `write_meta` creates
-  `meta/` on demand.
+  `meta/` on demand. Every upgrade path (`ensure_env_vault`,
+  `_check_meta_version`, `init(force=True)`) therefore calls
+  `create_vault_structure` before `reseed_meta`: the vault may exist with no
+  `meta/` in it at all, and `reseed_meta` writes into that directory rather
+  than creating it.
+- **A vault that is present but empty is left alone when the config already
+  records a `meta_version`.** Everything that writes `vault_root` into the
+  config also seeds `meta/`, so that combination means the content went away —
+  a sync folder remounted as a placeholder. Seeding there would stamp both the
+  config and the in-vault marker as current, and the reseed would never run
+  once the real files came back.
 
 ---
 

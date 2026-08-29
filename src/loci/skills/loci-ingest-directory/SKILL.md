@@ -1,6 +1,6 @@
 ---
 name: loci-ingest-directory
-skill_version: 2
+skill_version: 4
 description: >
   Scan a directory and create vault nodes for any files that don't already
   have one. Use when the user wants to register files from an arbitrary
@@ -19,7 +19,7 @@ using `has_asset` frontmatter with `scheme: local`.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 2`.
+This skill is at `skill_version: 4`.
 
 Before following any instructions below:
 1. Call `loci__read_skill(skill="loci-ingest-directory")` to fetch the latest version
@@ -29,10 +29,15 @@ Before following any instructions below:
 
 If `loci__read_skill` is unavailable, tell the user:
 ```
-The Loci vault is not reachable. Please run:
-  python setup.py
-Then restart Claude Code / Claude Desktop.
+The Loci vault is not reachable.
 ```
+Then relay the error text the tool returned verbatim — it names the cause and
+the fix for this install (an unmounted path, a missing volume mount, no vault
+configured yet). Do not substitute a setup command for it: `setup.py` only
+exists in a local checkout, so it is wrong for a Docker or `uvx` install and
+fails outright anywhere but that checkout directory. If there is no error text,
+the MCP server itself is not connected — tell the user to check their MCP
+client config and restart Claude Code / Claude Desktop.
 Do not proceed.
 
 ---

@@ -27,7 +27,7 @@ from typing import Optional
 LEGACY_CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "skills" / "references"
 
-META_VERSION = 8
+META_VERSION = 9
 
 # Records META_VERSION inside the vault. Only env-var mode (Docker) relies on
 # it; a config.yml install tracks the same number there.
@@ -37,24 +37,34 @@ VAULT_FOLDERS = [
     "meta",
 ]
 
-# Reseeded on every META_VERSION bump.
+# Reseeded on every META_VERSION bump. Nothing here is writable at runtime:
+# api.write_meta() refuses every one of them, so overwriting can only ever
+# replace packaged content with newer packaged content.
 META_FILES = [
     "type-dictionary.md",
-    "tag-dictionary.md",
     "field-dictionary.md",
     "relation-dictionary.md",    # human-readable reference; kept alongside the machine-readable registry
     "relation-dictionary.yaml",
-    "foreign-definitions.md",
     "ontology.yaml",
     "scheme-dictionary.yaml",
     "ontology-guide.md",         # the user's guide to the ontology; prose, not vocabulary
 ]
 
 # Seeded once on first setup, never overwritten — user owns these.
+#
+# tag-dictionary.md and foreign-definitions.md sit here rather than in
+# META_FILES because they are written at runtime: api.write_meta() accepts both
+# by name, and loci-save appends a schema to foreign-definitions.md the first
+# time it meets each external source. A vault that has been in use for a while
+# holds a tag vocabulary and a set of source schemas that exist nowhere else,
+# so a reseed would destroy work with no way back. That is also what README's
+# "the files you own ... are never overwritten" promises.
 USER_META_FILES = [
     "ontology-user.yaml",
     "relation-dictionary-user.yaml",
     "scheme-dictionary-user.yaml",
+    "tag-dictionary.md",
+    "foreign-definitions.md",
 ]
 
 
@@ -183,8 +193,12 @@ def write_vault_meta_version(vault_root: Path, version: int) -> None:
 
 
 def reseed_meta(vault_root: Path) -> None:
-    """Force overwrite canonical meta files from loci-skill/references/.
-    USER_META_FILES are never touched — the user owns those."""
+    """Force overwrite canonical meta files from references/.
+
+    USER_META_FILES are never touched — the user owns those, and two of them
+    (tag-dictionary.md, foreign-definitions.md) accumulate content that exists
+    nowhere but the vault. Call create_vault_structure() first if the vault may
+    be missing files: this only rewrites what META_FILES lists."""
     for filename in META_FILES:
         dest = vault_root / "meta" / filename
         src = REFERENCES_DIR / filename
@@ -292,6 +306,21 @@ def _canonical_meta_complete(vault_root: Path) -> bool:
     return all((vault_root / "meta" / name).exists() for name in META_FILES)
 
 
+def _vault_content_missing(vault_root: Path) -> bool:
+    """
+    True when an existing vault directory holds nothing at all.
+
+    Distinct from a missing directory: a sync folder that has remounted as a
+    placeholder is present and empty, and writing into it looks like success.
+    """
+    if (vault_root / "meta").is_dir():
+        return False
+    try:
+        return not any(vault_root.iterdir())
+    except OSError:
+        return True
+
+
 def _meta_needs_upgrade(vault_root: Path) -> bool:
     """
     True when an existing vault's canonical meta files are behind the packaged
@@ -306,9 +335,8 @@ def _meta_needs_upgrade(vault_root: Path) -> bool:
     if current is not None:
         return current < META_VERSION
     # No marker at all. A complete canonical set is a vault the local wizard
-    # set up before markers existed: adopt it. Overwriting would take
-    # tag-dictionary.md and foreign-definitions.md with it, and those are the
-    # user's to edit. Same reasoning as ensure_env_vault().
+    # set up before markers existed: adopt it rather than read the missing
+    # marker as staleness. Same reasoning as ensure_env_vault().
     return not _canonical_meta_complete(vault_root)
 
 
@@ -425,12 +453,11 @@ def ensure_env_vault(vault_root: Path) -> str | None:
                 return None
             if current is None and _canonical_meta_complete(vault_root):
                 # A vault set up by the local wizard has a full meta/ but no
-                # marker — only this path writes one. Reseeding it would
-                # overwrite tag-dictionary.md and foreign-definitions.md, which
-                # are the user's to edit. A complete meta/ is evidence enough
-                # that the vault is current: adopt it and record the version.
-                # create_vault_structure only writes files that are missing, so
-                # it fills USER_META_FILES gaps without touching anything else.
+                # marker — only this path writes one. A complete meta/ is
+                # evidence enough that the vault is current: adopt it and record
+                # the version. create_vault_structure only writes files that are
+                # missing, so it fills USER_META_FILES gaps without touching
+                # anything else.
                 create_vault_structure(vault_root, include_siblings=False)
                 write_vault_meta_version(vault_root, META_VERSION)
                 return None
@@ -490,6 +517,34 @@ def _check_meta_version() -> str | None:
     vault_root = Path(configured_root).expanduser()
     vault_meta_version = config.get("meta_version")
     if vault_meta_version is None or vault_meta_version < META_VERSION:
+        if not vault_root.is_dir():
+            # The path is gone — an unmounted drive, a sync folder that has not
+            # come back. Seeding would build a fresh empty vault there and
+            # record it as current; leave it alone and let ensure_ready() raise
+            # VAULT_UNREACHABLE, which tells the user what actually happened.
+            return migration_notice
+        if vault_meta_version is not None and _vault_content_missing(vault_root):
+            # The config records a seed at an older version, so this vault had
+            # meta files once and has none now: the directory is present but
+            # empty, the shape a sync folder takes when it has remounted as a
+            # placeholder. Seeding it would stamp both config and the in-vault
+            # marker as current, so when the real content syncs back the reseed
+            # this bump exists to deliver would never run and the user would
+            # keep the stale dictionaries for good. Wait for the next startup.
+            return migration_notice
+        # A vault only ever opened through the HTTP UI was never seeded, so it
+        # can reach this branch with no meta/ at all — reseed_meta writes into
+        # that directory without creating it. This also backfills any
+        # USER_META_FILES the vault predates; reseed_meta only rewrites the
+        # canonical set. The siblings are built too, unlike ensure_env_vault
+        # below: that path skips them because a Docker vault's parent is the
+        # container root, outside the bind mount. Here the parent is an ordinary
+        # user directory, and init()/set_vault_root() seed it the same way —
+        # skipping them would leave a vault whose meta/ is current but whose
+        # loci-stage/ and assets/ never get built, and since config now reads as
+        # current nothing seeds them later: the first scan_inbox fails with a
+        # bare errno.
+        create_vault_structure(vault_root)
         reseed_meta(vault_root)
         config["meta_version"] = META_VERSION
         save_config(config)
@@ -767,8 +822,13 @@ def init(force: bool = False) -> dict:
     existing = load_config()
 
     if existing and force:
-        vault_root = Path(existing["vault_root"])
+        # expanduser() for the same reason _check_meta_version() does it: a
+        # hand-written `vault_root: ~/vault` otherwise reseeds into a literal
+        # ./~/vault/meta relative to the cwd. create_vault_structure() first
+        # because reseed_meta() writes into meta/ without creating it.
+        vault_root = Path(existing["vault_root"]).expanduser()
         print(f"Re-seeding meta files at {vault_root / 'meta'}...")
+        create_vault_structure(vault_root)
         reseed_meta(vault_root)
         existing["meta_version"] = META_VERSION
         save_config(existing)
@@ -777,7 +837,7 @@ def init(force: bool = False) -> dict:
 
     if existing and not force:
         print(f"Loci already configured. Vault root: {existing['vault_root']}")
-        vault_root = Path(existing["vault_root"])
+        vault_root = Path(existing["vault_root"]).expanduser()
         print("Ensuring vault structure is complete...")
         create_vault_structure(vault_root)
         print("Done.")

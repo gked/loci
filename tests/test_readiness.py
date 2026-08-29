@@ -316,7 +316,7 @@ def test_adopting_an_unversioned_complete_vault_keeps_the_users_files(unconfigur
     """
     The marker did not always exist, so its absence is not evidence of
     staleness. A vault holding the full canonical set is taken as current —
-    reseeding it would overwrite tag-dictionary.md, which the user owns.
+    reseeding it would rewrite content the vault is already current on.
     """
     monkeypatch.setenv("LOCI_CONFIG", str(tmp_path / "cfg" / "config.yml"))
     vault = tmp_path / "vault"
@@ -325,11 +325,11 @@ def test_adopting_an_unversioned_complete_vault_keeps_the_users_files(unconfigur
         (vault / "meta" / name).write_text(
             (vault_init.REFERENCES_DIR / name).read_text()
         )
-    (vault / "meta" / "tag-dictionary.md").write_text("# my own tags\n")
+    (vault / "meta" / "type-dictionary.md").write_text("# my own types\n")
 
     set_vault_root(str(vault), create=True)
 
-    assert (vault / "meta" / "tag-dictionary.md").read_text() == "# my own tags\n"
+    assert (vault / "meta" / "type-dictionary.md").read_text() == "# my own types\n"
     assert vault_init.read_vault_meta_version(vault) == vault_init.META_VERSION
 
 

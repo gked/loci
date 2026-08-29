@@ -1,6 +1,6 @@
 ---
 name: loci-inbox
-skill_version: 2
+skill_version: 4
 description: >
   Process the loci-stage inbox: scan staged files, present a plan to the user,
   then execute file ingestion and content processing in batches. Use whenever
@@ -16,7 +16,7 @@ Processes loci-stage/ into the vault in two phases: analysis then execution.
 
 ## Version Check
 
-This skill is at `skill_version: 2`.
+This skill is at `skill_version: 4`.
 
 Before following any instructions:
 1. Call `loci__read_skill` with skill="loci-inbox" to fetch the latest version
@@ -27,7 +27,9 @@ Before following any instructions:
 
 ## Step 0 — Check vault reachability
 
-Call `loci__list_vault` with no arguments. If it errors, tell the user to run `python setup.py` and restart.
+Call `loci__list_vault` with no arguments. If it errors, relay the error text
+verbatim — it names the cause and the fix for this install — and stop. Do not
+substitute a setup command for it: `setup.py` only exists in a local checkout.
 
 ---
 

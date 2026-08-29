@@ -96,7 +96,7 @@ How Loci speaks. Voice should match the type: precise, slightly archival, never 
 | --- | --- | --- |
 | Empty vault | "No notes yet! Start adding things 🎉" | "The vault is empty. Save your first locus to begin." |
 | Save success | "Saved! ✨" | "Saved. UID a1b2c3d4 — three relations." |
-| Error | "Oops, something went wrong" | "Vault unreachable. Run `python setup.py` and restart your client." |
+| Error | "Oops, something went wrong" | "Vault unreachable. Check that the vault path exists, then restart your client." |
 | Section header | "Recent stuff" | "Recently updated · last XXX days" |
 | Microcopy | "Click here to add a tag" | "+ tag" |
 

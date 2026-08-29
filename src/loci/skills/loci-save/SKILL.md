@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 21
+skill_version: 23
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, topic, asset, or log — into the Loci personal
@@ -30,7 +30,7 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 21`.
+This skill is at `skill_version: 23`.
 
 Before following any instructions below:
 1. Call `loci__read_skill` to fetch the latest skill from the vault
@@ -40,10 +40,15 @@ Before following any instructions below:
 
 If `loci__read_skill` is unavailable, tell the user:
 ```
-The Loci vault is not reachable. Please run:
-  python setup.py
-Then restart Claude Code / Claude Desktop.
+The Loci vault is not reachable.
 ```
+Then relay the error text the tool returned verbatim — it names the cause and
+the fix for this install (an unmounted path, a missing volume mount, no vault
+configured yet). Do not substitute a setup command for it: `setup.py` only
+exists in a local checkout, so it is wrong for a Docker or `uvx` install and
+fails outright anywhere but that checkout directory. If there is no error text,
+the MCP server itself is not connected — tell the user to check their MCP
+client config and restart Claude Code / Claude Desktop.
 Do not proceed.
 
 ---
@@ -76,10 +81,15 @@ merely offline.
 **Anything else** — tell the user:
 
 ```
-The Loci vault is not reachable. Please run:
-  python setup.py
-Then restart Claude Code / Claude Desktop.
+The Loci vault is not reachable.
 ```
+Then relay the error text the tool returned verbatim — it names the cause and
+the fix for this install (an unmounted path, a missing volume mount, no vault
+configured yet). Do not substitute a setup command for it: `setup.py` only
+exists in a local checkout, so it is wrong for a Docker or `uvx` install and
+fails outright anywhere but that checkout directory. If there is no error text,
+the MCP server itself is not connected — tell the user to check their MCP
+client config and restart Claude Code / Claude Desktop.
 
 Do not proceed until the vault is reachable.
 

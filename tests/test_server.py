@@ -1,6 +1,6 @@
 """
 tests/test_server.py
-Tests for loci_mcp/server.py: tool error-wrapping and auth middleware.
+Tests for loci.mcp_server: tool error-wrapping and auth middleware.
 
 Server tool functions are called directly as Python callables. The MCP
 @mcp.tool() decorator registers them but preserves the original signature.

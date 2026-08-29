@@ -102,12 +102,12 @@ def test_create_vault_structure_seeds_meta_files(tmp_path):
 def test_create_vault_structure_does_not_overwrite_existing_meta(tmp_path):
     vault_root = tmp_path / "vault"
     create_vault_structure(vault_root)
-    # Overwrite one meta file with custom content
-    custom = vault_root / "meta" / "tag-dictionary.md"
-    custom.write_text("# my custom tags\n", encoding="utf-8")
+    # Overwrite one canonical meta file with custom content
+    custom = vault_root / "meta" / "type-dictionary.md"
+    custom.write_text("# my custom types\n", encoding="utf-8")
     # Call again — should not overwrite
     create_vault_structure(vault_root)
-    assert custom.read_text(encoding="utf-8") == "# my custom tags\n"
+    assert custom.read_text(encoding="utf-8") == "# my custom types\n"
 
 
 def test_create_vault_structure_idempotent(tmp_path):
@@ -124,11 +124,11 @@ def test_create_vault_structure_idempotent(tmp_path):
 def test_reseed_meta_overwrites_existing(tmp_path):
     vault_root = tmp_path / "vault"
     create_vault_structure(vault_root)
-    tag_dict = vault_root / "meta" / "tag-dictionary.md"
-    tag_dict.write_text("# custom content\n", encoding="utf-8")
+    type_dict = vault_root / "meta" / "type-dictionary.md"
+    type_dict.write_text("# custom content\n", encoding="utf-8")
     reseed_meta(vault_root)
     # Should now contain the reference content, not the custom content
-    assert tag_dict.read_text(encoding="utf-8") != "# custom content\n"
+    assert type_dict.read_text(encoding="utf-8") != "# custom content\n"
 
 
 def test_reseed_meta_restores_all_files(tmp_path):
@@ -260,13 +260,13 @@ def test_ensure_env_vault_adopts_complete_unversioned_vault(tmp_path):
     writes one. Reseeding it would destroy the user's own dictionaries."""
     vault_root = tmp_path / "vault"
     create_vault_structure(vault_root)  # the local setup flow, no marker written
-    tags = vault_root / "meta" / "tag-dictionary.md"
-    tags.write_text("# my curated tags\n", encoding="utf-8")
+    types = vault_root / "meta" / "type-dictionary.md"
+    types.write_text("# my edited types\n", encoding="utf-8")
 
     notice = ensure_env_vault(vault_root)
 
     assert notice is None
-    assert tags.read_text(encoding="utf-8") == "# my curated tags\n"
+    assert types.read_text(encoding="utf-8") == "# my edited types\n"
     assert read_vault_meta_version(vault_root) == META_VERSION
 
 
@@ -422,8 +422,8 @@ def test_check_meta_version_no_op_when_current(tmp_path, fake_config_path):
 def test_check_meta_version_reseeds_when_outdated(tmp_path, fake_config_path, monkeypatch):
     vault_root = tmp_path / "vault"
     create_vault_structure(vault_root)
-    # Mark a meta file as stale
-    stale = vault_root / "meta" / "tag-dictionary.md"
+    # Mark a canonical meta file as stale
+    stale = vault_root / "meta" / "type-dictionary.md"
     stale.write_text("# stale content\n", encoding="utf-8")
 
     fake_config_path.write_text(
@@ -501,6 +501,49 @@ def test_check_meta_version_reseeds_when_unversioned(tmp_path, fake_config_path)
     assert "unversioned" in result
 
 
+def test_check_meta_version_upgrade_builds_the_sibling_directories(tmp_path, fake_config_path):
+    """
+    The upgrade seeds a vault that may never have been through init(), and in
+    config mode the siblings live in an ordinary user directory (unlike Docker,
+    where they would fall outside the bind mount). Skipping them leaves a vault
+    whose meta/ reads as current while scan_inbox fails on a missing
+    loci-stage/, and nothing seeds them later.
+    """
+    vault_root = tmp_path / "loci" / "vault"
+    vault_root.mkdir(parents=True)
+    fake_config_path.write_text(
+        yaml.dump({"vault_root": str(vault_root)}),
+        encoding="utf-8",
+    )
+
+    assert check_meta_version() is not None
+
+    loci_root = vault_root.parent
+    assert (loci_root / "loci-stage").is_dir()
+    assert (loci_root / "assets").is_dir()
+    assert (loci_root / "asset-registry" / ".pending").is_dir()
+
+
+def test_check_meta_version_skips_a_vault_whose_content_is_missing(tmp_path, fake_config_path):
+    """
+    A sync folder that has remounted as a placeholder is present and empty.
+    Seeding it would stamp config and the in-vault marker as current, so the
+    reseed would never run once the real files came back.
+    """
+    vault_root = tmp_path / "vault"
+    vault_root.mkdir()
+    fake_config_path.write_text(
+        yaml.dump({"vault_root": str(vault_root), "meta_version": META_VERSION - 1}),
+        encoding="utf-8",
+    )
+
+    assert check_meta_version() is None
+
+    assert not (vault_root / "meta").exists()
+    config = yaml.safe_load(fake_config_path.read_text(encoding="utf-8"))
+    assert config["meta_version"] == META_VERSION - 1
+
+
 # ---------------------------------------------------------------------------
 # field-dictionary schema assertions
 # ---------------------------------------------------------------------------
@@ -554,6 +597,126 @@ def test_reseed_meta_still_updates_canonical_files(tmp_path):
     canonical.write_text("# stale ontology\n", encoding="utf-8")
     reseed_meta(vault_root)
     assert "# stale ontology" not in canonical.read_text(encoding="utf-8")
+
+
+# The two files the model writes to at runtime. write_meta() accepts both by
+# name, and loci-save appends a schema to foreign-definitions.md on first
+# contact with each external source, so a vault in use holds content that
+# exists nowhere else. A version bump must not take them.
+RUNTIME_WRITABLE = ["tag-dictionary.md", "foreign-definitions.md"]
+
+
+@pytest.mark.parametrize("fname", RUNTIME_WRITABLE)
+def test_runtime_writable_meta_files_are_user_owned(fname):
+    """The list membership itself, so a future edit cannot move them back
+    without a failing test saying why they are where they are."""
+    assert fname in USER_META_FILES
+    assert fname not in META_FILES
+
+
+@pytest.mark.parametrize("fname", RUNTIME_WRITABLE)
+def test_reseed_meta_keeps_the_users_dictionaries(tmp_path, fname):
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    owned = vault_root / "meta" / fname
+    owned.write_text("# accumulated by the user\n", encoding="utf-8")
+
+    reseed_meta(vault_root)
+
+    assert owned.read_text(encoding="utf-8") == "# accumulated by the user\n"
+
+
+@pytest.mark.parametrize("fname", RUNTIME_WRITABLE)
+def test_version_bump_keeps_the_users_dictionaries(tmp_path, fake_config_path, fname):
+    """The whole upgrade path, not just reseed_meta: this is what a user who
+    installs a new Loci actually runs into on their next tool call."""
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    owned = vault_root / "meta" / fname
+    owned.write_text("# accumulated by the user\n", encoding="utf-8")
+    fake_config_path.write_text(
+        yaml.dump({"vault_root": str(vault_root), "meta_version": META_VERSION - 1}),
+        encoding="utf-8",
+    )
+
+    check_meta_version()
+
+    assert owned.read_text(encoding="utf-8") == "# accumulated by the user\n"
+    assert (vault_root / "meta" / "ontology-guide.md").read_text(encoding="utf-8") == (
+        (vault_init.REFERENCES_DIR / "ontology-guide.md").read_text(encoding="utf-8")
+    )
+
+
+@pytest.mark.parametrize("fname", RUNTIME_WRITABLE)
+def test_version_bump_backfills_a_vault_that_lacks_them(tmp_path, fake_config_path, fname):
+    """They were canonical files before, so an older vault has them already —
+    but one that predates them, or that lost them, must still end up complete."""
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    (vault_root / "meta" / fname).unlink()
+    fake_config_path.write_text(
+        yaml.dump({"vault_root": str(vault_root), "meta_version": META_VERSION - 1}),
+        encoding="utf-8",
+    )
+
+    check_meta_version()
+
+    assert (vault_root / "meta" / fname).exists()
+
+
+def test_version_bump_seeds_a_vault_that_has_no_meta_dir(tmp_path, fake_config_path):
+    """A vault only ever opened through the HTTP UI is never seeded — nothing
+    on that path calls check_meta_version, and nothing there records a
+    meta_version either. The first MCP call must seed it, not raise
+    FileNotFoundError out of reseed_meta."""
+    vault_root = tmp_path / "vault"
+    vault_root.mkdir()
+    fake_config_path.write_text(
+        yaml.dump({"vault_root": str(vault_root)}),  # never seeded: no meta_version
+        encoding="utf-8",
+    )
+
+    notice = check_meta_version()
+
+    assert notice is not None
+    for filename in META_FILES + USER_META_FILES:
+        assert (vault_root / "meta" / filename).exists(), filename
+    assert read_vault_meta_version(vault_root) == META_VERSION
+
+
+@pytest.mark.parametrize("fname", RUNTIME_WRITABLE)
+def test_env_mode_version_bump_keeps_the_users_dictionaries(tmp_path, monkeypatch, fname):
+    """Docker tracks the version in the vault marker rather than a config, so
+    it reaches reseed_meta by its own path — it must be just as safe."""
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root, include_siblings=False)
+    write_vault_meta_version(vault_root, META_VERSION - 1)
+    owned = vault_root / "meta" / fname
+    owned.write_text("# accumulated by the user\n", encoding="utf-8")
+    monkeypatch.setenv("LOCI_VAULT_ROOT", str(vault_root))
+
+    notice = ensure_env_vault(vault_root)
+
+    assert notice is not None and "updated" in notice
+    assert owned.read_text(encoding="utf-8") == "# accumulated by the user\n"
+    assert read_vault_meta_version(vault_root) == META_VERSION
+
+
+def test_version_bump_does_not_recreate_a_vault_that_is_gone(tmp_path, fake_config_path):
+    """An unmounted drive is not an empty vault. Seeding one there would build
+    a second, empty vault and record it as current, which is worse than the
+    unreachable error the user should see."""
+    vault_root = tmp_path / "not-mounted"
+    fake_config_path.write_text(
+        yaml.dump({"vault_root": str(vault_root), "meta_version": META_VERSION - 1}),
+        encoding="utf-8",
+    )
+
+    check_meta_version()
+
+    assert not vault_root.exists()
+    config = yaml.safe_load(fake_config_path.read_text(encoding="utf-8"))
+    assert config["meta_version"] == META_VERSION - 1
 
 
 # ---------------------------------------------------------------------------
@@ -707,8 +870,8 @@ def test_init_existing_config_force(tmp_path, fake_config_path):
     from loci.tools.vault_init import init
     vault_root = tmp_path / "vault"
     create_vault_structure(vault_root)
-    # Mark a meta file as stale
-    stale = vault_root / "meta" / "tag-dictionary.md"
+    # Mark a canonical meta file as stale
+    stale = vault_root / "meta" / "type-dictionary.md"
     stale.write_text("# stale\n", encoding="utf-8")
     fake_config_path.write_text(
         yaml.dump({"vault_root": str(vault_root), "meta_version": META_VERSION}),
@@ -717,6 +880,38 @@ def test_init_existing_config_force(tmp_path, fake_config_path):
     result = init(force=True)
     assert result["meta_version"] == META_VERSION
     assert stale.read_text(encoding="utf-8") != "# stale\n"
+
+
+def test_init_force_seeds_a_vault_that_has_no_meta_directory(tmp_path, fake_config_path):
+    """reseed_meta writes into meta/ without creating it, so --force on a vault
+    that was never seeded used to die with FileNotFoundError."""
+    from loci.tools.vault_init import init
+    vault_root = tmp_path / "vault"
+    vault_root.mkdir()
+    fake_config_path.write_text(
+        yaml.dump({"vault_root": str(vault_root), "meta_version": META_VERSION}),
+        encoding="utf-8",
+    )
+
+    init(force=True)
+
+    assert (vault_root / "meta" / "ontology.yaml").exists()
+
+
+def test_init_force_expands_a_tilde_in_the_configured_root(tmp_path, fake_config_path, monkeypatch):
+    """A hand-written `vault_root: ~/vault` otherwise reseeds into a literal
+    ./~/vault/meta relative to the cwd."""
+    from loci.tools.vault_init import init
+    monkeypatch.setenv("HOME", str(tmp_path))
+    fake_config_path.write_text(
+        yaml.dump({"vault_root": "~/vault", "meta_version": META_VERSION}),
+        encoding="utf-8",
+    )
+
+    init(force=True)
+
+    assert (tmp_path / "vault" / "meta" / "ontology.yaml").exists()
+    assert not Path("~/vault").exists()
 
 
 def test_init_no_config_creates_new(tmp_path, fake_config_path, monkeypatch):
