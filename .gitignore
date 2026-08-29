@@ -16,3 +16,6 @@ app/node_modules/
 app/dist/
 # Playwright traces/screenshots from the e2e suite
 test-results/
+
+# Wheels from `uv build`. uv writes dist/.gitignore too; this is the explicit one.
+/dist/

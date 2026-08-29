@@ -131,7 +131,7 @@ def ensure_docker() -> None:
 def ask_vault_path() -> Path:
     """
     Ask for the vault location. No default — see prompt_vault_root() in
-    server/tools/vault_init.py, which this mirrors so the two wizards agree
+    src/loci/tools/vault_init.py, which this mirrors so the two wizards agree
     about what a vault path is. The path is bind-mounted into the container,
     so it belongs somewhere the user keeps, not somewhere in this checkout.
     """
@@ -261,7 +261,7 @@ def install_skill() -> None:
     skills_root.mkdir(parents=True, exist_ok=True)
 
     for skill_name in ("loci-save", "loci-query"):
-        skill_src = PROJECT_ROOT / "server" / "skills" / skill_name
+        skill_src = PROJECT_ROOT / "src" / "loci" / "skills" / skill_name
         if not skill_src.exists():
             print(f"  Skill source not found at {skill_src} — skipping {skill_name}.")
             continue
@@ -289,14 +289,14 @@ def register_mcp_claude_code() -> None:
     claude = shutil.which("claude")
     if not claude:
         print("  Warning: `claude` CLI not found — skipping Claude Code registration.")
-        print("  Run manually: claude mcp add --scope user loci <uv-path> -- run --directory <project> python server/loci_mcp/server.py")
+        print("  Run manually: claude mcp add --scope user loci <uv-path> -- run --directory <project> loci-mcp")
         return
 
     result = subprocess.run(
         [
             claude, "mcp", "add", "--scope", "user",
             "loci", uv,
-            "--", "run", "--directory", str(PROJECT_ROOT), "python", "server/loci_mcp/server.py",
+            "--", "run", "--directory", str(PROJECT_ROOT), "loci-mcp",
         ],
         capture_output=True,
         text=True,

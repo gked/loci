@@ -20,7 +20,7 @@ function expandHome(value) {
   return value;
 }
 
-// Mirrors config_path() in server/tools/vault_init.py. Config lives outside the
+// Mirrors config_path() in src/loci/tools/vault_init.py. Config lives outside the
 // checkout so a uvx install — which has no checkout — keeps its settings.
 function configPath() {
   if (process.env.LOCI_CONFIG) return expandHome(process.env.LOCI_CONFIG);

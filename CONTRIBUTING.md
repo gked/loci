@@ -38,22 +38,22 @@ the rules apply to everyone.
 
 The parts that will get a PR sent back:
 
-**Every change carries tests.** Unit tests in `server/tests/` for any behaviour
+**Every change carries tests.** Unit tests in `tests/` for any behaviour
 change. A PR with no test change is only acceptable for pure docs, comments, or
 formatting.
 
 **UI changes carry a browser test too.** If the change alters anything a user
 sees or clicks in `app/`, it also needs a Playwright spec in
-`server/tests/e2e/` that drives the real thing in Chromium. That includes
+`tests/e2e/` that drives the real thing in Chromium. That includes
 changes reaching the UI indirectly, such as an API response shape or a registry
 value the UI renders.
 
 **Both suites must be green.** `make test` runs unit and browser tests. CI
 re-runs them on every push and pull request.
 
-**Skills and tools stay in sync.** Touching `server/tools/`, `server/api.py`, or
-`server/loci_mcp/server.py` usually means a matching change in
-`server/skills/`, and the reverse. CLAUDE.md has the checklist.
+**Skills and tools stay in sync.** Touching `src/loci/tools/`, `src/loci/api.py`, or
+`src/loci/mcp_server.py` usually means a matching change in
+`src/loci/skills/`, and the reverse. CLAUDE.md has the checklist.
 
 ## Getting set up
 

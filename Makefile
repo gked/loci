@@ -11,18 +11,18 @@ hooks:
 test:
 	uv sync --extra dev
 	npm ci --prefix app
-	uv run pytest server/tests/ -v
+	uv run pytest tests/ -v
 
 # Everything except the browser suite. No Node or Playwright browser required.
 test-fast:
 	uv sync --extra dev
-	uv run pytest server/tests/ -v -m "not e2e"
+	uv run pytest tests/ -v -m "not e2e"
 
 # Browser suite only.
 test-e2e:
 	uv sync --extra dev
 	npm ci --prefix app
-	uv run pytest server/tests/e2e/ -v
+	uv run pytest tests/e2e/ -v
 
 # One-time (and after Playwright upgrades): download the browser binary.
 e2e-install:
@@ -34,15 +34,15 @@ e2e-install:
 screenshots:
 	uv sync --extra dev
 	npm ci --prefix app
-	LOCI_CAPTURE_SCREENSHOTS=1 uv run --with pillow pytest server/tests/e2e/test_screenshots.py -v -s
+	LOCI_CAPTURE_SCREENSHOTS=1 uv run --with pillow pytest tests/e2e/test_screenshots.py -v -s
 
 test-cov:
 	uv sync --extra dev
-	uv run pytest server/tests/ --cov=tools --cov=api --cov=loci_mcp --cov-report=term-missing -m "not e2e"
+	uv run pytest tests/ --cov=loci --cov-report=term-missing -m "not e2e"
 
 cov-html:
 	uv sync --extra dev
-	uv run pytest server/tests/ --cov=tools --cov=api --cov=loci_mcp --cov-report=html:htmlcov -m "not e2e"
+	uv run pytest tests/ --cov=loci --cov-report=html:htmlcov -m "not e2e"
 	open htmlcov/index.html
 
 # Development runs against a scratch config and a scratch vault, never the real
@@ -88,7 +88,7 @@ dev: $(DEV_CONFIG) $(DEV_VAULT)
 	wait
 
 dev-api: $(DEV_CONFIG) $(DEV_VAULT)
-	uv run uvicorn server.http_server:app --reload --port 8765
+	uv run uvicorn loci.http_server:app --reload --port 8765
 
 dev-ui: $(DEV_CONFIG) $(DEV_VAULT)
 	cd app && npm run dev
@@ -103,7 +103,7 @@ dev-ui: $(DEV_CONFIG) $(DEV_VAULT)
 # the app as it ships instead of a development build of it.
 # ---------------------------------------------------------------------------
 
-# Resolved the way config_path() in server/tools/vault_init.py does, so the
+# Resolved the way config_path() in src/loci/tools/vault_init.py does, so the
 # preflight below reads the file the servers will actually open. A variable so
 # the tests can point it at a scratch config.
 RUN_CONFIG ?= $(if $(LOCI_CONFIG),$(LOCI_CONFIG),$(if $(XDG_CONFIG_HOME),$(XDG_CONFIG_HOME),$(HOME)/.config)/loci/config.yml)
@@ -147,7 +147,7 @@ run: run-check
 	wait
 
 run-api: run-check
-	uv run uvicorn server.http_server:app --port 8765
+	uv run uvicorn loci.http_server:app --port 8765
 
 # Builds first: vite preview serves app/dist, and a stale bundle left by an
 # older checkout is worse than the few seconds the build costs.

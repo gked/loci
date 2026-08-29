@@ -8,14 +8,14 @@
 
 ```
 git clone <repo>
-python setup.py
+uv run setup.py
   │
   ├─ uv sync                          # install deps into .venv
   │
   ├─ vault_init()                     # create vault/ skeleton if absent
   │
   ├─ register_mcp_claude_code()
-  │    └─ claude mcp add --scope user loci uv -- run --directory <project> python loci_mcp/server.py
+  │    └─ claude mcp add --scope user loci uv -- run --directory <project> loci-mcp
   │         → writes entry to ~/.claude.json
   │
   ├─ register_mcp_claude_desktop()
@@ -27,7 +27,7 @@ python setup.py
        └─ ~/.claude/skills/loci-query → <project>/loci-skill/loci-query
 
 User restarts Claude Code / Claude Desktop
-Claude Code spawns:  uv run python loci_mcp/server.py  (stdio transport)
+Claude Code spawns:  uv run loci-mcp  (stdio transport)
 ```
 
 ### 1.2 Docker (`setup-homelab.sh`)
@@ -59,7 +59,7 @@ bash deploy/setup-homelab.sh
                  ├─ copy app code
                  └─ ENTRYPOINT entrypoint.sh
                       ├─ (optional) background rclone sync loop
-                      └─ uv run python loci_mcp/server.py  (SSE transport, port 8000)
+                      └─ uv run loci-mcp  (SSE transport, port 8000)
 
 Host port mapping: localhost:4444 → container:8000
 Cloudflare tunnel: https://<hostname>/sse → localhost:4444
@@ -77,7 +77,7 @@ User registers client:
 ```
 git pull                               # fetch new code
 
-python setup.py                        # safe to re-run (idempotent)
+uv run setup.py                        # safe to re-run (idempotent)
   │
   ├─ uv sync                           # picks up any new/changed deps
   │
@@ -121,4 +121,4 @@ Cloudflare tunnel and systemd service unchanged — no restart needed
 | Transport | stdio (Claude spawns process) | SSE (HTTP, always-on) |
 | Vault location | `<project>/vault/` (default) | External volume (`VAULT_PATH`) |
 | Client registration | `setup.py` handles it | Manual `claude mcp add --transport sse` |
-| Updates | `git pull` + `python setup.py` | `git pull` + `docker compose up -d --build` |
+| Updates | `git pull` + `uv run setup.py` | `git pull` + `docker compose up -d --build` |

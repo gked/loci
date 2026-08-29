@@ -78,7 +78,7 @@ echo "pre-push: running unit tests..." >&2
 
 # --extra dev because pytest lives in the dev extra; uv installs it on demand
 # and caches it, so this is only slow on a fresh clone.
-if ! uv run --extra dev pytest server/tests/ -q -m "not e2e"; then
+if ! uv run --extra dev pytest tests/ -q -m "not e2e"; then
 	echo "" >&2
 	echo "  BLOCKED: unit tests failed — not pushing." >&2
 	echo "" >&2

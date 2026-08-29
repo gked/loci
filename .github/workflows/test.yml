@@ -25,7 +25,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run tests
-        run: uv run pytest server/tests/ -v -m "not e2e"
+        run: uv run pytest tests/ -v -m "not e2e"
 
   e2e:
     name: Browser e2e tests
@@ -55,7 +55,7 @@ jobs:
         run: uv run playwright install --with-deps chromium
 
       - name: Run e2e tests
-        run: uv run pytest server/tests/e2e/ -v --tracing=retain-on-failure
+        run: uv run pytest tests/e2e/ -v --tracing=retain-on-failure
 
       # Traces replay a CI failure locally: npx playwright show-trace <file>
       - name: Upload traces on failure

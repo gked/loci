@@ -19,7 +19,7 @@ This runs two steps in sequence:
 - `uv sync --extra dev` — installs the packages listed under `[project.optional-dependencies] dev` in `pyproject.toml` (pytest, pytest-cov) into the project's `.venv`. Only needed once, or after adding new dependencies.
 - `uv run pytest tests/ -v` — runs pytest inside the `.venv` without activating it manually. `uv run` ensures the venv is used regardless of which Python is active in your shell.
 
-To run with coverage reporting — which shows which lines in `tools/`, `api.py`, and `loci_mcp/` were not exercised by any test:
+To run with coverage reporting — which shows which lines in the `loci` package were not exercised by any test:
 
 ```bash
 make test-cov

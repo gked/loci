@@ -154,7 +154,7 @@ resolve_asset(uid)
 
 Supported schemes: `local`, `url`, `google-drive`, `gmail`, `nextcloud`,
 `icloud-drive`, `onedrive`, `dropbox`, `s3`, `ssh-remote`. All registered in
-`server/tools/resolvers/dispatcher.py`.
+`src/loci/tools/resolvers/dispatcher.py`.
 
 ---
 
@@ -173,11 +173,11 @@ node before accepting any tool calls.
 
 | What | File | Lines |
 |------|------|-------|
-| `_loci_root`, `_stage_root` path helpers | `server/api.py` | 49–55 |
-| `save_asset` implementation | `server/api.py` | 363–495 |
-| Atomic asset write | `server/api.py` | 443–444 |
-| Intent file schema | `server/tools/asset_registry.py` | 99–125 |
-| Crash recovery on startup | `server/loci_mcp/server.py` | 64–95 |
-| Inbox scan | `server/tools/inbox_scanner.py` | 16–169 |
-| Asset resolver dispatcher | `server/tools/resolvers/dispatcher.py` | 38–49 |
-| Vault init creates `loci-stage/` | `server/tools/vault_init.py` | 81–84 |
+| `_loci_root`, `_stage_root` path helpers | `src/loci/api.py` | 49–55 |
+| `save_asset` implementation | `src/loci/api.py` | 363–495 |
+| Atomic asset write | `src/loci/api.py` | 443–444 |
+| Intent file schema | `src/loci/tools/asset_registry.py` | 99–125 |
+| Crash recovery on startup | `src/loci/mcp_server.py` | 64–95 |
+| Inbox scan | `src/loci/tools/inbox_scanner.py` | 16–169 |
+| Asset resolver dispatcher | `src/loci/tools/resolvers/dispatcher.py` | 38–49 |
+| Vault init creates `loci-stage/` | `src/loci/tools/vault_init.py` | 81–84 |

@@ -5,9 +5,10 @@
 ```
 app/                        React frontend
   design/                   Design system (tokens, assets, UI kit components)
-server/
+src/loci/                   The installed package — imports are `loci.*`
   api.py                    Public facade used by the MCP server
-  loci_mcp/server.py        MCP tool definitions and docstrings
+  mcp_server.py             MCP tool definitions and docstrings; `loci-mcp` entry point
+  http_server.py            FastAPI backend for the UI; `loci` entry point
   tools/                    Core business logic (registries, linting, writing)
   skills/
     references/             Canonical meta files seeded to vault/meta/ on init
@@ -19,17 +20,40 @@ server/
       ontology-system.md    Developer guide to the registries; never seeded
     loci-save/SKILL.md      Save skill instructions (versioned)
     loci-query/SKILL.md     Query skill instructions (versioned)
-  tests/                    Python test suite
-    e2e/                    Browser end-to-end suite (Playwright) — see its README.md
-    fixtures/vault/         Base fixture vault (unit suite; do not reshape)
-    fixtures/e2e-overlay/   Extra nodes layered on top for e2e only
+tests/                      Python test suite (outside the package — never ships)
+  e2e/                      Browser end-to-end suite (Playwright) — see its README.md
+  fixtures/vault/           Base fixture vault (unit suite; do not reshape)
+  fixtures/e2e-overlay/     Extra nodes layered on top for e2e only
 ```
+
+## Packaging rules
+
+Loci is an installable wheel, not just a checkout. Two consequences bind every
+change:
+
+- **Runtime files must live under `src/loci/`.** Only that tree is packaged, and
+  `deploy/Dockerfile` copies the same tree. Anything the code reads at runtime —
+  above all `skills/references/`, which the registries load and `vault_init.py`
+  seeds from — is missing on every installed machine if it sits outside.
+  `test_ontology_guide_ships_inside_the_package` guards this.
+- **Never reach for a repo path at runtime.** No `Path(__file__).parent.parent`
+  walking up to the checkout root, and no reading `pyproject.toml` — an install
+  has neither. Package metadata (`importlib.metadata`) is how `app_version()`
+  answers; follow that pattern.
+
+Imports inside the package are absolute (`from loci.tools.vault_init import …`).
+There are no `sys.path` inserts anywhere in `src/` — don't reintroduce one to
+make an import work; fix the import.
+
+Adding a console script means adding it to `[project.scripts]` in
+`pyproject.toml` and giving it a `main()`. Keep `loci-mcp` and `loci` as
+separate processes — see the docstring in `src/loci/__init__.py` for why.
 
 ## Skill ↔ Tool sync rule
 
 **Always check both directions when touching either side.**
 
-### When modifying Python tools (`server/tools/`, `server/api.py`, `server/loci_mcp/server.py`)
+### When modifying Python tools (`src/loci/tools/`, `src/loci/api.py`, `src/loci/mcp_server.py`)
 
 Ask: do the skill files need to reflect this change?
 
@@ -39,7 +63,7 @@ Ask: do the skill files need to reflect this change?
 - New registry or validation added → check if skills need to read the new file or follow new rules
 - Tool parameter or return shape changes → update skill steps that depend on that shape
 
-### When modifying skill files (`server/skills/`)
+### When modifying skill files (`src/loci/skills/`)
 
 Ask: do the Python tools need to reflect this change?
 
@@ -61,20 +85,20 @@ This skill is at `skill_version: 7`.   ← body check line
 
 ### Meta file sync
 
-`server/skills/references/` is the source of truth. Files listed in `META_FILES` in `server/tools/vault_init.py` are reseeded to `vault/meta/` on every `META_VERSION` bump. Files in `USER_META_FILES` are seeded once and never overwritten.
+`src/loci/skills/references/` is the source of truth. Files listed in `META_FILES` in `src/loci/tools/vault_init.py` are reseeded to `vault/meta/` on every `META_VERSION` bump. Files in `USER_META_FILES` are seeded once and never overwritten.
 
 When adding a new meta file:
-1. Create it in `server/skills/references/`
+1. Create it in `src/loci/skills/references/`
 2. Add it to `META_FILES` or `USER_META_FILES` in `vault_init.py`
 3. Bump `META_VERSION`
 4. Add the key to the `file_map` in `api.py` → `read_meta()`
-5. Update `server.py` docstring for `read_meta`
+5. Update `mcp_server.py` docstring for `read_meta`
 6. Update any skill that should read the new file
 
-A seeded file must live under `server/` — `deploy/Dockerfile` copies only
-`server/`, so anything sourced from `docs/` is missing in the image and seeding
-fails for every Docker user. This is why the user's ontology guide sits in
-`references/` rather than `docs/`.
+A seeded file must live under `src/loci/` — that is what the wheel packages and
+what `deploy/Dockerfile` copies, so anything sourced from `docs/` is missing on
+every installed machine and seeding fails. This is why the user's ontology guide
+sits in `references/` rather than `docs/`. See Packaging rules above.
 
 ## UI impact check
 
@@ -92,12 +116,12 @@ If yes: inspect the relevant files under `app/` and update them (or flag to the 
 
 **Then run the e2e suite** (`make test-e2e`) — it is the enforcement mechanism
 for this rule. If you changed a component the suite selects on, also update the
-selector table in `server/tests/e2e/README.md`.
+selector table in `tests/e2e/README.md`.
 
 ## Browser e2e suite
 
-`server/tests/e2e/` drives the real app in Chromium against a real uvicorn
-backend and a temp vault. **Read `server/tests/e2e/README.md` before touching
+`tests/e2e/` drives the real app in Chromium against a real uvicorn
+backend and a temp vault. **Read `tests/e2e/README.md` before touching
 it** — it documents four traps that will otherwise cost you an hour (fixture
 dates are rewritten per run; many fixture uids 404 on `/api/nodes/{uid}`; the
 command palette shows recent nodes until search debounces; expected counts live
@@ -107,10 +131,10 @@ Rules of thumb:
 
 - Selecting on UI state → add a `data-testid`, never match on the Latin display
   text (`praeceptum · command` etc.), and record it in the README's table.
-- Adding or removing a fixture node → update `server/tests/e2e/vault_facts.py`;
+- Adding or removing a fixture node → update `tests/e2e/vault_facts.py`;
   `test_fixture_composition.py` fails first and tells you what changed.
 - Need a UI state the base fixture vault lacks (archived, ghost, asset) → add a
-  node to `server/tests/fixtures/e2e-overlay/`, **not** to `fixtures/vault/`
+  node to `tests/fixtures/e2e-overlay/`, **not** to `fixtures/vault/`
   (that one backs the unit suite and its counts are asserted on).
 
 ## Branch and PR rules
@@ -123,11 +147,11 @@ clone to install them (they block commits and merges on `main`, block pushes to
 **Every PR must carry tests:**
 
 - **Unit tests — always.** Any behaviour change needs unit coverage in
-  `server/tests/`. A PR with no test change is only acceptable for pure docs,
+  `tests/`. A PR with no test change is only acceptable for pure docs,
   comments, or formatting.
 - **Playwright e2e tests — whenever the PR touches the UI.** If the change adds,
   alters, or removes anything a user sees or clicks in `app/`, it also needs a
-  browser test in `server/tests/e2e/` that drives the real thing in Chromium and
+  browser test in `tests/e2e/` that drives the real thing in Chromium and
   asserts on the visible result. See the e2e sections below for the traps and
   the `data-testid` rule.
 
@@ -187,13 +211,13 @@ make test                        # full suite: Python unit + browser e2e
 make test-fast                   # unit only (-m "not e2e") — no Node/browser
 make test-e2e                    # browser suite only
 make e2e-install                 # one-time: download the Chromium binary
-uv run pytest server/tests/ -v          # like make test, but skips the npm ci step
-uv run pytest server/tests/test_foo.py  # single file
+uv run pytest tests/ -v          # like make test, but skips the npm ci step
+uv run pytest tests/test_foo.py  # single file
 make test-cov                    # with coverage report
 ```
 
 Tests use `LOCI_VAULT_ROOT` env var (set by the `tmp_vault` fixture in `conftest.py`)
-to point registries and api calls at a temporary copy of `server/tests/fixtures/vault/`.
+to point registries and api calls at a temporary copy of `tests/fixtures/vault/`.
 
 ## Registry singleton pattern
 
@@ -219,8 +243,8 @@ the same pattern when writing tests for any registry-backed module.
 
 ## Fixture vault has no `meta/` directory
 
-`server/tests/fixtures/vault/` contains only node files — no `meta/` subdirectory.
-This is intentional: registries fall back to `server/skills/references/` when
+`tests/fixtures/vault/` contains only node files — no `meta/` subdirectory.
+This is intentional: registries fall back to `src/loci/skills/references/` when
 `vault/meta/<file>` is not found, so tests automatically use the canonical
 source files without extra setup.
 
@@ -233,10 +257,10 @@ falling back, which silently breaks other tests.
 
 When a new registry is needed (parallel to `TypeRegistry` / `RelationRegistry`):
 
-1. Define the YAML schema in `server/skills/references/<name>.yaml`
-2. Create `server/tools/<name>_registry.py` with a `<Name>Registry` class and
+1. Define the YAML schema in `src/loci/skills/references/<name>.yaml`
+2. Create `src/loci/tools/<name>_registry.py` with a `<Name>Registry` class and
    `get_<name>_registry()` / `reset_<name>_registry()` singleton functions,
-   mirroring the pattern in `server/tools/relation_registry.py`
+   mirroring the pattern in `src/loci/tools/relation_registry.py`
 3. Add the YAML to `META_FILES` in `vault_init.py` and bump `META_VERSION`
 4. Add the `read_meta` key in `api.py` and update the `server.py` docstring
 5. Wire validation into `write_file.py` (block on write, warn on patch)

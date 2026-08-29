@@ -38,7 +38,7 @@ class PreflightError(Exception):
 def resolve_vault(config: Path, env_vault: str | None = None) -> Path:
     """
     The directory the servers will actually open, or PreflightError saying why
-    there isn't one. Mirrors load_config() in server/tools/vault_init.py.
+    there isn't one. Mirrors load_config() in src/loci/tools/vault_init.py.
     """
     if env_vault and env_vault.strip():
         return Path(env_vault.strip()).expanduser()

@@ -19,7 +19,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Mirrors config_path() in server/tools/vault_init.py: LOCI_CONFIG wins, then
+# Mirrors config_path() in src/loci/tools/vault_init.py: LOCI_CONFIG wins, then
 # the user-level file under XDG_CONFIG_HOME (or ~/.config). The project-root
 # config.yml is kept as a last resort for a checkout whose server has not run
 # yet — the first server start migrates that file to the user-level location,

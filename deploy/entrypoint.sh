@@ -21,4 +21,4 @@ else
     echo "BACKUP_REMOTE not set — skipping scheduled backup."
 fi
 
-exec uv run python server/loci_mcp/server.py
+exec uv run loci-mcp

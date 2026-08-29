@@ -211,7 +211,7 @@ Edges are typed, directional, and drawn from a closed vocabulary of 27 relations
 
 Inverses are collapsed: store one directed edge and derive the reverse rather than writing both. For `depends-on` / `enables`, the edge lives on the dependent node. Anything outside this vocabulary is rejected on write; add your own to `relation-dictionary-user.yaml` via `define_relation` first.
 
-For the full walkthrough — types, relations, schemes, how to extend them, and when each rule is enforced — see [the ontology guide](server/skills/references/ontology-guide.md). A copy is seeded into every vault at `meta/ontology-guide.md`, so it travels with your notes.
+For the full walkthrough — types, relations, schemes, how to extend them, and when each rule is enforced — see [the ontology guide](src/loci/skills/references/ontology-guide.md). A copy is seeded into every vault at `meta/ontology-guide.md`, so it travels with your notes.
 
 ---
 
@@ -271,14 +271,14 @@ Symlink each skill into `~/.claude/skills/`:
 
 ```bash
 for s in loci-save loci-query loci-inbox loci-ingest-directory; do
-  ln -sfn "$PWD/server/skills/$s" ~/.claude/skills/"$s"
+  ln -sfn "$PWD/src/loci/skills/$s" ~/.claude/skills/"$s"
 done
 ```
 
 > **Note:** `setup.py` also tries to install the skills, but still looks for them
 > under a `loci-skill/` directory that no longer exists, so it leaves dangling
 > symlinks. Use the loop above until that's fixed. The Docker wizard
-> (`setup_docker.py`) reads the correct `server/skills/` path, but only installs
+> (`setup_docker.py`) reads the correct `src/loci/skills/` path, but only installs
 > `loci-save` and `loci-query`.
 
 ### 5. Restart the MCP server
@@ -288,7 +288,7 @@ For Claude Desktop, the server is managed by the app, so just quit and reopen it
 ```bash
 ./run_server.sh
 # or directly:
-uv run python server/loci_mcp/server.py
+uv run loci-mcp
 ```
 
 ### 6. Test it
@@ -465,7 +465,7 @@ The vault lives on the server and is the single source of truth. All clients con
 
 **Authentication:** after setup, protect the tunnel with [Cloudflare Zero Trust Access](https://one.dash.cloudflare.com): Access → Applications → Add Self-hosted app → policy: your email. Without this the endpoint is open.
 
-Server env vars (`server/loci_mcp/server.py`):
+Server env vars (`src/loci/mcp_server.py`):
 
 | Var | Meaning |
 |---|---|
@@ -525,7 +525,7 @@ Drop files into `loci-stage/` and run the inbox skill to process them in batches
 Process my loci inbox
 ```
 
-The agent scans the staging folder, presents a plan with cost/time estimates, waits for your approval, then ingests files in configurable batch sizes (default: 50 ebooks per run, 10 text items per run; adjust `DEFAULT_BUDGET_FILES` / `DEFAULT_BUDGET_CONTENT` in `server/tools/inbox_plan.py`). Progress is saved to `.inbox-plan.yaml` so sessions can be interrupted and resumed.
+The agent scans the staging folder, presents a plan with cost/time estimates, waits for your approval, then ingests files in configurable batch sizes (default: 50 ebooks per run, 10 text items per run; adjust `DEFAULT_BUDGET_FILES` / `DEFAULT_BUDGET_CONTENT` in `src/loci/tools/inbox_plan.py`). Progress is saved to `.inbox-plan.yaml` so sessions can be interrupted and resumed.
 
 ### Ingesting a directory in place
 
@@ -549,7 +549,7 @@ make dev          # scratch dev vault:  API on :8765 + Vite dev server on :5173
 `make run` reads `~/.config/loci/config.yml` — the same vault the MCP server
 serves. `make dev` deliberately does not; see [Development](#development).
 
-The backend is `server/http_server.py`, a thin FastAPI layer over the same `server/api.py` facade the MCP server uses, so the UI can never drift onto a separate code path. It is read-only today (the API allows `GET` only); writes go through Claude.
+The backend is `src/loci/http_server.py`, a thin FastAPI layer over the same `src/loci/api.py` facade the MCP server uses, so the UI can never drift onto a separate code path. It is read-only today (the API allows `GET` only); writes go through Claude.
 
 ### Vault index
 
@@ -647,11 +647,11 @@ loci/
       ui_kits/                      ← outer-shell, instrument-shell, inner-shell
       assets/
 
-  server/
+  src/loci/                         ← the installed package; everything here ships
+    __init__.py
     api.py                          ← public facade, single entry point for all callers
-    http_server.py                  ← FastAPI backend for the web UI
-    loci_mcp/
-      server.py                     ← MCP tool definitions and docstrings
+    http_server.py                  ← FastAPI backend for the web UI; `loci` entry point
+    mcp_server.py                   ← MCP tool definitions and docstrings; `loci-mcp` entry point
     skills/
       loci-save/SKILL.md            ← saving content
       loci-query/SKILL.md           ← querying and traversal
@@ -693,12 +693,13 @@ loci/
       inbox_scanner.py              ← classify files in loci-stage/ by extension and location
       inbox_plan.py                 ← read/write/update .inbox-plan.yaml work queue
       directory_scanner.py          ← catalogue an arbitrary directory in place
-    tests/
-      conftest.py
-      fixtures/vault/               ← base fixture vault (node files only, no meta/)
-      fixtures/e2e-overlay/         ← extra nodes layered on top for e2e only
-      test_*.py                     ← unit suite
-      e2e/                          ← Playwright browser suite (see its README.md)
+
+  tests/                            ← outside the package, so it never ships
+    conftest.py
+    fixtures/vault/                 ← base fixture vault (node files only, no meta/)
+    fixtures/e2e-overlay/           ← extra nodes layered on top for e2e only
+    test_*.py                       ← unit suite
+    e2e/                            ← Playwright browser suite (see its README.md)
 
   .githooks/                        ← pre-commit / pre-merge-commit / pre-push (make hooks)
   .github/workflows/test.yml        ← CI: unit + e2e on every push and PR
@@ -748,13 +749,35 @@ make e2e-install    # download the Chromium binary for the browser suite
 
 ```bash
 make run            # real vault:  API (:8765) + built UI (:4173) together
-make run-api        # FastAPI only:  uv run uvicorn server.http_server:app --port 8765
+make run-api        # FastAPI only:  uv run uvicorn loci.http_server:app --port 8765
 make run-ui         # UI only:       cd app && npm run build && npm run preview
 make dev            # scratch vault:  API (:8765) + Vite dev server (:5173) together
-make dev-api        # FastAPI only:  uv run uvicorn server.http_server:app --reload --port 8765
+make dev-api        # FastAPI only:  uv run uvicorn loci.http_server:app --reload --port 8765
 make dev-ui         # Vite only:     cd app && npm run dev
 ./run_server.sh     # MCP server in stdio mode (Claude Code / Claude Desktop)
 ```
+
+### The two console scripts
+
+Loci installs as a package named `loci` and ships two commands. They are
+deliberately separate processes:
+
+```bash
+loci-mcp            # stdio MCP server — the MCP client spawns and kills this
+loci                # the HTTP API (127.0.0.1:8765 by default; --host/--port to change)
+```
+
+`loci-mcp` takes no arguments: whichever client starts it owns the config file
+it is launched from, so there is nowhere for you to pass a flag. Transport comes
+from `LOCI_TRANSPORT` (`stdio`, or `sse` for the container).
+
+`loci` mounts `/api/*` and nothing else — it does not yet serve the React
+frontend, which runs separately via `make dev-ui`.
+
+Folding the two into one process would mean Claude Desktop's quit takes the API
+down with it, and one web server per connected client. In a checkout, run
+them through uv — `uv run loci`, `uv run loci-mcp` — or use the `make`
+targets above.
 
 The `dev` targets run against `dev-config.yml` and `dev-vault/` in the project
 root, both gitignored and created on first use, so a stray `make dev` cannot
@@ -779,7 +802,7 @@ make test-cov       # unit suite with a coverage report
 make screenshots    # recapture the README images from the e2e fixture vault
 ```
 
-Tests point at a temp copy of `server/tests/fixtures/vault/` via the `LOCI_VAULT_ROOT` env var (set by the `tmp_vault` fixture in `conftest.py`), so your real vault is never touched. See [docs/testing.md](docs/testing.md) and [server/tests/e2e/README.md](server/tests/e2e/README.md).
+Tests point at a temp copy of `tests/fixtures/vault/` via the `LOCI_VAULT_ROOT` env var (set by the `tmp_vault` fixture in `conftest.py`), so your real vault is never touched. See [docs/testing.md](docs/testing.md) and [tests/e2e/README.md](tests/e2e/README.md).
 
 ### Contributing rules
 
@@ -789,7 +812,7 @@ Tests point at a temp copy of `server/tests/fixtures/vault/` via the `LOCI_VAULT
 
 ## Schema Versioning
 
-Meta files are seeded into `vault/meta/` from `server/skills/references/`, which is the source of truth for what a fresh vault gets. `vault_init.py` holds the current `META_VERSION` (currently **7**) and two lists:
+Meta files are seeded into `vault/meta/` from `src/loci/skills/references/`, which is the source of truth for what a fresh vault gets. `vault_init.py` holds the current `META_VERSION` (currently **7**) and two lists:
 
 - `META_FILES`: reseeded on every `META_VERSION` bump
 - `USER_META_FILES`: seeded once and never overwritten (the `-user.yaml` extension files)
@@ -798,7 +821,7 @@ The config file tracks the `meta_version` the vault was last seeded at. On start
 
 ### Adding a new type, relation, scheme, or field (non-breaking)
 
-1. Edit the relevant file in `server/skills/references/`
+1. Edit the relevant file in `src/loci/skills/references/`
 2. Increment `schema_version` in that file and `META_VERSION` in `vault_init.py`
 3. Add the `read_meta` key in `api.py` and update the `server.py` docstring if it's a new file
 4. Update any skill that should read or validate against it
@@ -809,7 +832,7 @@ Breaking changes require an explicit migration script that reads the live vault,
 
 ### Why two copies?
 
-The vault meta files are user-owned, accumulating customizations (new tags, local schema tweaks) that the project seeds don't have. The `server/skills/references/` files are the template. Non-breaking additions are auto-reseeded; breaking changes always require explicit migration.
+The vault meta files are user-owned, accumulating customizations (new tags, local schema tweaks) that the project seeds don't have. The `src/loci/skills/references/` files are the template. Non-breaking additions are auto-reseeded; breaking changes always require explicit migration.
 
 ---
 
@@ -824,7 +847,7 @@ The vault meta files are user-owned, accumulating customizations (new tags, loca
 - [x] MCP server: stdio transport, Claude Code / Claude Desktop integration
 - [x] Patch and delete operations
 - [x] Field dictionary: authoritative schema in vault meta, skill reads at runtime
-- [x] Schema versioning: seed files in `server/skills/references/`, `meta_version` in `config.yml`
+- [x] Schema versioning: seed files in `src/loci/skills/references/`, `meta_version` in `config.yml`
 - [~] rclone wrapper: manual `push` / `pull` / `bisync` script, plus a one-way daily backup in Docker. No scheduling, no conflict handling, no tests
 - [x] SSE transport: remote MCP server support (Claude.ai / mobile)
 - [~] `deploy/`: Docker image, systemd + nginx templates, home lab setup script. Builds and runs, but lightly tested and uncovered by CI

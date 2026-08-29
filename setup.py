@@ -16,18 +16,15 @@ Usage:
 import json
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 # Install dependencies before any local imports that require them
 subprocess.run(["uv", "sync"], cwd=Path(__file__).parent, check=True)
 
-# Add server/tools/ to path
-sys.path.insert(0, str(Path(__file__).parent / "server" / "tools"))
-from vault_init import init as vault_init
+# uv sync above installed the project, so the package is importable.
+from loci.tools.vault_init import init as vault_init
 
 PROJECT_ROOT  = Path(__file__).parent.resolve()
-MCP_SERVER    = PROJECT_ROOT / "server" / "loci_mcp" / "server.py"
 SKILLS        = ["loci-save", "loci-query"]
 
 CLAUDE_DESKTOP_CONFIG  = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
@@ -48,14 +45,14 @@ def register_mcp_claude_code() -> None:
     claude = shutil.which("claude")
     if not claude:
         print("  Warning: `claude` CLI not found — skipping Claude Code registration.")
-        print("  Run manually: claude mcp add --scope user loci <uv-path> -- run --directory <project> python server/loci_mcp/server.py")
+        print("  Run manually: claude mcp add --scope user loci <uv-path> -- run --directory <project> loci-mcp")
         return
 
     result = subprocess.run(
         [
             claude, "mcp", "add", "--scope", "user",
             "loci", uv,
-            "--", "run", "--directory", str(PROJECT_ROOT), "python", "server/loci_mcp/server.py",
+            "--", "run", "--directory", str(PROJECT_ROOT), "loci-mcp",
         ],
         capture_output=True,
         text=True,
@@ -80,7 +77,7 @@ def register_mcp_claude_desktop(config_path: Path) -> None:
     config.setdefault("mcpServers", {})
     config["mcpServers"]["loci"] = {
         "command": uv,
-        "args": ["run", "--directory", str(PROJECT_ROOT), "python", "server/loci_mcp/server.py"],
+        "args": ["run", "--directory", str(PROJECT_ROOT), "loci-mcp"],
     }
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
