@@ -10,7 +10,7 @@ This system was synthesized from the Loci codebase. There is no pre-existing UI,
 
 - **Codebase**: `gked/loci` (private GitHub repo)
 - **Type colors** defined in `colors_and_type.css`. These are the canonical swatches that color nodes by type in the topology graph.
-- **Vocabulary** from `loci-skill/references/ontology.yaml`, `type-dictionary.md`, and `relation-dictionary.md` — the type system (document, article, bookmark, conversation, project, task, event, entity, procedure, topic, asset) and relation types (depends-on, belongs-to, about, mentions, influences, supports, contradicts, …) drive the components.
+- **Vocabulary** from `src/loci/skills/references/ontology.yaml`, `type-dictionary.md`, and `relation-dictionary.md` — the type system (document, article, bookmark, conversation, project, task, event, entity, procedure, topic, asset) and relation types (depends-on, belongs-to, about, mentions, influences, supports, contradicts, …) drive the components.
 - **README of gked/loci** (etymology, vault topology, capture flow) — anchors the classical/spatial metaphor.
 
 If you have access to the repo, read those files. If not: the relevant excerpts are inlined below where needed.

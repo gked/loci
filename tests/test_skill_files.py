@@ -24,6 +24,7 @@ REMOVED_COMMANDS = {
     "python setup.py": "uv run setup.py",
     "loci_mcp/server.py": "loci-mcp",
     "server/http_server.py": "loci.http_server",
+    "loci-skill/": "src/loci/skills/",
 }
 
 # Where a stale command is a bug: prose and code a user or the model acts on.
@@ -33,6 +34,7 @@ REMOVED_COMMANDS = {
 SEARCHED_SUFFIXES = {".md", ".py"}
 SEARCHED_ROOTS = [
     REPO_ROOT / "src",
+    REPO_ROOT / "docs",
     REPO_ROOT / "app" / "design",
     REPO_ROOT / "tests",
     REPO_ROOT / "deploy",
@@ -91,9 +93,12 @@ def test_frontmatter_and_body_versions_agree(skill):
     frontmatter = FRONTMATTER_VERSION.search(_frontmatter(text))
     body = BODY_VERSION.search(text)
 
-    if frontmatter is None and body is None:
-        pytest.skip(f"{skill.parent.name} is not versioned")
-
+    # Not a skip: an unversioned skill is the one case the check cannot catch,
+    # because a stale copy has nothing to compare against.
+    assert frontmatter is not None or body is not None, (
+        f"{skill.parent.name} declares no skill_version — a user running a "
+        f"pasted copy has no way to find out it is stale"
+    )
     assert frontmatter is not None, f"{skill.parent.name}: body states a version, frontmatter does not"
     assert body is not None, f"{skill.parent.name}: frontmatter states a version, body does not"
     assert frontmatter.group(1) == body.group(1), (
@@ -115,10 +120,46 @@ def test_no_skill_names_a_command_that_was_removed(skill):
         )
 
 
+# `read_skill` takes the skill name and defaults to this one, so a version check
+# that omits the argument fetches this skill no matter which file it is in.
+READ_SKILL_DEFAULT = "loci-save"
+
+
+@pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)
+def test_version_check_fetches_the_skill_it_is_in(skill):
+    """
+    The version check compares this file's number against the one the MCP
+    server returns, which is only meaningful if the server returns *this*
+    skill. Omitting the argument fetches `loci-save` instead, and its version
+    (far ahead of the newer skills') reads as "the MCP copy is newer" — so the
+    model abandons the skill it was invoked for and follows loci-save's steps.
+    """
+    text = skill.read_text(encoding="utf-8")
+    if BODY_VERSION.search(text) is None:
+        pytest.skip("no version check to fetch anything")
+
+    name = skill.parent.name
+    assert "loci__read_skill" in text, f"{name}: version check fetches nothing"
+    if name != READ_SKILL_DEFAULT:
+        assert f'skill="{name}"' in text, (
+            f'{name}: version check must name skill="{name}" — without it '
+            f"`read_skill` returns {READ_SKILL_DEFAULT}, whose version is not "
+            f"comparable to this skill's"
+        )
+
+
 def test_the_removed_command_search_covers_something():
     """A bad root list would make the repo-wide guard vacuously pass."""
     assert len(SEARCHED_FILES) > 20, f"only {len(SEARCHED_FILES)} files searched"
     assert (REPO_ROOT / "README.md") in SEARCHED_FILES
+    # Naming the roots that carry prose, so dropping one fails here rather than
+    # leaving the guard quietly green over a directory it no longer reads.
+    # (deploy/ holds only a Dockerfile, shell, and YAML, none of which the
+    # suffix filter picks up — it is in the list for the .md or .py that lands
+    # there next.)
+    for root in (REPO_ROOT / "src", REPO_ROOT / "docs", REPO_ROOT / "tests",
+                 REPO_ROOT / "app" / "design"):
+        assert any(root in p.parents for p in SEARCHED_FILES), f"nothing searched under {root}"
 
 
 @pytest.mark.parametrize(

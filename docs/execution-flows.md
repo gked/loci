@@ -23,8 +23,8 @@ uv run setup.py
   │         ~/Library/Application Support/Claude/claude_desktop_config.json
   │
   └─ install_skill_symlinks()
-       └─ ~/.claude/skills/loci-save  → <project>/loci-skill/loci-save
-       └─ ~/.claude/skills/loci-query → <project>/loci-skill/loci-query
+       └─ ~/.claude/skills/loci-save  → <project>/src/loci/skills/loci-save
+       └─ ~/.claude/skills/loci-query → <project>/src/loci/skills/loci-query
 
 User restarts Claude Code / Claude Desktop
 Claude Code spawns:  uv run loci-mcp  (stdio transport)
