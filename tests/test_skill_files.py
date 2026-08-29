@@ -5,10 +5,13 @@ The skills are prose the model follows verbatim, so a stale command in one is a
 user-visible bug that no amount of Python coverage reaches: the model reads
 `python setup.py` out of the file and tells the user to run it.
 """
+import inspect
 import re
 from pathlib import Path
 
 import pytest
+
+from loci import api, mcp_server
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = REPO_ROOT / "src" / "loci" / "skills"
@@ -122,7 +125,45 @@ def test_no_skill_names_a_command_that_was_removed(skill):
 
 # `read_skill` takes the skill name and defaults to this one, so a version check
 # that omits the argument fetches this skill no matter which file it is in.
+# test_read_skill_default_is_the_skill_whose_check_omits_it holds the code to it.
 READ_SKILL_DEFAULT = "loci-save"
+
+
+def test_read_skill_default_names_a_skill_that_exists():
+    """
+    Renaming the loci-save directory satisfies the other guards — the version
+    check inside it just gains an explicit argument — while leaving the code
+    default pointing at a path that is gone, so `loci__read_skill` with no
+    argument raises FileNotFoundError with the suite still green.
+    """
+    assert (SKILLS_DIR / READ_SKILL_DEFAULT / "SKILL.md").exists(), (
+        f"read_skill defaults to {READ_SKILL_DEFAULT!r}, but "
+        f"src/loci/skills/{READ_SKILL_DEFAULT}/SKILL.md does not exist — "
+        "point the default at a skill that ships"
+    )
+
+
+@pytest.mark.parametrize(
+    "func", [api.read_skill, mcp_server.read_skill], ids=["api", "mcp_server"]
+)
+def test_read_skill_default_is_the_skill_whose_check_omits_it(func):
+    """
+    loci-save's version check calls `loci__read_skill` with no argument, which
+    is correct only while the default resolves to loci-save. Repointing the
+    default silently sends that check another skill's version number — the
+    failure the exemption above assumes away — and the skill prose, being
+    prose, cannot notice. Fail here instead, where the cause is named.
+    """
+    # .get, not [...]: renaming the parameter is the same breakage as
+    # repointing it, and a bare KeyError would name neither loci-save nor why.
+    param = inspect.signature(func).parameters.get("skill")
+    default = param.default if param else "<no `skill` parameter>"
+    assert default == READ_SKILL_DEFAULT, (
+        f"{func.__module__}.read_skill now defaults to {default!r}; "
+        f"loci-save/SKILL.md omits the argument and expects "
+        f"{READ_SKILL_DEFAULT!r} — give that check an explicit "
+        f'skill="{READ_SKILL_DEFAULT}" before changing the default'
+    )
 
 
 @pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)
