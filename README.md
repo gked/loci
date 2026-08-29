@@ -542,8 +542,12 @@ Ingest ~/Documents/papers into my loci vault
 A local React app for browsing the graph. Start both halves with one command:
 
 ```bash
-make dev          # API on :8765 + Vite dev server on :5173
+make run          # your real vault:    API on :8765 + built UI on :4173
+make dev          # scratch dev vault:  API on :8765 + Vite dev server on :5173
 ```
+
+`make run` reads `~/.config/loci/config.yml` — the same vault the MCP server
+serves. `make dev` deliberately does not; see [Development](#development).
 
 The backend is `server/http_server.py`, a thin FastAPI layer over the same `server/api.py` facade the MCP server uses, so the UI can never drift onto a separate code path. It is read-only today (the API allows `GET` only); writes go through Claude.
 
@@ -743,7 +747,10 @@ make e2e-install    # download the Chromium binary for the browser suite
 ### Running
 
 ```bash
-make dev            # API (:8765) + Vite dev server (:5173) together
+make run            # real vault:  API (:8765) + built UI (:4173) together
+make run-api        # FastAPI only:  uv run uvicorn server.http_server:app --port 8765
+make run-ui         # UI only:       cd app && npm run build && npm run preview
+make dev            # scratch vault:  API (:8765) + Vite dev server (:5173) together
 make dev-api        # FastAPI only:  uv run uvicorn server.http_server:app --reload --port 8765
 make dev-ui         # Vite only:     cd app && npm run dev
 ./run_server.sh     # MCP server in stdio mode (Claude Code / Claude Desktop)
@@ -753,6 +760,14 @@ The `dev` targets run against `dev-config.yml` and `dev-vault/` in the project
 root, both gitignored and created on first use, so a stray `make dev` cannot
 write into the vault you keep real notes in. `./run_server.sh` and an installed
 server use the config file proper.
+
+The `run` targets are the other half of that split: they set no `LOCI_CONFIG` or
+`LOCI_VAULT_ROOT`, so both halves read `~/.config/loci/config.yml` and serve the
+vault you actually keep notes in, with the built bundle rather than the dev
+server. They run a preflight first — a missing config, a config with no
+`vault_root`, or a `vault_root` that is not on disk (an unmounted drive, a sync
+folder that has not come down) stops with that path named, instead of starting
+up and serving an empty graph.
 
 ### Testing
 
