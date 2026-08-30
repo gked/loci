@@ -1,0 +1,85 @@
+name: Release
+
+# Fires on the tag `make release-publish` pushes. Everything before this — the
+# version bump, its PR, the merge — has already happened on main, and both
+# suites ran there. What is left is to prove the tag is honest, build the
+# artifact, and publish it.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write  # creating a Release writes to the repo
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # release_notes.py reads the previous tag's files out of git history,
+          # so a shallow clone would leave every release looking like the first.
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      # The wheel carries the built frontend, so the release needs Node. An
+      # installed Loci has neither app/ nor a toolchain to build it with, and
+      # `loci` would serve an API and no UI.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # First, and before anything is built: a tag whose version disagrees with
+      # pyproject.toml would publish a wheel that lies about what it is. That
+      # happens when the tag is pushed before the bump PR merged.
+      - name: Verify the tag matches pyproject.toml
+        run: uv run python scripts/release.py check "${GITHUB_REF_NAME}"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      # The unit suite only. The e2e suite already ran on the merge commit this
+      # tag points at, and re-running the browser against an unchanged tree
+      # would add minutes without adding a signal.
+      - name: Run unit tests
+        run: uv run pytest tests/ -v -m "not e2e"
+
+      # `make wheel`, not `uv build`: it compiles the frontend into
+      # src/loci/static/ first. A bare uv build produces a backend-only wheel,
+      # which is what every release before this shipped.
+      - name: Build the wheel
+        run: make wheel
+
+      - name: Compose release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # "^" is the tag's parent: the newest release tag before this one.
+          # Empty before the first release, which release_notes.py handles.
+          PREVIOUS="$(git describe --tags --abbrev=0 --match 'v*' "${TAG}^" 2>/dev/null || true)"
+          echo "Previous release: ${PREVIOUS:-none}"
+
+          # The upgrade section first — it is the part that asks something of
+          # the reader — then GitHub's own list of merged PRs beneath it.
+          uv run python scripts/release_notes.py "${PREVIOUS}" "${TAG}" > notes.md
+          gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="${TAG}" \
+            ${PREVIOUS:+-f previous_tag_name="${PREVIOUS}"} \
+            --jq .body >> notes.md
+
+          cat notes.md
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "Loci ${GITHUB_REF_NAME}" \
+            --notes-file notes.md

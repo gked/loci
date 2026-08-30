@@ -20,7 +20,15 @@ from pathlib import Path
 
 PROJECT_ROOT  = Path(__file__).parent.resolve()
 SKILLS_DIR    = PROJECT_ROOT / "src" / "loci" / "skills"
-SKILLS        = ["loci-save", "loci-query"]
+# Every packaged skill, not a hand-kept subset — a hardcoded list is how
+# loci-inbox and loci-ingest-directory ended up installed by neither setup
+# script and documented as a manual `ln -s` loop in the README instead.
+# Scanned rather than imported from loci.skills_install: this module has to
+# stay importable before `uv sync` has installed the package.
+SKILLS        = sorted(
+    d.name for d in SKILLS_DIR.iterdir()
+    if d.is_dir() and (d / "SKILL.md").is_file()
+) if SKILLS_DIR.is_dir() else []
 
 CLAUDE_DESKTOP_CONFIG  = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
 
@@ -81,30 +89,37 @@ def register_mcp_claude_desktop(config_path: Path) -> None:
 
 
 def install_skill_symlink() -> None:
-    """Create ~/.claude/skills/<skill>/ symlinks for each skill."""
-    skills_root = Path.home() / ".claude" / "skills"
-    skills_root.mkdir(parents=True, exist_ok=True)
+    """Point ~/.claude/skills/<skill>/ at each packaged skill.
 
-    for skill_name in SKILLS:
-        src = SKILLS_DIR / skill_name
-        dst = skills_root / skill_name
+    Delegates to loci.skills_install so the checkout path and the installed
+    path share one implementation and cannot drift. link=True because this
+    script only ever runs from a checkout, where editing a skill and seeing it
+    live is the point; `loci skills` copies instead, since a link into an
+    installed wheel dangles the moment it is upgraded. force=True keeps the old
+    behaviour of relinking unconditionally.
 
-        if not src.is_dir():
-            # Unlinking dst and then pointing it at a path that does not exist
-            # replaces a working skill install with a dangling symlink — and one
-            # of these skills is how the user was told to run this script.
-            print(f"  Skipped {skill_name}: {src} does not exist")
-            continue
+    Imported inside the function, not at module scope: the package only becomes
+    importable once sync_and_init_vault() has run `uv sync`.
+    """
+    from loci import skills_install
 
-        if dst.is_symlink():
-            dst.unlink()
-            print(f"  Replaced existing symlink: {skill_name}")
-        elif dst.exists():
-            shutil.rmtree(dst)
-            print(f"  Replaced existing skill copy: {skill_name}")
+    statuses = skills_install.plan(
+        skills_root=Path.home() / ".claude" / "skills",
+        source=SKILLS_DIR,
+        force=True,
+    )
+    if not statuses:
+        # Nothing packaged means nothing to link. Saying so beats silence: the
+        # alternative once was unlinking a working skill and pointing it at a
+        # directory that did not exist.
+        print(f"  Skipped: no skills found in {SKILLS_DIR}")
+        return
 
-        dst.symlink_to(src)
-        print(f"  {dst} → {src}")
+    for status in skills_install.apply(statuses, link=True):
+        if status.action == skills_install.REMOVE:
+            print(f"  {status.dest} (removed — no longer shipped)")
+        else:
+            print(f"  {status.dest} → {status.source}")
 
 
 def print_desktop_fallback() -> None:

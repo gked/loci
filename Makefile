@@ -1,5 +1,6 @@
 .PHONY: test test-fast test-e2e test-cov cov-html e2e-install dev dev-api dev-ui
 .PHONY: run run-api run-ui run-check hooks screenshots
+.PHONY: skills skills-link wheel release release-publish
 
 # One-time per clone: point git at the versioned hooks in .githooks/.
 # They block commits, merges, and pushes that land directly on main.
@@ -153,3 +154,73 @@ run-api: run-check
 # older checkout is worse than the few seconds the build costs.
 run-ui: run-check $(NODE_MODULES)
 	cd app && npm run build && npm run preview
+
+# ---------------------------------------------------------------------------
+# Skills and releases
+# ---------------------------------------------------------------------------
+
+# Install the packaged skills into ~/.claude/skills/. From a checkout this is
+# what setup.py already does; the point of having it here is that it is the
+# same code path an installed wheel runs, so it gets exercised.
+skills:
+	uv run loci skills
+
+# The developer's install: symlinks, so editing a skill under src/loci/skills/
+# is live in Claude Code with nothing to re-run. `make skills` copies instead,
+# which is what an installed wheel does. The post-checkout and post-merge hooks
+# run this for you when a pull or a branch switch changes the skills.
+#
+# --force, matching the hooks, and for the same reason: asking for links is a
+# statement about what you want in ~/.claude/skills/, not a question about
+# versions. Without it a copy left by `make skills` stays a copy whenever the
+# packaged skill_version has not moved, and the command silently does nothing.
+skills-link:
+	uv run loci skills --link --yes --force
+
+# Build the distributable wheel — with the UI inside it.
+#
+# `uv build` alone ships a backend: the frontend lives in app/, which is not
+# packaged, and an installed Loci has neither app/ nor Node to build it with.
+# So the bundle is compiled into src/loci/static/ first, where pyproject's
+# hatch `artifacts` entry picks it up.
+#
+# The bundle is rebuilt every time rather than reusing app/dist. A stale dist
+# from an old checkout would ship silently, and a released UI that quietly
+# lags the backend is worse than the minute the build costs.
+#
+# LOCI_CONFIG points at nothing on purpose. vite.config.js reads the API token
+# out of config.yml and inlines it into the bundle, which is right for `make
+# dev` and catastrophic here: on any machine that has ever started Loci, the
+# builder's live token would be baked into a wheel and handed to whoever
+# installs it. An empty LOCI_API_TOKEN does not do it — readApiToken() tests
+# truthiness and falls through to the file. The served page gets its token from
+# the meta tag http_server stamps into index.html, so nothing needs one baked in.
+wheel: $(NODE_MODULES)
+	cd app && LOCI_CONFIG=/nonexistent npm run build
+	rm -rf src/loci/static
+	cp -R app/dist src/loci/static
+	rm -rf dist
+	uv build
+	@files=$$(unzip -l dist/*.whl | grep -c "loci/static/" || true); \
+	  if [ "$$files" -eq 0 ]; then \
+	    echo "wheel: no loci/static/ files in the wheel — the bundle was dropped." >&2; \
+	    echo "Check [tool.hatch.build] artifacts in pyproject.toml." >&2; \
+	    exit 1; \
+	  fi; \
+	  echo; \
+	  echo "Built dist/ — the UI is inside:"; \
+	  echo "  $$files frontend files packaged"
+
+# Phase 1 of a release: pick the number, open the bump PR. main is never
+# written to directly, so the version change has to land as a PR like anything
+# else. BUMP is required — there is no default, because guessing whether a
+# release is a patch or a minor is exactly the judgement this leaves to you.
+BUMP ?=
+release:
+	@test -n "$(BUMP)" || { echo "usage: make release BUMP=patch|minor|major" >&2; exit 1; }
+	uv run python scripts/release.py bump $(BUMP)
+
+# Phase 2, once that PR has merged and main is pulled: tag it and push. The tag
+# is what .github/workflows/release.yml fires on.
+release-publish:
+	uv run python scripts/release.py publish

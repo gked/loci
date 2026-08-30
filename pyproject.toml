@@ -28,6 +28,17 @@ dependencies = [
 loci-mcp = "loci.mcp_server:main"
 loci = "loci.http_server:main"
 
+# The built frontend. It is a build product, so it is gitignored — and
+# hatchling honours .gitignore, which would drop it silently. Declaring it as
+# an artifact is what overrides that, and it has to sit here rather than under
+# the wheel target: `uv build` builds the sdist first and the wheel from it, so
+# a file missing from the sdist never reaches the wheel either.
+#
+# `make wheel` is what puts the bundle there. A bare `uv build` produces a
+# backend-only wheel, and http_server says so rather than serving a blank page.
+[tool.hatch.build]
+artifacts = ["src/loci/static/**"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

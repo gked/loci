@@ -19,3 +19,7 @@ test-results/
 
 # Wheels from `uv build`. uv writes dist/.gitignore too; this is the explicit one.
 /dist/
+
+# The frontend bundle `make wheel` compiles into the package. Build output,
+# not source — pyproject's hatch `artifacts` entry is what still ships it.
+/src/loci/static/

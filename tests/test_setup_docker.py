@@ -2,11 +2,15 @@
 tests/test_setup_docker.py
 Tests for the Docker setup wizard's vault prompt.
 
-setup_docker.py sits at the repo root and is deliberately standalone — it runs
-before anything is installed, so it imports nothing from src/loci/. That makes its
-vault prompt a copy of prompt_vault_root() in tools/vault_init.py rather than a
-call to it, and these tests are what keep the two wizards agreeing about what
-counts as a vault path.
+setup_docker.py sits at the repo root and runs before anything is installed, so
+its vault prompt is a copy of prompt_vault_root() in tools/vault_init.py rather
+than a call to it, and these tests are what keep the two wizards agreeing about
+what counts as a vault path.
+
+The one thing it does import from the package is skills_install, at step 6.
+That makes `uv run setup_docker.py` — which syncs the project first, and is
+what the README says to run — a requirement rather than a convention, so main()
+checks for it before the first step instead of failing six steps in.
 """
 
 import sys
@@ -19,6 +23,38 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import setup_docker  # noqa: E402  (must follow the sys.path insert)
+
+
+def test_the_package_check_passes_in_this_environment():
+    """The test suite runs with the project synced, which is the same
+    environment `uv run setup_docker.py` gives the script."""
+    setup_docker.require_loci_package()
+
+
+def test_a_missing_package_stops_before_anything_is_installed(monkeypatch, capsys):
+    """The failure was ordered wrongly, not merely unhandled: Docker installed,
+    the vault configured and the container running, and then an ImportError."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def refuse(name, *args, **kwargs):
+        if name.startswith("loci"):
+            raise ImportError(f"no module named {name}")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", refuse)
+    monkeypatch.setattr(setup_docker, "ensure_docker", _must_not_run)
+
+    with pytest.raises(SystemExit) as exit_info:
+        setup_docker.main()
+
+    assert exit_info.value.code == 1
+    assert "uv run setup_docker.py" in capsys.readouterr().err
+
+
+def _must_not_run(*args, **kwargs):
+    raise AssertionError("setup continued past the package check")
 
 
 def test_ask_vault_path_has_no_default(tmp_path, monkeypatch):

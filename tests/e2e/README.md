@@ -168,3 +168,17 @@ use `get_by_role` / `get_by_placeholder` instead — no testid needed.
   collapses the per-type dot colours into grey.
 - **Writes.** The HTTP API is read-only (`CORSMiddleware` allows GET only), so
   there is no create/edit flow to test from the browser.
+
+## `test_packaged_ui.py` runs its own server
+
+Every other spec drives the developer layout: `vite preview` for the UI,
+uvicorn for the API, a proxy between them. An installed wheel runs neither —
+one process serves the compiled bundle out of the package and answers `/api` on
+the same origin.
+
+That spec therefore builds its own bundle and starts its own uvicorn with
+`LOCI_STATIC_DIR` pointed at `app/dist`, standing in for `src/loci/static/`,
+which `make wheel` populates. It deliberately does not reshape the shared
+`api_server` / `web_server` fixtures, so nothing about the rest of the suite
+changes. It sets `LOCI_API_TOKEN` to a known value, because the token the
+server stamps into `index.html` is one of the things it asserts on.

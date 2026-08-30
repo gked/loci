@@ -170,7 +170,9 @@ class TestOpenLocalPath:
             patch.object(http_server, "_launch_system_handler") as launch,
         ):
             result = http_server.open_local_path(
-                "/Users/example/My File.pdf", origin=None, x_loci_token=TOKEN
+                "/Users/example/My File.pdf",
+                origin="http://localhost:5173",
+                x_loci_token=TOKEN,
             )
 
         assert result == {"opened": "/Users/example/My File.pdf"}
@@ -180,7 +182,9 @@ class TestOpenLocalPath:
         with patch.object(Path, "exists", return_value=False):
             with pytest.raises(http_server.HTTPException) as exc_info:
                 http_server.open_local_path(
-                    "/missing/file.txt", origin=None, x_loci_token=TOKEN
+                    "/missing/file.txt",
+                    origin="http://localhost:5173",
+                    x_loci_token=TOKEN,
                 )
 
         assert exc_info.value.status_code == 404
@@ -229,13 +233,58 @@ class TestOpenLocalAuth:
         assert response.status_code == 403
         launch.assert_not_called()
 
-    def test_allows_a_tokened_request_with_no_origin(self, client):
-        # curl, tests, and the MCP server send no Origin. A browser always
-        # attaches one to a cross-origin POST, so this is not a bypass.
+    def test_rejects_a_request_with_no_origin(self, client):
+        # A missing Origin used to fall through to the token alone. GET / hands
+        # the token to anyone who can reach the port, so that left the endpoint
+        # one `curl` away for any local process — and this endpoint launches
+        # arbitrary paths with the OS handler.
         response, launch = self._post(client, **{"X-Loci-Token": TOKEN})
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Missing Origin header"
+        launch.assert_not_called()
+
+    def test_allows_the_servers_own_origin_even_though_it_is_not_listed(self, client):
+        """The packaged UI is served by this process, so its page origin is
+        whatever host and port uvicorn bound — 127.0.0.1:8765 by default, an
+        ephemeral port under the e2e suite. No static allowlist can name it, so
+        without a same-origin check every open-local from the wheel's own UI
+        403s. TestClient sends Host: testserver."""
+        response, launch = self._post(
+            client, **{"Origin": "http://testserver", "X-Loci-Token": TOKEN}
+        )
 
         assert response.status_code == 200
         launch.assert_called_once()
+
+    def test_a_cross_origin_post_is_not_saved_by_the_same_origin_check(self, client):
+        """The browser sets Host to the server it is talking to, so a page on
+        another origin cannot make the two agree."""
+        response, launch = self._post(
+            client,
+            **{
+                "Origin": "https://evil.example",
+                "Host": "testserver",
+                "X-Loci-Token": TOKEN,
+            },
+        )
+
+        assert response.status_code == 403
+        launch.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("origin", "host", "expected"),
+        [
+            ("http://127.0.0.1:8765", "127.0.0.1:8765", True),
+            ("http://localhost:41235", "localhost:41235", True),
+            # A proxy terminating TLS: the browser reports https, Host does not.
+            ("https://loci.example", "loci.example", True),
+            ("http://127.0.0.1:8765", "127.0.0.1:5173", False),
+            ("http://evil.example", None, False),
+        ],
+    )
+    def test_same_origin_is_decided_on_the_authority(self, origin, host, expected):
+        assert http_server._is_same_origin(origin, host) is expected
 
 
 class TestConfigReadsDoNotWriteToDisk:

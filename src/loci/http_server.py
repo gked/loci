@@ -15,12 +15,14 @@ import secrets
 import subprocess
 import sys
 from contextlib import asynccontextmanager
+from html import escape
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import yaml
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 
 from loci.tools.vault_init import config_path, load_config, migrate_legacy_config
 from loci.tools import nx_graph as graph
@@ -92,9 +94,19 @@ def _vault_root() -> Path:
 #      because custom headers force a CORS preflight it also gets the browser
 #      to enforce the allowlist before the request is ever sent.
 #
-# Requests with no Origin at all (curl, tests, the MCP server) are allowed
-# through the first check and fall back to the token. A browser always attaches
-# Origin to a cross-origin POST, so this is not a hole a malicious page can use.
+# Origin has to be present. It used to be optional, falling back to the token
+# alone, which meant any local process that had scraped the token — GET / hands
+# it out in a meta tag so the packaged page can read it — reached this endpoint
+# with a bare curl. Requiring the header does not make forging it impossible
+# for a non-browser caller, but it stops the endpoint being something a stray
+# script reaches without meaning to.
+#
+# The allowlist alone is not enough either. The bundled UI is served by this
+# very process, so its page origin is whatever host and port uvicorn bound —
+# 127.0.0.1:8765 by default, an ephemeral port under the e2e suite — which no
+# static list can know. A request whose Origin names this server's own
+# authority is therefore same-origin by definition and allowed; the configured
+# list covers the cross-origin case, the vite dev and preview servers.
 # ---------------------------------------------------------------------------
 
 def _read_config_file() -> dict:
@@ -164,9 +176,23 @@ def _api_token() -> str:
     return _API_TOKEN
 
 
-def _authorize_local_request(origin: str | None, token: str | None) -> None:
+def _is_same_origin(origin: str, host: str | None) -> bool:
+    """True when Origin names the authority this request was sent to.
+
+    Compared on netloc rather than the whole origin so a proxy terminating TLS
+    in front of this process still matches: the browser reports https://, the
+    Host header carries no scheme.
+    """
+    return bool(host) and urlparse(origin).netloc == host
+
+
+def _authorize_local_request(
+    origin: str | None, token: str | None, host: str | None = None
+) -> None:
     """Raise 403 unless the caller is this app's own frontend."""
-    if origin is not None and origin.rstrip("/") not in _allowed_origins():
+    if origin is None:
+        raise HTTPException(status_code=403, detail="Missing Origin header")
+    if not _is_same_origin(origin, host) and origin.rstrip("/") not in _allowed_origins():
         raise HTTPException(
             status_code=403, detail="Cross-origin requests are not allowed"
         )
@@ -316,9 +342,10 @@ def open_local_path(
     path: str = Query(...),
     origin: str | None = Header(None),
     x_loci_token: str | None = Header(None),
+    host: str | None = Header(None),
 ):
     """Open a local file or directory with the operating system's handler."""
-    _authorize_local_request(origin, x_loci_token)
+    _authorize_local_request(origin, x_loci_token, host)
     local_path = _local_path(path)
     if not local_path.exists():
         raise HTTPException(status_code=404, detail=f"Path not found: {local_path}")
@@ -457,6 +484,110 @@ def graph_data():
     return {"nodes": nodes, "edges": edges}
 
 
+# `loci` serves by default; a leading word out of this set means something else
+# entirely. Kept as a plain prefix check rather than argparse subparsers:
+# subparsers would have to redeclare every flag the subcommand owns, and
+# argparse.REMAINDER silently drops leading options, which is exactly the shape
+# `loci skills --yes` has.
+SUBCOMMANDS = frozenset({"skills"})
+
+
+def split_command(argv: list[str]) -> tuple[str | None, list[str]]:
+    """Peel a subcommand off the front of argv, leaving the rest untouched."""
+    if argv and argv[0] in SUBCOMMANDS:
+        return argv[0], argv[1:]
+    return None, argv
+
+
+# ---------------------------------------------------------------------------
+# The frontend
+#
+# A checkout serves the UI with vite (`make dev`) or `vite preview` over
+# app/dist (`make run`), and this process handled /api only. An installed wheel
+# has neither: no app/ directory, no Node. So the release build compiles the
+# bundle into src/loci/static/ and this serves it, which is what makes `loci`
+# on its own a whole product rather than a backend.
+#
+# The token is injected into index.html here rather than baked in at build
+# time. vite bakes VITE_LOCI_TOKEN from the config of whatever machine ran the
+# build — on CI that is empty, and if it were not, the wheel would ship someone
+# else's token. The server knows its own, and it is the one serving the page.
+# ---------------------------------------------------------------------------
+
+# Overridable so a deployment can serve a bundle from outside the package, and
+# so the e2e suite can point at the one `vite build` just produced.
+STATIC_DIR_ENV = "LOCI_STATIC_DIR"
+
+
+def _static_dir() -> Path | None:
+    """The directory holding the built frontend, or None if there isn't one.
+
+    Resolved per request rather than at import: the env override has to be
+    settable by a test that has already imported this module.
+    """
+    override = os.environ.get(STATIC_DIR_ENV)
+    root = Path(override).expanduser() if override else Path(__file__).parent / "static"
+    return root if (root / "index.html").is_file() else None
+
+
+def _render_index(index: Path) -> str:
+    """index.html with this server's API token in a meta tag.
+
+    Read per request. The file is a few hundred bytes and the token can be
+    generated after the first read, so caching it would save nothing and could
+    serve a stale one.
+    """
+    html = index.read_text(encoding="utf-8")
+    meta = f'<meta name="loci-token" content="{escape(_api_token(), quote=True)}">'
+    if "</head>" in html:
+        return html.replace("</head>", f"    {meta}\n  </head>", 1)
+    return meta + html
+
+
+# Declared last so every /api route is matched first — FastAPI resolves in
+# declaration order, and this pattern matches everything.
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_frontend(full_path: str):
+    """Serve the built frontend, falling back to index.html for app routes."""
+    # An unmatched /api path is a missing endpoint, not a page. Returning the
+    # app shell there would hand fetch() a 200 full of HTML to choke on.
+    if full_path == "api" or full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    static = _static_dir()
+    if static is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "No frontend bundle in this install. Build one with `make wheel`, "
+                "or run the UI separately with `make dev` / `make run`."
+            ),
+        )
+
+    # A real file — JS, CSS, the favicon. resolve() then the containment check
+    # is what stops ../ in the URL reaching outside the bundle.
+    root = static.resolve()
+    candidate = (root / full_path).resolve()
+    if full_path and candidate.is_file() and candidate.is_relative_to(root):
+        return FileResponse(candidate)
+
+    return HTMLResponse(_render_index(root / "index.html"))
+
+
+def build_cli():
+    """The argument parser for `loci` with no subcommand — i.e. serving."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="loci",
+        description="Serve the Loci API.",
+        epilog="Subcommands: skills — install or update the Loci skills in Claude Code.",
+    )
+    parser.add_argument("--host", default=os.environ.get("LOCI_UI_HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("LOCI_UI_PORT", 8765)))
+    return parser
+
+
 def main() -> None:  # pragma: no cover
     """
     Entry point for the `loci` console script.
@@ -465,14 +596,19 @@ def main() -> None:  # pragma: no cover
     no authentication on most routes, so exposing it on a LAN address has to be
     a deliberate `--host` away rather than the default.
     """
-    import argparse
-
     import uvicorn
 
-    parser = argparse.ArgumentParser(prog="loci", description="Serve the Loci API.")
-    parser.add_argument("--host", default=os.environ.get("LOCI_UI_HOST", "127.0.0.1"))
-    parser.add_argument("--port", type=int, default=int(os.environ.get("LOCI_UI_PORT", 8765)))
-    args = parser.parse_args()
+    command, rest = split_command(sys.argv[1:])
+
+    # Handled before the vault check on purpose: installing skills does not
+    # need a vault, and refusing because none is configured yet would block the
+    # one command a fresh install needs most.
+    if command == "skills":
+        from loci import skills_install
+
+        raise SystemExit(skills_install.run(rest))
+
+    args = build_cli().parse_args(rest)
 
     problem = _startup_error()
     if problem:

@@ -222,6 +222,26 @@ the one to start with.
 
 **Requires:** Python 3.13+, [uv](https://docs.astral.sh/uv/), [rclone](https://rclone.org/) (optional, for backup), Node 20+ (optional, for the web UI)
 
+> **Installing without a checkout.** Every tagged release attaches a wheel to
+> its [GitHub Release](https://github.com/gked/loci/releases). If you only want
+> to *use* Loci, take that instead of cloning:
+>
+> ```bash
+> uv tool install ./loci-0.2.0-py3-none-any.whl
+> loci skills                                    # skills → ~/.claude/skills/
+> claude mcp add --scope user loci loci-mcp      # register the MCP server
+> ```
+>
+> Then restart Claude Code and tell it where the vault should live — "point
+> Loci at ~/vault" — which is what the `set_vault_root` tool is for.
+>
+> The vault UI comes with it: `loci` serves the frontend and the API from one
+> process on http://127.0.0.1:8765, with no Node and no separate build. The
+> released wheel carries the compiled bundle inside it.
+>
+> The steps below are the checkout path, for developing Loci itself, where the
+> UI is served separately by vite (`make dev`, `make run`).
+
 ### 1. Clone the repo
 
 ```bash
@@ -267,17 +287,35 @@ script, not background sync.
 
 ### 4. Install the Loci skills in Claude Code
 
-Symlink each skill into `~/.claude/skills/`:
+`uv run setup.py` already did this — step 2 installs all four skills. To
+reinstall them, or to see which are out of date:
 
 ```bash
-for s in loci-save loci-query loci-inbox loci-ingest-directory; do
-  ln -sfn "$PWD/src/loci/skills/$s" ~/.claude/skills/"$s"
-done
+uv run loci skills
 ```
 
-> **Note:** `setup.py` and the Docker wizard (`setup_docker.py`) also install
-> skills, but only `loci-save` and `loci-query`. Use the loop above to get all
-> four.
+It lists every packaged skill against what is in `~/.claude/skills/`, says
+which need installing or updating, and asks before writing:
+
+```
+Loci skills → /Users/you/.claude/skills
+
+  loci-inbox             — → v4         install
+  loci-ingest-directory  — → v4         install
+  loci-query             v1             up to date
+  loci-save              v21 → v23      update
+
+1 to install, 1 to update
+Proceed? [y/N]
+```
+
+Run it again after every upgrade — a skill whose `skill_version` moved keeps
+loading from its old copy until you do. `--yes` skips the prompt, `--dir`
+installs somewhere other than `~/.claude/skills`, and `--force` reinstalls
+everything regardless of version.
+
+From a checkout, `setup.py` symlinks the skills instead of copying them, so
+edits under `src/loci/skills/` are live without reinstalling.
 
 ### 5. Restart the MCP server
 

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Relink the skills after a branch switch that changed them.
+#
+# git passes: <previous HEAD> <new HEAD> <branch-checkout flag>
+# The flag is 1 for a branch checkout and 0 for a file checkout
+# (`git checkout -- path`), which changes the working tree but not HEAD.
+set -uo pipefail
+
+[ "${3:-0}" = "1" ] || exit 0
+
+exec "$(dirname "$0")/_link_skills.sh" "$1" "$2"

@@ -4,13 +4,30 @@ const TOKEN_HEADER = "X-Loci-Token";
 const TOKEN_STORAGE_KEY = "loci_api_token";
 
 // The token proves a request came from this app rather than from some other
-// page the user has open. In dev, vite injects it from config.yml; when the
-// frontend is hosted somewhere the server cannot reach, the user pastes it in
-// once and it lives in localStorage. Sending it as a custom header (rather
-// than a query param) is deliberate — custom headers force a CORS preflight,
-// so the browser enforces the server's origin allowlist before the request is
-// ever sent.
+// page the user has open. Sending it as a custom header (rather than a query
+// param) is deliberate — custom headers force a CORS preflight, so the browser
+// enforces the server's origin allowlist before the request is ever sent.
+//
+// Three sources, in order of how much they can be trusted to be current:
+//
+//   1. A meta tag, when the API served this page itself (an installed Loci,
+//      where the bundle ships inside the wheel). The server stamps in its own
+//      token as it serves index.html, so this is right by construction — and
+//      it is why the token is not baked into the bundle at build time, where
+//      it would be whatever the machine that ran the build happened to have.
+//   2. localStorage, for a frontend hosted somewhere the server cannot reach.
+//      The user pastes the token in once.
+//   3. The build-time value vite injects from config.yml, which is what makes
+//      `make dev` work with no setup.
 export function getApiToken() {
+  try {
+    const meta = document?.querySelector('meta[name="loci-token"]');
+    const injected = meta?.getAttribute("content");
+    if (injected) return injected;
+  } catch {
+    // No DOM (unit tests run this module under node).
+  }
+
   try {
     if (typeof localStorage !== "undefined") {
       const stored = localStorage.getItem(TOKEN_STORAGE_KEY);

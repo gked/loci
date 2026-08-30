@@ -2,6 +2,13 @@
 setup_docker.py
 Interactive Docker setup for Loci.
 
+Run it with `uv run setup_docker.py`, as the README says. Step 6 installs the
+skills through loci.skills_install rather than a hand-rolled copy of it, so
+this script is no longer standalone: it needs the project's environment.
+require_loci_package() checks that up front instead of letting the import fail
+at step 6, with Docker installed, the vault configured and the container
+already running.
+
 Walks through:
   1. Checking / installing Docker or OrbStack
   2. Vault path
@@ -253,26 +260,35 @@ def verify() -> None:
 # ---------------------------------------------------------------------------
 
 def install_skill() -> None:
-    import shutil as sh
+    """Link every packaged skill into ~/.claude/skills/.
+
+    Shares one implementation with setup.py and `loci skills` via
+    loci.skills_install. The hand-rolled loop this replaces installed two of
+    the four skills, and its cleanup line (`rmtree if is_dir() else unlink`)
+    raised NotADirectoryError on a re-run, because a symlink to a directory
+    answers True to is_dir() and rmtree refuses to follow it.
+
+    link=True: the docker wizard runs from a checkout, like setup.py.
+    """
+    from loci import skills_install
 
     print("\nStep 6 — Loci skills")
 
-    skills_root = Path.home() / ".claude" / "skills"
-    skills_root.mkdir(parents=True, exist_ok=True)
+    skills_source = PROJECT_ROOT / "src" / "loci" / "skills"
+    statuses = skills_install.plan(
+        skills_root=Path.home() / ".claude" / "skills",
+        source=skills_source,
+        force=True,
+    )
+    if not statuses:
+        print(f"  Skill source not found at {skills_source} — skipping.")
+        return
 
-    for skill_name in ("loci-save", "loci-query"):
-        skill_src = PROJECT_ROOT / "src" / "loci" / "skills" / skill_name
-        if not skill_src.exists():
-            print(f"  Skill source not found at {skill_src} — skipping {skill_name}.")
-            continue
-
-        skill_dst = skills_root / skill_name
-
-        if skill_dst.exists() or skill_dst.is_symlink():
-            sh.rmtree(skill_dst) if skill_dst.is_dir() else skill_dst.unlink()
-
-        skill_dst.symlink_to(skill_src)
-        print(f"  Installed: {skill_dst} → {skill_src}")
+    for status in skills_install.apply(statuses, link=True):
+        if status.action == skills_install.REMOVE:
+            print(f"  Removed: {status.dest} (no longer shipped)")
+        else:
+            print(f"  Installed: {status.dest} → {status.source}")
 
     print("  Restart Claude Code to pick them up.")
 
@@ -369,9 +385,30 @@ def print_next_steps() -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+def require_loci_package() -> None:
+    """Stop before touching the machine if `loci` is not importable.
+
+    `uv run setup_docker.py` syncs the project first, so this passes there.
+    A bare `python3 setup_docker.py` used to get as far as step 6 before dying
+    on the import — after Docker was installed, the vault configured and the
+    container started.
+    """
+    try:
+        import loci.skills_install  # noqa: F401
+    except ImportError:
+        print(
+            "This script needs the loci package importable, and it is not.\n"
+            "Run it through uv, which syncs the project first:\n"
+            "    uv run setup_docker.py",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+
 def main() -> None:
     print("\nLoci Docker Setup\n")
 
+    require_loci_package()
     ensure_docker()
     vault_path = ask_vault_path()
     sync_env = ask_sync_config()

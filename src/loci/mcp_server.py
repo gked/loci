@@ -460,7 +460,12 @@ def write_skill(content: str, skill: str = "loci-save") -> str:
     """
     Overwrite Loci skill instructions.
     skill: loci-save | loci-query | loci-inbox | loci-ingest-directory
-    Claude Code picks up the update automatically via the symlink.
+
+    Writes the package's copy. A checkout symlinks ~/.claude/skills/<skill>/
+    back to it, so the edit is live at once. An installed copy does not: the
+    edit needs `loci skills --force` to reach Claude Code, and plain
+    `loci skills` will not do it — an edit that leaves skill_version alone
+    reads as up to date.
     Claude Desktop users will need to re-paste into Project custom instructions.
     """
     try:

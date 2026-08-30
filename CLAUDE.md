@@ -45,6 +45,13 @@ Imports inside the package are absolute (`from loci.tools.vault_init import …`
 There are no `sys.path` inserts anywhere in `src/` — don't reintroduce one to
 make an import work; fix the import.
 
+**The wheel carries the UI.** `app/` is not packaged, so the release build
+compiles the bundle into `src/loci/static/` (`make wheel`) and `http_server`
+serves it from there — that is how an installed Loci has a UI at all. The
+directory is gitignored, so pyproject's `[tool.hatch.build] artifacts` entry is
+what keeps it in the wheel; hatchling honours `.gitignore` and would otherwise
+drop it silently. Never publish with a bare `uv build`.
+
 Adding a console script means adding it to `[project.scripts]` in
 `pyproject.toml` and giving it a `main()`. Keep `loci-mcp` and `loci` as
 separate processes — see the docstring in `src/loci/__init__.py` for why.
@@ -137,12 +144,46 @@ Rules of thumb:
   node to `tests/fixtures/e2e-overlay/`, **not** to `fixtures/vault/`
   (that one backs the unit suite and its counts are asserted on).
 
+## Releasing
+
+A release is a tag plus a wheel on a GitHub Release. Two phases, because `main`
+is never written to by hand:
+
+```
+make release BUMP=patch|minor|major   # opens the version-bump PR
+<merge it, then git checkout main && git pull>
+make release-publish                  # tags the merged commit, pushes the tag
+```
+
+The tag fires `.github/workflows/release.yml`, which refuses to build unless
+the tag matches `pyproject.toml` (`scripts/release.py check`), then builds and
+publishes with generated notes.
+
+Two version counters other than the package version are user-visible, and
+`scripts/release_notes.py` surfaces them in the notes automatically by diffing
+against the previous tag:
+
+- `META_VERSION` moved → the vault's meta files reseed on next start.
+- a `skill_version` moved → the user's copy in `~/.claude/skills/` is stale
+  until they run `loci skills`.
+
+Nothing has to be done by hand for that, but it is the reason both numbers must
+be bumped in the same PR as the change they describe.
+
 ## Branch and PR rules
 
 `main` is never written to directly. Every change lands through a PR from a
 branch. Local hooks in `.githooks/` enforce this — run `make hooks` once per
 clone to install them (they block commits and merges on `main`, block pushes to
 `main`, and run the unit suite before every push).
+
+The same directory carries two hooks that are conveniences rather than gates:
+`post-checkout` and `post-merge` relink the skills into `~/.claude/skills/`
+when a branch switch or a pull changed anything under `src/loci/skills/`. A
+symlinked skill is already live, so this exists for the case a symlink cannot
+cover — a skill directory someone else *added*, which arrives with the pull and
+has nothing pointing at it. They never fail the git command they are attached
+to; `LOCI_SKIP_SKILL_LINK=1` turns them off.
 
 **Every PR must carry tests:**
 

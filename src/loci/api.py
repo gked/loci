@@ -1024,8 +1024,16 @@ def lint_vault() -> dict:
 def write_skill(content: str, skill: str = "loci-save") -> str:
     """
     Overwrite Loci skill instructions for the named skill. Returns the path written.
-    Since ~/.claude/skills/loci-save/ is a symlink to skill/, Claude Code picks
-    up the update automatically. Claude Desktop users will need to re-paste.
+
+    The write lands in the package's own copy of the skill. From a checkout,
+    where ~/.claude/skills/<skill>/ symlinks back to it, that is live at once.
+
+    On an installed copy it is not, and the remedy is narrower than it looks:
+    an edit that leaves skill_version alone makes the packaged and installed
+    copies equal, so `loci skills` reports "up to date" and copies nothing —
+    it takes `loci skills --force`. The edit is lost on the next upgrade
+    either way, which replaces the package tree.
+    Claude Desktop users need to re-paste regardless.
     """
     p = Path(__file__).parent / "skills" / skill / "SKILL.md"
     if not p.exists():
