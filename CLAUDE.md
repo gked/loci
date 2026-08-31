@@ -146,14 +146,38 @@ Rules of thumb:
 
 ## Releasing
 
-A release is a tag plus a wheel on a GitHub Release. Two phases, because `main`
-is never written to by hand:
+A release is a tag plus a wheel on a GitHub Release. One command does all of
+it:
 
 ```
-make release BUMP=patch|minor|major   # opens the version-bump PR
-<merge it, then git checkout main && git pull>
-make release-publish                  # tags the merged commit, pushes the tag
+make release BUMP=patch|minor|major
 ```
+
+It bumps the version, opens the PR, waits for the PR's checks, merges it,
+pulls `main` and pushes the tag — so it blocks for as long as the e2e suite
+runs. `main` is still never written to by hand: the version change lands as a
+PR like everything else. What is automated is the waiting and the merge.
+
+The wait is not a formality. `main` has no branch protection — the repo is
+private on a free plan, so GitHub will not enforce required checks — which
+means nothing server-side would refuse a merge on a red build. The wait in
+`scripts/release.py` is the only thing that does.
+
+The same release in halves, for when CI wants watching by hand or a one-step
+run died partway:
+
+```
+make release-bump BUMP=patch|minor|major   # opens the version-bump PR
+<merge it, then git checkout main && git pull>
+make release-publish                       # tags the merged commit
+```
+
+**The bump moves the version in two files** — `pyproject.toml`, and the
+version `uv.lock` records for the local `loci` package. `uv run` re-resolves
+the lock the moment those disagree, and the first command to run `uv run`
+after a bump PR was `make release-publish` itself, which dirtied the tree its
+own clean-tree guard then refused to act on. `release.py` runs `uv lock` as
+part of the bump; `test_the_repos_lockfile_agrees_with_pyproject` guards it.
 
 The tag fires `.github/workflows/release.yml`, which refuses to build unless
 the tag matches `pyproject.toml` (`scripts/release.py check`), then builds and

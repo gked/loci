@@ -1,6 +1,6 @@
 .PHONY: test test-fast test-e2e test-cov cov-html e2e-install dev dev-api dev-ui
 .PHONY: run run-api run-ui run-check hooks screenshots
-.PHONY: skills skills-link wheel release release-publish
+.PHONY: skills skills-link wheel release release-bump release-publish
 
 # One-time per clone: point git at the versioned hooks in .githooks/.
 # They block commits, merges, and pushes that land directly on main.
@@ -211,16 +211,24 @@ wheel: $(NODE_MODULES)
 	  echo "Built dist/ — the UI is inside:"; \
 	  echo "  $$files frontend files packaged"
 
-# Phase 1 of a release: pick the number, open the bump PR. main is never
-# written to directly, so the version change has to land as a PR like anything
-# else. BUMP is required — there is no default, because guessing whether a
-# release is a patch or a minor is exactly the judgement this leaves to you.
+# A whole release: bump the version, open the PR, wait for its checks, merge
+# it, tag main and push the tag. main is still never written to directly —
+# the version change lands as a PR like anything else, and the merge waits on
+# CI. Expect it to block for as long as the e2e suite runs.
+#
+# BUMP is required — there is no default, because guessing whether a release
+# is a patch or a minor is exactly the judgement this leaves to you.
 BUMP ?=
 release:
 	@test -n "$(BUMP)" || { echo "usage: make release BUMP=patch|minor|major" >&2; exit 1; }
+	uv run python scripts/release.py release $(BUMP)
+
+# The same thing in halves, for when CI wants watching by hand or a one-step
+# run died partway: open the PR, then tag the merged result.
+release-bump:
+	@test -n "$(BUMP)" || { echo "usage: make release-bump BUMP=patch|minor|major" >&2; exit 1; }
 	uv run python scripts/release.py bump $(BUMP)
 
-# Phase 2, once that PR has merged and main is pulled: tag it and push. The tag
-# is what .github/workflows/release.yml fires on.
+# The tag is what .github/workflows/release.yml fires on.
 release-publish:
 	uv run python scripts/release.py publish

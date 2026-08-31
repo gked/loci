@@ -11,6 +11,7 @@ to appear when a skill or the meta files moved, and stay out of the way when
 they did not.
 """
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -205,8 +206,62 @@ def test_a_removed_skill_does_not_appear():
 
 
 # ---------------------------------------------------------------------------
-# Phase 1 — opening the bump PR
+# Opening the bump PR
 # ---------------------------------------------------------------------------
+
+@pytest.fixture
+def fake_repo(tmp_path, monkeypatch):
+    """A release run with the filesystem and every subprocess stubbed out.
+
+    Returns the recorder: `.git` and `.gh` are the argument tuples each command
+    was called with, in order, which is what most of these tests assert on —
+    the ordering between them is the whole safety property of the one-step flow.
+    """
+    class Recorder:
+        def __init__(self):
+            self.git, self.gh, self.locked = [], [], False
+            self.checks_pass = True
+            self.pyproject = tmp_path / "pyproject.toml"
+            self.pyproject.write_text(PYPROJECT)
+
+        def run(self, args, **kwargs):
+            command = tuple(args)
+            if command[0] == "gh":
+                self.gh.append(command[1:])
+                failed = "checks" in command and not self.checks_pass
+                return subprocess.CompletedProcess(
+                    args, 1 if failed else 0, stdout="https://gh/pr/9\n", stderr="",
+                )
+            if command[:2] == ("uv", "lock"):
+                self.locked = True
+                # What `uv lock` really does: settle the lock on the new version.
+                self.lock.write_text(f'name = "loci"\nversion = "{release.read_version(self.pyproject.read_text())}"\n')
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+            raise AssertionError(f"unexpected subprocess: {command}")
+
+    recorder = Recorder()
+    recorder.lock = tmp_path / "uv.lock"
+    recorder.lock.write_text('name = "loci"\nversion = "0.4.2"\n')
+
+    monkeypatch.setattr(release, "PYPROJECT", recorder.pyproject)
+    monkeypatch.setattr(release, "UV_LOCK", recorder.lock)
+    monkeypatch.setattr(release, "require_clean_main", lambda: None)
+    monkeypatch.setattr(release, "last_tag", lambda: "v0.4.1")
+    monkeypatch.setattr(release, "changes_since", lambda tag: ["fix: a thing"])
+    monkeypatch.setattr(release, "time", _NoSleep())
+    monkeypatch.setattr(
+        release, "git",
+        lambda *args, **kwargs: (recorder.git.append(args), "")[1],
+    )
+    monkeypatch.setattr(release.subprocess, "run", recorder.run)
+    return recorder
+
+
+class _NoSleep:
+    """time, with the waiting taken out — the retry loops are the point, not the delay."""
+    def sleep(self, seconds): pass
+    def monotonic(self): return 0.0
+
 
 def test_a_failed_gh_pr_create_says_what_is_left_half_done(tmp_path, monkeypatch, capsys):
     """By the time `gh` runs, the bump is committed and pushed and we are on
@@ -217,8 +272,10 @@ def test_a_failed_gh_pr_create_says_what_is_left_half_done(tmp_path, monkeypatch
     pyproject.write_text(PYPROJECT)
 
     monkeypatch.setattr(release, "PYPROJECT", pyproject)
+    monkeypatch.setattr(release, "UV_LOCK", tmp_path / "uv.lock")
     monkeypatch.setattr(release, "require_clean_main", lambda: None)
     monkeypatch.setattr(release, "git", lambda *args, **kwargs: "")
+    monkeypatch.setattr(release, "uv_lock", lambda: None)
     monkeypatch.setattr(
         release.subprocess, "run",
         lambda *args, **kwargs: subprocess.CompletedProcess(args, 1),
@@ -229,6 +286,125 @@ def test_a_failed_gh_pr_create_says_what_is_left_half_done(tmp_path, monkeypatch
     error = capsys.readouterr().err
     assert "release/v0.4.3" in error
     assert "gh pr create" in error
+
+
+# ---------------------------------------------------------------------------
+# The lockfile — the version lives in two files, not one
+# ---------------------------------------------------------------------------
+
+def test_the_repos_lockfile_agrees_with_pyproject():
+    """The guard for the bug that made this necessary. uv.lock records a
+    version for the local loci package too; when the bump PR moved only
+    pyproject.toml, the next `uv run` rewrote the lock to settle the
+    difference — and that `uv run` was the one inside `make release-publish`,
+    which then found a dirty tree and refused to tag its own release."""
+    declared = read_version((REPO_ROOT / "pyproject.toml").read_text())
+    lock = (REPO_ROOT / "uv.lock").read_text()
+
+    entry = re.search(
+        r'^\[\[package\]\]\nname = "loci"\nversion = "(\d+\.\d+\.\d+)"',
+        lock,
+        re.MULTILINE,
+    )
+    assert entry, "no [[package]] entry for loci in uv.lock"
+    assert entry.group(1) == declared, (
+        f"uv.lock says loci {entry.group(1)}, pyproject.toml says {declared}. "
+        f"Run `uv lock`."
+    )
+
+
+def test_the_bump_locks_and_commits_both_files(fake_repo):
+    """Bumping pyproject alone is what left the lock stale in the first place."""
+    assert release.main(["bump", "patch", "--yes"]) == 0
+
+    assert fake_repo.locked, "`uv lock` was never run"
+    added = [args for args in fake_repo.git if args[0] == "add"]
+    assert len(added) == 1
+    assert str(fake_repo.pyproject) in added[0]
+    assert str(fake_repo.lock) in added[0]
+
+
+def test_a_failing_uv_lock_stops_the_release(fake_repo, monkeypatch, capsys):
+    monkeypatch.setattr(
+        release, "uv_lock",
+        lambda: (_ for _ in ()).throw(release.ReleaseError("`uv lock` failed:\nboom")),
+    )
+
+    assert release.main(["release", "patch", "--yes"]) == 1
+    assert "uv lock" in capsys.readouterr().err
+    assert not [args for args in fake_repo.gh if args[:2] == ("pr", "merge")]
+
+
+# ---------------------------------------------------------------------------
+# The one-step flow
+# ---------------------------------------------------------------------------
+
+def test_one_step_waits_for_checks_before_it_merges(fake_repo):
+    """main has no branch protection, so nothing server-side would refuse a
+    merge on a red build. The ordering here is the only thing that does."""
+    assert release.main(["release", "patch", "--yes"]) == 0
+
+    kinds = [args[:2] for args in fake_repo.gh]
+    assert ("pr", "create") in kinds
+    assert ("pr", "checks") in kinds
+    assert ("pr", "merge") in kinds
+    assert kinds.index(("pr", "checks")) < kinds.index(("pr", "merge"))
+    assert kinds.index(("pr", "create")) < kinds.index(("pr", "checks"))
+
+
+def test_one_step_tags_only_after_the_merge(fake_repo):
+    assert release.main(["release", "patch", "--yes"]) == 0
+
+    tagged = [args for args in fake_repo.git if args[0] == "tag" and "-a" in args]
+    assert tagged and "v0.4.3" in tagged[0]
+
+    pushed = [args for args in fake_repo.git if args[:2] == ("push", "origin")]
+    assert pushed[-1] == ("push", "origin", "v0.4.3")
+
+
+def test_red_checks_leave_the_pr_unmerged_and_nothing_tagged(fake_repo, capsys):
+    fake_repo.checks_pass = False
+
+    assert release.main(["release", "patch", "--yes"]) == 1
+
+    error = capsys.readouterr().err
+    assert "nothing has been tagged" in error
+    assert not [args for args in fake_repo.gh if args[:2] == ("pr", "merge")]
+    assert not [args for args in fake_repo.git if args[0] == "tag" and "-a" in args]
+
+
+def test_checks_are_not_believed_before_they_register(fake_repo, monkeypatch):
+    """`gh pr checks` reports none for a few seconds after a push. Reading that
+    as "all green" would merge before a single test had started."""
+    answers = iter([False, False, True])
+    monkeypatch.setattr(release, "checks_have_registered", lambda pr: next(answers))
+
+    assert release.main(["release", "patch", "--yes"]) == 0
+    assert next(answers, "exhausted") == "exhausted"
+
+
+def test_a_squash_that_lands_the_wrong_version_is_not_tagged(fake_repo, monkeypatch, capsys):
+    """The tag is cut from whatever main says after the merge, not from what
+    was intended before it. If those differ, something else landed in between."""
+    real_pull = release.git
+
+    def git(*args, **kwargs):
+        if args[:1] == ("pull",):
+            fake_repo.pyproject.write_text(PYPROJECT.replace("0.4.2", "9.9.1"))
+        return real_pull(*args, **kwargs)
+
+    monkeypatch.setattr(release, "git", git)
+
+    assert release.main(["release", "patch", "--yes"]) == 1
+    assert "not 0.4.3" in capsys.readouterr().err
+
+
+def test_declining_the_one_step_does_nothing(fake_repo, monkeypatch):
+    monkeypatch.setattr(release, "confirm", lambda question, assume_yes: False)
+
+    assert release.main(["release", "patch"]) == 1
+    assert fake_repo.gh == []
+    assert fake_repo.pyproject.read_text() == PYPROJECT
 
 
 # ---------------------------------------------------------------------------
