@@ -1163,3 +1163,21 @@ def test_suite_never_resolves_the_developers_real_config():
     configured = Path(_LOCI_CONFIG_AT_IMPORT)
     assert configured != vault_init.LEGACY_CONFIG_PATH
     assert vault_init.LEGACY_CONFIG_PATH.parent not in configured.parents
+
+
+def test_the_not_configured_message_names_a_way_out_a_wheel_install_has():
+    """
+    Three call sites — api._vault_root, write_file.resolve_vault_root and
+    vault_linter's CLI — used to carry their own copy of this string, each
+    telling the reader to run `tools/vault_init.py`. That path is in no
+    wheel and, since the package move, in no checkout either: the file is at
+    src/loci/tools/vault_init.py. They share one constant now, and this is what
+    it has to say.
+    """
+    message = vault_init.NOT_CONFIGURED_MESSAGE
+
+    assert "set_vault_root" in message
+    # Ahead of the checkout-only command, which is a dead end for the reader
+    # most likely to hit this: someone who installed the wheel.
+    assert message.index("set_vault_root") < message.index("setup.py")
+    assert "vault_init.py" not in message

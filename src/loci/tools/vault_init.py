@@ -68,6 +68,23 @@ USER_META_FILES = [
 ]
 
 
+# Every "Loci is not configured" message in the package renders this. It names
+# the MCP tool first: an installed wheel has no checkout, so `setup.py` is a
+# dead end for the reader most likely to hit this — someone who ran
+# `uv tool install` and typed `loci`. The skills carry the same instruction for
+# the same reason (see "Do not substitute a setup command for it" in
+# loci-save/SKILL.md).
+#
+# One constant rather than a literal per call site: the four sites were copies,
+# and three of them still told the reader to run `tools/vault_init.py` — a path
+# that exists in no install and, since the package move, in no checkout either.
+HOW_TO_CONFIGURE = (
+    'ask Claude to "point Loci at ~/vault" (the set_vault_root tool), '
+    "or run `uv run setup.py` from a checkout"
+)
+NOT_CONFIGURED_MESSAGE = f"Loci is not configured — {HOW_TO_CONFIGURE}"
+
+
 def config_path() -> Path:
     """
     Resolve the config file location.
@@ -574,6 +591,8 @@ def _check_meta_version() -> str | None:
 # contract — they are matched on by the model, so treat them as API.
 # ---------------------------------------------------------------------------
 
+# Distinct from NOT_CONFIGURED_MESSAGE above: this one is a code the model
+# matches on, not prose a human reads.
 NOT_CONFIGURED = "LOCI_NOT_CONFIGURED"
 VAULT_UNREACHABLE = "LOCI_VAULT_UNREACHABLE"
 

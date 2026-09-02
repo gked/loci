@@ -25,7 +25,7 @@ from pathlib import Path
 # Import sibling tools
 from loci.tools.uid_generator import generate_uid
 from loci.tools.slug import filename as make_filename
-from loci.tools.vault_init import load_config
+from loci.tools.vault_init import NOT_CONFIGURED_MESSAGE, load_config
 from loci.tools.type_registry import get_registry
 from loci.tools.relation_registry import get_relation_registry
 from loci.tools.frontmatter import split_frontmatter
@@ -40,9 +40,7 @@ def resolve_vault_root() -> Path:
     """Load vault root from config."""
     config = load_config()
     if not config:
-        raise RuntimeError(
-            "Loci is not configured. Run: python tools/vault_init.py"
-        )
+        raise RuntimeError(NOT_CONFIGURED_MESSAGE)
     return Path(config["vault_root"])
 
 

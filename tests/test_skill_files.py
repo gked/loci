@@ -25,6 +25,7 @@ BODY_VERSION = re.compile(r"This skill is at `skill_version: (\d+)`\.")
 # use instead, so a failure says what to write rather than only what is wrong.
 REMOVED_COMMANDS = {
     "python setup.py": "uv run setup.py",
+    "python tools/vault_init.py": "the set_vault_root tool (see NOT_CONFIGURED_MESSAGE)",
     "loci_mcp/server.py": "loci-mcp",
     "server/http_server.py": "loci.http_server",
     "loci-skill/": "src/loci/skills/",

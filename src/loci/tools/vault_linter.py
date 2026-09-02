@@ -30,7 +30,7 @@ import yaml
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
-from loci.tools.vault_init import load_config
+from loci.tools.vault_init import NOT_CONFIGURED_MESSAGE, load_config
 from loci.tools.frontmatter import split_frontmatter
 from loci.tools.type_registry import TypeRegistry, get_registry, REFERENCES_DIR
 from loci.tools.relation_registry import RelationRegistry, get_relation_registry
@@ -297,7 +297,7 @@ if __name__ == "__main__":  # pragma: no cover
     else:
         config = load_config()
         if not config:
-            print("Loci is not configured. Run: python tools/vault_init.py", file=sys.stderr)
+            print(NOT_CONFIGURED_MESSAGE, file=sys.stderr)
             sys.exit(1)
         root = Path(config["vault_root"])
 

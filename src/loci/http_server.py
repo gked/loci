@@ -24,7 +24,13 @@ from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 
-from loci.tools.vault_init import config_path, load_config, migrate_legacy_config
+from loci.tools.vault_init import (
+    HOW_TO_CONFIGURE,
+    NOT_CONFIGURED_MESSAGE,
+    config_path,
+    load_config,
+    migrate_legacy_config,
+)
 from loci.tools import nx_graph as graph
 from loci.tools.frontmatter import split_frontmatter
 from loci import api as vault_api
@@ -42,11 +48,10 @@ _MIGRATION_NOTICE = migrate_legacy_config()
 
 DEFAULT_ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:4173"]
 
-
 def _resolve_vault_root() -> Path:
     config = load_config()
     if not config:
-        raise RuntimeError("Loci is not configured — run: uv run setup.py")
+        raise RuntimeError(NOT_CONFIGURED_MESSAGE)
     return Path(config["vault_root"]).expanduser()
 
 
@@ -66,7 +71,7 @@ def _startup_error() -> str | None:
     except RuntimeError as exc:
         return str(exc)
     except KeyError:
-        return f"{config_path()} has no vault_root — run: uv run setup.py"
+        return f"{config_path()} has no vault_root — {HOW_TO_CONFIGURE}"
     if not root.is_dir():
         return f"vault directory does not exist: {root}"
     return None

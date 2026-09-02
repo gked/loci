@@ -340,6 +340,30 @@ class TestStartupPreflight:
         assert problem is not None
         assert "vault_root" in problem
 
+    @pytest.mark.parametrize(
+        "config",
+        [None, {"api_token": "x"}],
+        ids=["no config file", "config without vault_root"],
+    )
+    def test_both_config_failures_name_the_tool_a_wheel_install_can_use(
+        self, monkeypatch, config
+    ):
+        """
+        `setup.py` ships only in a checkout, so it cannot be the only way out.
+
+        The reader most likely to hit either failure installed the wheel and
+        typed `loci` — for them `uv run setup.py` is a dead end, and
+        set_vault_root is the way in. The skills say the same thing (see "Do
+        not substitute a setup command for it" in loci-save/SKILL.md).
+        """
+        monkeypatch.setattr(http_server, "load_config", lambda: config)
+
+        problem = http_server._startup_error()
+
+        assert problem is not None
+        assert "set_vault_root" in problem
+        assert problem.index("set_vault_root") < problem.index("setup.py")
+
     def test_a_vault_root_that_is_not_on_disk_is_reported(self, monkeypatch, tmp_path):
         missing = tmp_path / "unmounted-drive" / "vault"
         monkeypatch.setattr(http_server, "load_config", lambda: {"vault_root": str(missing)})
