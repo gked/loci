@@ -140,107 +140,102 @@ Every piece of content you save becomes a structured node with:
 
 ---
 
-## Project status
+## Setup: a released wheel
 
-Work in progress, and a personal one. The core is used every day; the edges are
-uneven. What that means concretely:
+The path if you want to *use* Loci rather than work on it. Every tagged release
+attaches a wheel to its [GitHub Release](https://github.com/gked/loci/releases),
+with the web UI already compiled inside it — so there is no checkout, no Node,
+and no build step.
 
-| Area | State |
-|---|---|
-| Vault format, ontology, registries | Stable, in daily use |
-| MCP server and skills | Stable, in daily use |
-| Local (Python) setup | Stable, in daily use |
-| Web UI | In daily use, read-only. No editing yet |
-| Test suite (unit + browser e2e) | Runs on every push and PR |
-| rclone sync | **Partial.** Manual script only, no scheduling or conflict handling, no tests |
-| Docker | **Experimental.** Builds and runs, but lightly exercised and not in CI |
-| Remote access (SSE + Cloudflare Tunnel) | **Unvalidated.** Written down, never stood up end to end |
+**Requires:** Python 3.13+, [uv](https://docs.astral.sh/uv/), and
+[`gh`](https://cli.github.com/) (only to download: the repo is private, so an
+anonymous browser download won't work either).
 
-Nothing is deprecated or abandoned; the weak spots are just unfinished. Each is
-flagged again in its own section so you don't have to remember this table.
+### 1. Download and install
 
----
+The asset is called `loci-<version>-py3-none-any.whl` — the version is the only
+part that moves, so download into an empty directory and let a glob install it.
+You never have to know the number:
 
-## Type System
+```bash
+rm -rf /tmp/loci-wheel
+gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
+uv tool install /tmp/loci-wheel/loci-*.whl
+```
 
-Every vault node has a **type**. The right question when choosing one is not "what fields do I need?" but **"what question does this node answer?"**
+`gh release download` with no tag takes the newest release. To pin a specific
+one instead, name its tag and the wheel comes back with that version in it:
 
-| Type | The question it answers |
-|---|---|
-| `document` | What do I think or know about X? |
-| `article` | What does this external source say? |
-| `bookmark` | Where is this thing? |
-| `conversation` | What did we discuss? |
-| `project` | What am I working on? |
-| `task` | What do I need to do? |
-| `event` | What happened, and when? |
-| `entity` | Who or what is this real-world actor? |
-| `procedure` | How do I do X? |
-| `topic` | What organizes this domain? |
-| `asset` | What do I own? |
-| `log` | What was my experience of engaging with X? |
+```bash
+rm -rf /tmp/loci-wheel
+gh release download v0.2.0 --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
+uv tool install /tmp/loci-wheel/loci-*.whl
+```
 
-**The common mistake:** thinking "this node has text, so it must be document-like." All vault nodes can have a text body. That is not what defines the type.
+(The directory is emptied first because the glob has to match exactly one file.
+There is no `loci-latest.whl`: a wheel's filename *is* its version, and uv
+rejects one that does not parse as a number.)
 
-`document` is a **composition**: something that stands alone and matures over time (`status: draft → evergreen`). `log` is a **record**: it cannot exist without a subject (`subject_uid`), it doesn't mature, it completes. A reading log has text. So does a task description. Neither is a document.
+That puts both console scripts on your PATH — `loci-mcp` (the stdio MCP server)
+and `loci` (the HTTP API *and* the UI, from one process on
+http://127.0.0.1:8765). If the shell still cannot find them, uv's tool
+directory is not on your PATH yet: run `uv tool update-shell` and open a new
+shell.
 
-### Type or tag?
+### 2. Install the skills and register the server
 
-The type list is short, and stays short because a candidate has to earn its place. Three questions, and a new type must answer **yes to at least one**:
+```bash
+loci skills                                    # skills → ~/.claude/skills/
+claude mcp add --scope user loci loci-mcp      # register the MCP server
+```
 
-1. Does it have fields no other type has?
-2. Will you query for it exclusively, in ways you'd never query other types?
-3. Does it behave differently in the system (display, ingestion, validation, relationships)?
+### 3. Point it at a vault
 
-If all three are no, it's a tag. This is why `recipe`, `workout`, and `playbook` are all `procedure` with a tag, and why `book` is `asset` with `subtype: book` rather than a type of its own.
+Restart Claude Code, then tell it where the vault should live — "point Loci at
+~/vault" — which is what the `set_vault_root` tool is for. The vault is seeded
+on first use; nothing is written until you name a path.
 
-Types can declare **subtypes** that add fields (e.g. `asset` / `subtype: book` adds `genre` and a body template). User-defined types extend a canonical parent and are registered in `ontology-user.yaml`; they inherit all parent fields and can add new ones, one level deep.
+Do this before running `loci`: with no vault configured the server refuses to
+start, and the error it prints tells you to run `setup.py`, which only exists in
+a checkout. `set_vault_root` is the wheel's way in.
 
-### Relations
+### Upgrading
 
-Edges are typed, directional, and drawn from a closed vocabulary of 27 relations in six groups:
+```bash
+rm -rf /tmp/loci-wheel
+gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
+uv tool install --force /tmp/loci-wheel/loci-*.whl
+loci skills
+```
 
-| Group | Relations |
-|---|---|
-| `dependency-sequencing` | `depends-on`, `enables` |
-| `structural-ownership` | `belongs-to`, `parent-of`, `is-part-of`, `has-part` |
-| `provenance-derivation` | `is-based-on`, `same-work-as`, `supersedes`, `version-of`, `implements` |
-| `semantic` | `about`, `mentions`, `influences`, `supports`, `contradicts`, `inspired-by`, `informs`, `informed-by`, `references`, `involves`, `instance-of`, `used-in`, `uses` |
-| `entity` | `works-at`, `follows` |
-| `generic` | `relates-to` (weak-association fallback) |
+Every release's notes open with whatever the upgrade asks of you, because
+`scripts/release_notes.py` works it out by diffing against the previous tag:
 
-Inverses are collapsed: store one directed edge and derive the reverse rather than writing both. For `depends-on` / `enables`, the edge lives on the dependent node. Anything outside this vocabulary is rejected on write; add your own to `relation-dictionary-user.yaml` via `define_relation` first.
+- **`META_VERSION` moved** — the files under `vault/meta/` are reseeded on the
+  next start. Nothing to do, but your vault changes underneath you.
+- **A `skill_version` moved** — your copy in `~/.claude/skills/` is stale, and
+  Claude Code keeps loading the old one until `loci skills` runs.
 
-For the full walkthrough — types, relations, schemes, how to extend them, and when each rule is enforced — see [the ontology guide](src/loci/skills/references/ontology-guide.md). A copy is seeded into every vault at `meta/ontology-guide.md`, so it travels with your notes.
+Running `loci skills` regardless is the safe habit: it prints every packaged
+skill against what you have installed and does nothing if nothing moved.
+
+How those wheels are built and published is [Releasing](#releasing), under
+Development.
 
 ---
 
 ## Setup: Local (Python)
 
-Runs the MCP server directly on your machine. This is the path in daily use and
-the one to start with.
+Runs the MCP server directly on your machine from a checkout. This is the path
+in daily use, and the one to take if you will be changing Loci as well as using
+it.
 
 **Requires:** Python 3.13+, [uv](https://docs.astral.sh/uv/), [rclone](https://rclone.org/) (optional, for backup), Node 20+ (optional, for the web UI)
 
-> **Installing without a checkout.** Every tagged release attaches a wheel to
-> its [GitHub Release](https://github.com/gked/loci/releases). If you only want
-> to *use* Loci, take that instead of cloning:
->
-> ```bash
-> uv tool install ./loci-0.2.0-py3-none-any.whl
-> loci skills                                    # skills → ~/.claude/skills/
-> claude mcp add --scope user loci loci-mcp      # register the MCP server
-> ```
->
-> Then restart Claude Code and tell it where the vault should live — "point
-> Loci at ~/vault" — which is what the `set_vault_root` tool is for.
->
-> The vault UI comes with it: `loci` serves the frontend and the API from one
-> process on http://127.0.0.1:8765, with no Node and no separate build. The
-> released wheel carries the compiled bundle inside it.
->
-> The steps below are the checkout path, for developing Loci itself, where the
-> UI is served separately by vite (`make dev`, `make run`).
+> **Just want to use Loci?** Install a [released wheel](#setup-a-released-wheel)
+> instead — no checkout, no Node, and the UI comes compiled inside it. The steps
+> below are the checkout path, for developing Loci itself, where the UI is served
+> separately by vite (`make dev`, `make run`).
 
 ### 1. Clone the repo
 
@@ -573,6 +568,82 @@ Ingest ~/Documents/papers into my loci vault
 
 ---
 
+## Project status
+
+Work in progress, and a personal one. The core is used every day; the edges are
+uneven. What that means concretely:
+
+| Area | State |
+|---|---|
+| Vault format, ontology, registries | Stable, in daily use |
+| MCP server and skills | Stable, in daily use |
+| Local (Python) setup | Stable, in daily use |
+| Web UI | In daily use, read-only. No editing yet |
+| Test suite (unit + browser e2e) | Runs on every push and PR |
+| Packaging and releases | `make release` cuts the tag; CI builds and publishes the wheel |
+| rclone sync | **Partial.** Manual script only, no scheduling or conflict handling, no tests |
+| Docker | **Experimental.** Builds and runs, but lightly exercised and not in CI |
+| Remote access (SSE + Cloudflare Tunnel) | **Unvalidated.** Written down, never stood up end to end |
+
+Nothing is deprecated or abandoned; the weak spots are just unfinished. Each is
+also flagged in its own section so you don't have to remember this table.
+
+---
+
+## Type System
+
+Every vault node has a **type**. The right question when choosing one is not "what fields do I need?" but **"what question does this node answer?"**
+
+| Type | The question it answers |
+|---|---|
+| `document` | What do I think or know about X? |
+| `article` | What does this external source say? |
+| `bookmark` | Where is this thing? |
+| `conversation` | What did we discuss? |
+| `project` | What am I working on? |
+| `task` | What do I need to do? |
+| `event` | What happened, and when? |
+| `entity` | Who or what is this real-world actor? |
+| `procedure` | How do I do X? |
+| `topic` | What organizes this domain? |
+| `asset` | What do I own? |
+| `log` | What was my experience of engaging with X? |
+
+**The common mistake:** thinking "this node has text, so it must be document-like." All vault nodes can have a text body. That is not what defines the type.
+
+`document` is a **composition**: something that stands alone and matures over time (`status: draft → evergreen`). `log` is a **record**: it cannot exist without a subject (`subject_uid`), it doesn't mature, it completes. A reading log has text. So does a task description. Neither is a document.
+
+### Type or tag?
+
+The type list is short, and stays short because a candidate has to earn its place. Three questions, and a new type must answer **yes to at least one**:
+
+1. Does it have fields no other type has?
+2. Will you query for it exclusively, in ways you'd never query other types?
+3. Does it behave differently in the system (display, ingestion, validation, relationships)?
+
+If all three are no, it's a tag. This is why `recipe`, `workout`, and `playbook` are all `procedure` with a tag, and why `book` is `asset` with `subtype: book` rather than a type of its own.
+
+Types can declare **subtypes** that add fields (e.g. `asset` / `subtype: book` adds `genre` and a body template). User-defined types extend a canonical parent and are registered in `ontology-user.yaml`; they inherit all parent fields and can add new ones, one level deep.
+
+### Relations
+
+Edges are typed, directional, and drawn from a closed vocabulary of 27 relations in six groups:
+
+| Group | Relations |
+|---|---|
+| `dependency-sequencing` | `depends-on`, `enables` |
+| `structural-ownership` | `belongs-to`, `parent-of`, `is-part-of`, `has-part` |
+| `provenance-derivation` | `is-based-on`, `same-work-as`, `supersedes`, `version-of`, `implements` |
+| `semantic` | `about`, `mentions`, `influences`, `supports`, `contradicts`, `inspired-by`, `informs`, `informed-by`, `references`, `involves`, `instance-of`, `used-in`, `uses` |
+| `entity` | `works-at`, `follows` |
+| `generic` | `relates-to` (weak-association fallback) |
+
+Inverses are collapsed: store one directed edge and derive the reverse rather than writing both. For `depends-on` / `enables`, the edge lives on the dependent node. Anything outside this vocabulary is rejected on write; add your own to `relation-dictionary-user.yaml` via `define_relation` first.
+
+For the full walkthrough — types, relations, schemes, how to extend them, and when each rule is enforced — see [the ontology guide](src/loci/skills/references/ontology-guide.md). A copy is seeded into every vault at `meta/ontology-guide.md`, so it travels with your notes.
+
+---
+
 ## The vault UI
 
 A local React app for browsing the graph. Start both halves with one command:
@@ -739,6 +810,12 @@ loci/
 
   .githooks/                        ← pre-commit / pre-merge-commit / pre-push (make hooks)
   .github/workflows/test.yml        ← CI: unit + e2e on every push and PR
+  .github/workflows/release.yml     ← fires on a v* tag: verify, build the wheel, publish
+
+  scripts/
+    release.py                      ← make release / release-bump / release-publish
+    release_notes.py                ← the "Upgrading" section of a release's notes
+    run_preflight.py                ← config checks make run does before starting
 
   deploy/
     Dockerfile
@@ -807,8 +884,13 @@ loci                # the HTTP API (127.0.0.1:8765 by default; --host/--port to 
 it is launched from, so there is nowhere for you to pass a flag. Transport comes
 from `LOCI_TRANSPORT` (`stdio`, or `sse` for the container).
 
-`loci` mounts `/api/*` and nothing else — it does not yet serve the React
-frontend, which runs separately via `make dev-ui`.
+`loci` mounts `/api/*` and, when a built bundle sits at `src/loci/static/`,
+serves the frontend from the same process — which is how an installed wheel has
+a UI at all. In a checkout that directory is absent until `make wheel` fills it,
+so the UI runs separately via `make dev-ui` or `make run-ui`. Note that the
+bundle a wheel build leaves behind is gitignored but not cleaned up: once you
+have run `make wheel`, `uv run loci` keeps serving that frozen copy until the
+next build replaces it.
 
 Folding the two into one process would mean Claude Desktop's quit takes the API
 down with it, and one web server per connected client. In a checkout, run
@@ -839,6 +921,87 @@ make screenshots    # recapture the README images from the e2e fixture vault
 ```
 
 Tests point at a temp copy of `tests/fixtures/vault/` via the `LOCI_VAULT_ROOT` env var (set by the `tmp_vault` fixture in `conftest.py`), so your real vault is never touched. See [docs/testing.md](docs/testing.md) and [tests/e2e/README.md](tests/e2e/README.md).
+
+### Releasing
+
+A release is a tag plus a wheel on a
+[GitHub Release](https://github.com/gked/loci/releases). One command does all
+of it:
+
+```bash
+make release BUMP=patch|minor|major
+```
+
+It bumps the version, opens the PR, waits for that PR's checks, merges it,
+pulls `main`, and pushes the tag — so it blocks for as long as the e2e suite
+runs. `main` is still never written to by hand: the version change lands as a
+PR like every other change. What is automated is the waiting and the merge.
+
+It starts from a clean, up-to-date `main` and refuses otherwise, and it needs
+`gh` installed and authenticated. `BUMP` has no default, because whether a
+release is a patch or a minor is the one judgement the script leaves to you.
+
+**The wait is not a formality.** `main` has no branch protection — the repo is
+private on a free plan, so GitHub will not enforce required checks — which
+means nothing server-side would refuse a merge on a red build.
+`wait_for_checks()` in `scripts/release.py` is the only thing that does. If the
+checks fail, nothing is tagged and the PR is left open.
+
+The same release in halves, for when CI wants watching by hand or a one-step
+run died partway:
+
+```bash
+make release-bump BUMP=minor       # opens the version-bump PR, then stops
+# merge the PR, then:
+git checkout main && git pull
+make release-publish               # tags the merged commit and pushes the tag
+```
+
+#### What the bump touches
+
+Two files: the version in `pyproject.toml`, and the version `uv.lock` records
+for the local `loci` package. Both, because `uv run` re-resolves the lock the
+moment those disagree — and the first command to run `uv run` after a bump PR
+was `make release-publish` itself, which dirtied the tree its own clean-tree
+guard then refused to act on. `release.py` runs `uv lock` as part of the bump,
+and `test_the_repos_lockfile_agrees_with_pyproject` guards it.
+
+#### What the tag sets off
+
+Pushing `vX.Y.Z` fires [`.github/workflows/release.yml`](.github/workflows/release.yml):
+
+1. **Verify.** `scripts/release.py check <tag>` refuses to build unless the tag
+   matches `pyproject.toml`. That is what makes a tag that lies about its
+   version impossible — the failure mode that let `version = "0.1.0"` sit
+   unchanged for 141 commits.
+2. **Test.** The unit suite. The e2e suite already ran on the commit the tag
+   points at, so running the browser again against an unchanged tree would cost
+   minutes and add no signal.
+3. **Build.** `make wheel`, never a bare `uv build`: it compiles `app/` into
+   `src/loci/static/` first, so the wheel carries the UI. `app/` is not
+   packaged, and an installed Loci has neither it nor Node to build it with.
+4. **Publish.** `scripts/release_notes.py` writes the upgrade section, GitHub
+   generates the merged-PR list beneath it, and the wheel is attached to the
+   Release.
+
+To build the wheel without releasing anything:
+
+```bash
+make wheel          # dist/*.whl, with app/ compiled into src/loci/static/
+```
+
+#### The two counters the notes call out
+
+`release_notes.py` diffs the release against the previous tag and opens the
+notes with anything the user has to know about:
+
+- **`META_VERSION` moved** → the vault's meta files reseed on the next start.
+- **A `skill_version` moved** → the user's copy in `~/.claude/skills/` is stale
+  until they run `loci skills`.
+
+Nothing has to be done by hand for that, which is exactly why both numbers must
+be bumped in the same PR as the change they describe — the notes can only
+report what the diff contains.
 
 ### Contributing rules
 
@@ -902,6 +1065,7 @@ The vault meta files are user-owned, accumulating customizations (new tags, loca
 - [x] Web UI: React + Vite app over a FastAPI backend: vault index, type/tag filters, node reader, graph view, command palette
 - [x] Browser e2e suite: Playwright driving the real app against a real backend and vault
 - [x] CI + git hooks: `main` protected locally and on GitHub, both suites run on every push
+- [x] Release pipeline: `make release` cuts the tag, CI builds the wheel (UI inside) and publishes it to a GitHub Release
 
 ### Next
 - [ ] Streamable HTTP transport (SSE is deprecated in the MCP spec)
