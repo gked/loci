@@ -2,7 +2,7 @@
 setup_docker.py
 Interactive Docker setup for Loci.
 
-Run it with `uv run setup_docker.py`, as the README says. Step 6 installs the
+Run it with `uv run setup_docker.py`, as docs/setup.md says. Step 6 installs the
 skills through loci.skills_install rather than a hand-rolled copy of it, so
 this script is no longer standalone: it needs the project's environment.
 require_loci_package() checks that up front instead of letting the import fail

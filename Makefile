@@ -30,7 +30,7 @@ e2e-install:
 	uv sync --extra dev
 	uv run playwright install chromium
 
-# Recapture the README screenshots from the e2e fixture vault into docs/images/.
+# Recapture the README/docs screenshots from the e2e fixture vault into docs/images/.
 # Opt-in: these specs skip during a normal run. Commit the images afterwards.
 screenshots:
 	uv sync --extra dev
