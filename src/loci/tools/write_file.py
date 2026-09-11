@@ -28,7 +28,7 @@ from loci.tools.slug import filename as make_filename
 from loci.tools.vault_init import NOT_CONFIGURED_MESSAGE, load_config
 from loci.tools.type_registry import get_registry
 from loci.tools.relation_registry import get_relation_registry
-from loci.tools.frontmatter import split_frontmatter
+from loci.tools.frontmatter import load_frontmatter, split_frontmatter
 
 
 def serialize_frontmatter(fields: dict) -> str:
@@ -44,25 +44,73 @@ def resolve_vault_root() -> Path:
     return Path(config["vault_root"])
 
 
+def _normalize_title(title: str) -> str:
+    return " ".join(str(title).split()).lower()
+
+
+def _normalize_url(url: str) -> str:
+    return str(url).strip().rstrip("/")
+
+
 def check_duplicate(vault_root: Path, title: str, url: str = None) -> Optional[Path]:
     """
-    Check for likely duplicate items in the vault root.
-    Returns the path of a likely duplicate, or None.
+    Check for likely duplicate items in the vault. Returns the path of a
+    likely duplicate, or None.
+
+    A duplicate is a node whose title equals this title (case- and
+    whitespace-insensitive) or whose `source_url` equals `url` (trailing slash
+    ignored). Equality rather than substring on purpose: api.save refuses on a
+    hit, and a substring rule made "Test" a duplicate of "Build test suite" and
+    a shorter URL a duplicate of any node that merely cited a longer one.
+
+    Titles are not compared by slug: a slug is truncated and stripped of
+    punctuation, so two notes that differ only in a date past the cut-off
+    would refuse each other. Filename collisions are free_filename's job, not
+    this check's.
+
+    Read from disk rather than the graph index: the index only rebuilds when
+    a directory mtime moves, and an in-place edit (retitling a note in an
+    editor) does not move it, so the index can carry a title that no longer
+    exists. A save is not a hot path; a wrong refusal costs more than a scan.
     """
-    title_lower = title.lower()
+    wanted = _normalize_title(title)
+    wanted_url = _normalize_url(url) if url else ""
+    if not wanted and not wanted_url:
+        return None
 
-    for existing_file in vault_root.glob("*.md"):
-        # Check title similarity via filename slug
-        if title_lower.replace(" ", "-") in existing_file.stem:
-            return existing_file
-
-        # Check URL match in file content if URL provided
-        if url:
-            content = existing_file.read_text()
-            if url in content:
-                return existing_file
+    for md_file in vault_root.rglob("*.md"):
+        if md_file.parent.name == "meta":
+            continue
+        try:
+            fm, _ = load_frontmatter(md_file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not fm:
+            continue
+        if wanted and _normalize_title(fm.get("title") or "") == wanted:
+            return md_file
+        if wanted_url and _normalize_url(fm.get("source_url") or "") == wanted_url:
+            return md_file
 
     return None
+
+
+def free_filename(vault_root: Path, title: str) -> str:
+    """
+    Return a filename for `title` that no file in `vault_root` uses yet.
+
+    The name is derived from the title alone, so a second node with the same
+    title (allow_duplicate) would otherwise land on the first node's path and
+    replace it. Suffix -2, -3, … until the path is free.
+    """
+    fname = make_filename(title)
+    if not (vault_root / fname).exists():
+        return fname
+    stem, ext = fname.rsplit(".", 1)
+    n = 2
+    while (vault_root / f"{stem}-{n}.{ext}").exists():
+        n += 1
+    return f"{stem}-{n}.{ext}"
 
 
 def validate_required_fields(type_def, extra_fields: dict, subtype: Optional[str] = None) -> list[str]:
@@ -186,9 +234,7 @@ def write_item(
 
     # Duplicate check
     if not skip_duplicate_check:
-        url = None
-        if references:
-            url = references[0].get("url")
+        url = (extra_fields or {}).get("source_url")
         duplicate = check_duplicate(vault_root, title, url)
         if duplicate:
             print(f"\nWarning: A similar item already exists: {duplicate.name}")
@@ -200,7 +246,7 @@ def write_item(
 
     # Generate UID and filename
     uid = generate_uid()
-    fname = make_filename(title)
+    fname = free_filename(vault_root, title)
     file_path = vault_root / fname
 
     # Build frontmatter
@@ -356,6 +402,9 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
         "tags": fm.get("tags") or [],
         "domains": fm.get("domains") or [],
         "summary": fm.get("summary", ""),
+        "source_url": fm.get("source_url") or "",
+        "aliases": fm.get("aliases") or [],
+        "language": fm.get("language") or "",
     }
     if relation_warnings:
         result["relation_warnings"] = relation_warnings

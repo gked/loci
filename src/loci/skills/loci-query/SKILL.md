@@ -1,6 +1,6 @@
 ---
 name: loci-query
-skill_version: 1
+skill_version: 2
 description: >
   Query the Loci vault to retrieve, relate, and summarize knowledge. Use
   whenever the user asks what they know about a topic, wants to find notes or
@@ -19,7 +19,7 @@ Retrieves and synthesizes content from the Loci vault using the graph layer.
 
 ## Version Check
 
-This skill is at `skill_version: 1`.
+This skill is at `skill_version: 2`.
 
 Before following any instructions:
 1. Call `loci__read_skill` with skill="loci-query" to fetch the latest version
@@ -33,35 +33,11 @@ Before following any instructions:
 
 ## Step 0 — Verify vault is reachable
 
-Call `loci__list_vault` with no arguments. If it errors, read the error code:
+Call `loci__list_vault` with no arguments. If it errors, relay the error text verbatim — it says
+what is wrong and what to do — and stop; on `LOCI_NOT_CONFIGURED`, ask the user where the vault
+should live (never guess a path or offer a default) and call `loci__set_vault_root`.
 
-**`LOCI_NOT_CONFIGURED`** — Loci has never been set up. Ask the user where their
-vault should live, then call `loci__set_vault_root(path=<their answer>)` and
-retry. No restart is needed. **Never guess a path and never offer a default** —
-the vault holds everything they save, and a location they did not choose is one
-they will never find again.
-
-**`LOCI_VAULT_UNREACHABLE`** — the vault is configured but its directory is
-missing right now, usually an unmounted drive or a sync folder that has not come
-down yet. Name the missing path and ask whether to wait or to point Loci
-elsewhere with `loci__set_vault_root`. **Do not create a new vault at that
-path** — the real one is probably just offline.
-
-**Anything else** — tell the user:
-
-```
-The Loci vault is not reachable.
-```
-Then relay the error text the tool returned verbatim — it names the cause and
-the fix for this install (an unmounted path, a missing volume mount, no vault
-configured yet). Do not substitute a setup command for it: `setup.py` only
-exists in a local checkout, so it is wrong for a Docker or `uvx` install and
-fails outright anywhere but that checkout directory. If there is no error text,
-the MCP server itself is not connected — tell the user to check their MCP
-client config and restart Claude Code / Claude Desktop.
-
-If the result contains a `_notice` key, show it to the user as an FYI before proceeding — e.g.:
-> FYI: Vault meta files were automatically updated to v2 (language and aliases fields added).
+If the result has a `_notice` key, show it as a one-line FYI before proceeding.
 
 ---
 
@@ -271,10 +247,21 @@ Until then: use `find_nodes` for filtered enumeration. Do not work around it in-
 
 ---
 
+## Wrap-up
+
+Every query ends here, whichever mode ran.
+
+1. Present the result in the mode's format — nothing that is not in the vault files.
+2. If the synthesis leaned on distance-2 nodes or on summaries without full reads, add the single
+   low-confidence line from the rules below. Otherwise add no confidence labels.
+3. Offer the one follow-on that fits: read a node in full, go a hop deeper, or save the synthesis
+   back as a new document via the loci-save skill. One offer, not a menu.
+
+---
+
 ## General rules
 
 - **Never invent content.** Only report what is in vault files.
 - **UIDs are stable identifiers.** Always pass the uid (not the title) to graph tools.
 - **Read before summarizing.** Do not summarize from the graph node attributes alone — always call `loci__read_vault` for the full content.
-- **Offer next steps.** After any query result, suggest a natural follow-on action (read a node, go deeper, save a new document from the synthesis).
 - **Signal low confidence, not high.** Do not add confidence labels to every claim. Only flag when a synthesis draws primarily from distance=2 nodes or from summaries alone without full reads — add a single closing line such as: "Note: some of this is inferred from loosely connected nodes — worth verifying by reading the source files."

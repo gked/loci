@@ -1,6 +1,6 @@
 ---
 name: loci-inbox
-skill_version: 4
+skill_version: 6
 description: >
   Process the loci-stage inbox: scan staged files, present a plan to the user,
   then execute file ingestion and content processing in batches. Use whenever
@@ -16,7 +16,7 @@ Processes loci-stage/ into the vault in two phases: analysis then execution.
 
 ## Version Check
 
-This skill is at `skill_version: 4`.
+This skill is at `skill_version: 6`.
 
 Before following any instructions:
 1. Call `loci__read_skill` with skill="loci-inbox" to fetch the latest version
@@ -27,9 +27,9 @@ Before following any instructions:
 
 ## Step 0 — Check vault reachability
 
-Call `loci__list_vault` with no arguments. If it errors, relay the error text
-verbatim — it names the cause and the fix for this install — and stop. Do not
-substitute a setup command for it: `setup.py` only exists in a local checkout.
+Call `loci__list_vault` with no arguments. If it errors, relay the error text verbatim — it says
+what is wrong and what to do — and stop; on `LOCI_NOT_CONFIGURED`, ask the user where the vault
+should live (never guess a path or offer a default) and call `loci__set_vault_root`.
 
 ---
 
@@ -81,10 +81,17 @@ Present results:
 File batch complete:
   ✓ 50 books ingested
   ✗  2 failed: [list errors]
+  ≈  1 already in vault: dune.epub — matches "Dune" (a1b2c3d4)
   → 193 remaining (~4 runs left)
 
 Continue with another file batch? [yes / switch to content / stop]
 ```
+
+Items under `duplicates` were not saved — the vault already has a node with that title. Their
+staging files are kept and the plan parks them as `duplicate`, which keeps the plan open until
+the user decides. For each, ask: skip it → `loci__update_inbox_item(path=..., status="skipped")`;
+or save a second copy → `loci__update_inbox_item(path=..., status="pending", allow_duplicate=true)`
+and the next file batch saves it. Never re-queue without asking.
 
 ### Content batch (Claude-assisted)
 
@@ -93,8 +100,11 @@ Call `loci__get_inbox_content_batch()`.
 For each item returned:
 1. Read the content
 2. Classify (type, tags, summary) using loci-save skill logic (Steps 1-2 of loci-save)
-3. Call `loci__write_vault` to save the node
-4. Call `loci__update_inbox_item(path=..., status="done", uid=<uid>)`
+3. Call `loci__resolve_mentions` with the names in the content and link confirmed hits
+   (loci-save Step 3) — batch the questions for the whole batch into one prompt
+4. Call `loci__write_vault` to save the node. If it returns `duplicate: true`, nothing was
+   written: ask whether to update the existing node or save anyway (`allow_duplicate=true`)
+5. Call `loci__update_inbox_item(path=..., status="done", uid=<uid>)`
 
 Present a summary after each batch:
 ```
@@ -104,6 +114,19 @@ Content batch complete:
 
 Continue with another content batch? [yes / switch to files / stop]
 ```
+
+---
+
+## Wrap-up
+
+Every session ends here, whether the user stopped after one batch or the plan reached `done`.
+
+1. Show the running totals: processed, failed (with the errors), parked as duplicate (with the
+   existing node each matched), remaining, and the estimated runs left.
+2. Surface anything the tools returned that the user should know — write warnings, a `_notice`
+   from Step 0 — in one line each.
+3. Offer the one follow-on that fits: the next batch of the same kind, switching to the other
+   pass, or — when the plan is done — a `loci__lint_vault` run over what was ingested.
 
 ---
 

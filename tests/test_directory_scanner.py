@@ -213,3 +213,51 @@ def test_relative_path_resolves_against_loci_root(tmp_vault, tmp_path):
     assert result["total_files"] == 1
     assert len(result["registered"]) == 1
     assert result["registered"][0]["node_uid"] == "cc334455"
+
+
+# ---------------------------------------------------------------------------
+# Suggested type / subtype / title
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name, expected_type, expected_subtype", [
+    ("novel.epub", "asset", "book"),
+    ("novel.MOBI", "asset", "book"),
+    ("novel.azw3", "asset", "book"),
+    ("report.pdf", "document", None),
+    ("notes.md", "document", None),
+    ("talk.mp4", "document", None),
+    ("photo.jpg", "document", None),
+    ("mystery", "document", None),
+])
+def test_unregistered_files_carry_a_suggested_type(tmp_vault, tmp_path, name, expected_type, expected_subtype):
+    d = tmp_path / "scan"
+    d.mkdir()
+    (d / name).write_text("x")
+    entry = scan_directory(str(d), tmp_vault)["unregistered"][0]
+    assert entry["suggested_type"] == expected_type
+    assert entry["suggested_subtype"] == expected_subtype
+
+
+@pytest.mark.parametrize("name, expected_title", [
+    ("my_report_2024.pdf", "My Report 2024"),
+    ("design-doc-v2.md", "Design Doc V2"),
+    ("README.md", "README"),
+    ("already Titled.pdf", "Already Titled"),
+])
+def test_unregistered_files_carry_a_suggested_title(tmp_vault, tmp_path, name, expected_title):
+    d = tmp_path / "scan"
+    d.mkdir()
+    (d / name).write_text("x")
+    entry = scan_directory(str(d), tmp_vault)["unregistered"][0]
+    assert entry["suggested_title"] == expected_title
+
+
+def test_registered_files_carry_no_suggestions(tmp_vault, tmp_path):
+    d = tmp_path / "scan"
+    d.mkdir()
+    f = d / "known.pdf"
+    f.write_text("x")
+    _make_vault_node(tmp_vault, "reg00001", str(f))
+    entry = scan_directory(str(d), tmp_vault)["registered"][0]
+    assert entry["node_uid"] == "reg00001"
+    assert "suggested_type" not in entry

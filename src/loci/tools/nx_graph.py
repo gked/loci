@@ -13,6 +13,7 @@ The vault markdown files are the source of truth.
 
 from __future__ import annotations
 
+import re
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -63,7 +64,8 @@ def _vault_dir_mtime(vault_root: Path) -> float:
 def _build(vault_root: Path) -> nx.DiGraph:
     """
     Scan all vault markdown files and build a DiGraph.
-    Nodes carry: type, title, tags, domains, summary, status, date fields, path.
+    Nodes carry: type, title, tags, domains, summary, status, date fields,
+    source_url, path.
     Edges carry: rel_type.
     """
     g = nx.DiGraph()
@@ -103,6 +105,7 @@ def _build(vault_root: Path) -> nx.DiGraph:
             summary=fm.get("summary", ""),
             language=fm.get("language", ""),
             aliases=fm.get("aliases") or [],
+            source_url=str(fm.get("source_url") or ""),
             path=str(md_file),
             state=fm.get("state", "active"),
             status=fm.get("status", ""),
@@ -468,3 +471,79 @@ def search(query: str, state: str = "active") -> list[dict]:
                 "summary": summary,
             })
     return sorted(result, key=lambda x: x["title"])
+
+
+def _normalize_name(name) -> str:
+    # str() first: YAML reads `title: 2024` or `aliases: [2023]` as ints, and
+    # one such node must not fail the whole call.
+    return re.sub(r"\s+", " ", str(name)).strip().lower()
+
+
+def resolve_mentions(
+    names: list[str],
+    types: Optional[list[str]] = None,
+    state: str = "active",
+) -> dict:
+    """
+    Match names the model pulled out of some content against vault nodes.
+
+    A name is `found` when it equals a node's title or one of its aliases
+    (case- and whitespace-insensitive). Failing that, a name that appears as a
+    whole word inside a title or alias is still reported, marked
+    `via: "partial"`, so "Loci" reaches "Loci — knowledge vault" — the model
+    decides whether that is the same thing, not this function. Names that match
+    nothing are returned in `missing`, in the order given.
+
+    A name that matches several nodes yields one `found` entry per node; the
+    skill is expected to ask which was meant rather than pick.
+    """
+    g = _graph
+    if g is None:
+        return {"found": [], "missing": list(names)}
+
+    found: list[dict] = []
+    missing: list[str] = []
+    wanted_types = set(types) if types else None
+
+    for name in names:
+        needle = _normalize_name(name)
+        if not needle:
+            # A blank name matches nothing; report it rather than drop it, so
+            # every name in comes out in exactly one of the two lists.
+            missing.append(name)
+            continue
+        word_re = re.compile(r"(?<!\w)" + re.escape(needle) + r"(?!\w)")
+        exact: list[dict] = []
+        partial: list[dict] = []
+        for uid, attrs in g.nodes(data=True):
+            if state is not None and attrs.get("state", "active") != state:
+                continue
+            if wanted_types and attrs.get("type", "") not in wanted_types:
+                continue
+            candidates = [("title", attrs.get("title", "") or "")]
+            candidates += [("alias", a) for a in (attrs.get("aliases") or []) if a]
+            normalized = [(via, _normalize_name(text)) for via, text in candidates]
+            via = next((v for v, hay in normalized if hay == needle), None)
+            if via:
+                exact.append(_mention_hit(name, uid, attrs, via))
+            elif any(word_re.search(hay) for _, hay in normalized):
+                partial.append(_mention_hit(name, uid, attrs, "partial"))
+        hits = exact or partial
+        if hits:
+            found.extend(hits)
+        else:
+            missing.append(name)
+
+    return {"found": found, "missing": missing}
+
+
+def _mention_hit(name: str, uid: str, attrs: dict, via: str) -> dict:
+    return {
+        "name": name,
+        "uid": uid,
+        "title": attrs.get("title", ""),
+        "type": attrs.get("type", ""),
+        "path": attrs.get("path", ""),
+        "summary": attrs.get("summary", "") or "",
+        "via": via,
+    }

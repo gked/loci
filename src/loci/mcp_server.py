@@ -224,9 +224,11 @@ def set_vault_root(path: str, create: bool = True) -> dict:
 @requires_vault
 def check_duplicate(type: str, title: str, url: str = None) -> dict:
     """
-    Check whether a similar vault item already exists before writing.
+    Check whether a similar vault item already exists.
     Returns {"duplicate": false} or {"duplicate": true, "path": "...", "name": "..."}.
-    Call this before write_vault when the user might be saving something they've saved before.
+    write_vault runs this check itself and refuses on a hit, so a separate call
+    is only needed to look before building the node — e.g. to decide between a
+    new save and an update before drafting content.
     """
     return vault.check_duplicate(type, title, url)
 
@@ -244,11 +246,16 @@ def write_vault(
     relations: list[dict] = None,
     references: list[dict] = None,
     extra_fields: dict = None,
+    allow_duplicate: bool = False,
 ) -> dict:
     """
     Write a new item to the Loci vault. Returns {uid, path, type, title}.
 
-    Run check_duplicate first unless the user has already confirmed they want to save.
+    Checks for duplicates itself: if a node with the same title or the same
+    extra_fields.source_url already exists, nothing is written and the result is
+    {duplicate: true, uid, path, name, message} describing the existing node.
+    Ask the user whether to update that node (patch_vault) or save a new one
+    anyway, and in the latter case call again with allow_duplicate=true.
 
     Args:
         type: document | article | bookmark | conversation | project | task | event | entity | procedure | topic
@@ -266,11 +273,14 @@ def write_vault(
                       'body' is not a frontmatter field. A 'body' key in
                       extra_fields is rerouted to the body argument and a
                       warning is returned.
+        allow_duplicate: Write even though a similar node exists. Only after
+                      the user has chosen "save as new".
     """
     return vault.save(
         type=type, title=title, body=body, tags=tags, domains=domains,
         summary=summary, author=author, relations=relations,
         references=references, extra_fields=extra_fields,
+        allow_duplicate=allow_duplicate,
     )
 
 
@@ -366,11 +376,14 @@ def list_vault(type: str = None) -> dict:
 def read_meta(file: str) -> str:
     """
     Read a vault meta file.
-    file: type-dictionary | tag-dictionary | field-dictionary |
+    file: type-dictionary | type-decision | tag-dictionary | field-dictionary |
           relation-dictionary | relation-dictionary-user |
           foreign-definitions | ontology | ontology-user |
-          scheme-dictionary | scheme-dictionary-user | ontology-guide | config
+          scheme-dictionary | scheme-dictionary-user | ontology-guide |
+          has-asset-guide | update-workflow | config
 
+    type-decision         — the decision tree for picking a type when the content does not
+                            name one. Read with type-dictionary when classifying.
     ontology              — machine-readable canonical type definitions (required fields,
                             optional fields, enum values). Source of truth for structure.
     ontology-user         — user-defined type extensions. Read before writing a node of a
@@ -389,6 +402,12 @@ def read_meta(file: str) -> str:
                             how relations and schemes work, how to extend them. Read this
                             when the user asks how the ontology works rather than what a
                             specific type requires — for structure, read ontology instead.
+    has-asset-guide       — working guidance for has_asset: when to use each scheme, where
+                            its identifiers come from, adopt vs. reference. Read before
+                            writing or editing a has_asset entry.
+    update-workflow       — the procedure for changing an existing node: patch semantics,
+                            temporal-field archiving for entities, archive/unarchive,
+                            delete. Read when the user wants to update rather than save.
     config                — where Loci is pointed and which version it runs. Answerable
                             with no vault configured, so it also tells you *why* the other
                             tools are refusing.
@@ -429,9 +448,14 @@ def scan_directory(path: str, recursive: bool = False) -> dict:
         {
             directory: str,
             total_files: int,
-            unregistered: [{path, filename, format}, ...],
+            unregistered: [{path, filename, format, suggested_type,
+                            suggested_subtype, suggested_title}, ...],
             registered:   [{path, filename, format, node_uid}, ...],
         }
+
+    suggested_type is `asset` (with suggested_subtype `book`) for ebook formats
+    and `document` otherwise; suggested_title is the humanized filename. Both
+    come from the filename alone — confirm with the user when they look wrong.
 
     Args:
         path:      Absolute path to the directory to scan.
@@ -691,6 +715,36 @@ def search_vault(query: str, state: str | None = "active") -> list[dict]:
 
 @mcp.tool()
 @requires_vault
+def resolve_mentions(names: list[str], types: list[str] = None) -> dict:
+    """
+    Match names mentioned in content — people, organisations, projects, topics —
+    against existing vault nodes, so a save links to what is already there
+    instead of creating a second "John Smith".
+
+    Pull every proper name out of the content first, then pass them all in one
+    call. Each name is compared against node titles and aliases, case- and
+    whitespace-insensitive. Returns:
+        {
+          found:   [{name, uid, title, type, path, summary, via}, ...],
+          missing: [name, ...],
+        }
+    `via` is "title" or "alias" for an exact match, or "partial" when the name
+    only appears as a whole word inside a title or alias (e.g. "Loci" against
+    "Loci — knowledge vault") — treat partial hits as candidates to confirm, not
+    as matches. A name listed more than once in `found` matched several nodes;
+    ask the user which one they meant.
+
+    Args:
+        names: Names to resolve, as they appear in the content.
+        types: Optional list of node types to search (e.g. ["entity", "project"]).
+               Omit to search every active node.
+    """
+    graph.get(vault._vault_root())
+    return graph.resolve_mentions(names, types=types)
+
+
+@mcp.tool()
+@requires_vault
 def resolve_asset(uid: str, format: str = None) -> dict:
     """
     Resolve an asset UID to its file path and metadata.
@@ -766,10 +820,17 @@ def save_asset(
     author: str = None,
     published_at: str = None,
     language: str = None,
+    allow_duplicate: bool = False,
 ) -> dict:
     """
     Save a new binary/rich-file asset with its vault proxy node.
     Executes the full crash-safe write sequence. Returns {uid, asset_path, vault_path}.
+
+    Checks for duplicates itself, like write_vault: if a node with the same
+    title already exists it writes nothing and returns
+    {duplicate: true, uid, path, name, message} describing the existing node.
+    Ask the user whether to update that node or save a second copy anyway,
+    and in the latter case call again with allow_duplicate=true.
 
     Provide either source_path OR content — not both.
 
@@ -798,6 +859,8 @@ def save_asset(
         author:      Author or creator name.
         published_at: Publication or release date string.
         language:    ISO 639-1 language code.
+        allow_duplicate: Write even though a node with this title exists. Only
+                     after the user has chosen "save as new".
     """
     import base64 as _base64
     try:
@@ -832,6 +895,7 @@ def save_asset(
             author=author,
             published_at=published_at,
             language=language,
+            allow_duplicate=allow_duplicate,
         )
     except Exception as e:
         return {"error": str(e)}
@@ -893,7 +957,16 @@ def execute_inbox_file_batch() -> dict:
     loci-stage/, saves as an asset vault node (type=asset, subtype=book),
     deletes the staging file, updates plan status.
 
-    Returns {processed: [{path, uid, title}], failed: [{path, error}], remaining: int}.
+    An item whose title already exists in the vault is not saved: it is parked
+    with status `duplicate`, its staging file kept, and reported under
+    `duplicates` with the existing node's uid and path. The plan stays open
+    until each is resolved with update_inbox_item: status="skipped" to drop
+    it, or status="pending" with allow_duplicate=True to save a second copy
+    on the next batch.
+
+    Returns {processed: [{path, uid, title}], failed: [{path, error}],
+             duplicates: [{path, title, existing_uid, existing_path, existing_name}],
+             remaining: int}.
     Plan must be approved before calling.
     """
     try:
@@ -922,18 +995,25 @@ def get_inbox_content_batch() -> dict:
 
 @mcp.tool()
 @requires_vault
-def update_inbox_item(path: str, status: str, uid: str = None) -> dict:
+def update_inbox_item(path: str, status: str, uid: str = None, allow_duplicate: bool = None) -> dict:
     """
-    Update a content-category item's status after Claude processes it.
-    Call this after writing a vault node for a content item.
+    Update a plan item's status.
+
+    Content items: call after writing a vault node for the item.
+    File items parked as `duplicate` by execute_inbox_file_batch: pass
+    status="skipped" to drop the item, or status="pending" with
+    allow_duplicate=True to re-queue it so the next file batch saves a
+    second copy. The plan is not done while an item is still parked.
 
     Args:
         path: Relative path of the item within loci-stage (as it appears in the plan)
-        status: 'done' | 'failed' | 'skipped'
+        status: 'done' | 'failed' | 'skipped' | 'pending'
         uid: UID of the created vault node (required when status='done')
+        allow_duplicate: when true, the file batch saves this item even if its
+            title already exists in the vault
     """
     try:
-        return vault.update_inbox_item(path, status, uid)
+        return vault.update_inbox_item(path, status, uid, allow_duplicate)
     except Exception as e:
         return {"error": str(e)}
 

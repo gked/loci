@@ -14,6 +14,7 @@ import io
 import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
@@ -118,6 +119,27 @@ def generate_uid() -> str:
     return _generate_uid()
 
 
+def _refuse_duplicate(title: str, url: Optional[str], tool: str) -> Optional[dict]:
+    """
+    The duplicate gate shared by save and save_asset. Returns the refusal
+    dict describing the existing node, or None when the save may proceed.
+    """
+    dup = _check_duplicate(_vault_root(), title, url)
+    if not dup:
+        return None
+    return {
+        "duplicate": True,
+        "uid": _frontmatter_uid(dup),
+        "path": str(dup),
+        "name": dup.name,
+        "message": (
+            f"A similar item already exists: {dup.name}. Ask the user "
+            f"whether to update it (patch_vault) or save a new item "
+            f"anyway ({tool} with allow_duplicate=True)."
+        ),
+    }
+
+
 def save(
     type: str,
     title: str,
@@ -129,13 +151,33 @@ def save(
     relations: list = None,
     references: list = None,
     extra_fields: dict = None,
+    allow_duplicate: bool = False,
 ) -> dict:
     """
     Write a new item to the vault. Returns {uid, path, type, title}.
 
-    Duplicate checking is not performed here — call check_duplicate first
-    if needed and confirm with the user before calling save.
+    Refuses when a likely duplicate already exists — same title, or the same
+    `extra_fields.source_url` — and returns {duplicate: True, uid, path, name}
+    for it instead of writing. Pass allow_duplicate=True once the user has
+    chosen to save a second item anyway. The check lives here rather than in
+    the skill so a save cannot skip it.
+
+    Only source_url takes part in the URL check. `references` are pages the
+    item cites, and citing a bookmarked page is not saving it twice.
     """
+    source_url = (extra_fields or {}).get("source_url")
+    if not allow_duplicate:
+        # Validate the type first so a bad type is reported as such rather
+        # than as a duplicate of whatever the title happens to resemble.
+        registry = get_registry(_vault_root())
+        if type not in registry.type_names():
+            raise ValueError(
+                f"Unknown type: {type!r}. Must be one of: {sorted(registry.type_names())}"
+            )
+        refusal = _refuse_duplicate(title, source_url, "write_vault")
+        if refusal:
+            return refusal
+
     # Redirect stdout to prevent write_item's print() calls from corrupting
     # the MCP stdio protocol (or cluttering non-interactive use)
     with contextlib.redirect_stdout(io.StringIO()):
@@ -161,6 +203,7 @@ def save(
             domains=domains or [],
             summary=summary or "",
             state="active",
+            source_url=str((extra_fields or {}).get("source_url") or ""),
             path=result["path"],
         )
         graph.index_edges(result["uid"], relations or [])
@@ -205,6 +248,9 @@ def patch(path: str, updates: dict, body: str = None) -> dict:
             domains=result.get("domains", []),
             summary=result.get("summary", ""),
             state=result.get("state", "active"),
+            source_url=result.get("source_url", ""),
+            aliases=result.get("aliases", []),
+            language=result.get("language", ""),
             path=str(p),
         )
         graph.index_edges(result["uid"], result.get("relations", []))
@@ -403,10 +449,16 @@ def save_asset(
     author: str = None,
     published_at: str = None,
     language: str = None,
+    allow_duplicate: bool = False,
 ) -> dict:
     """
     Save a new asset with its vault proxy node using the crash-safe write sequence.
     Returns {uid, asset_path, vault_path}.
+
+    Refuses when a node with this title already exists, the same way save does,
+    and returns {duplicate: True, uid, path, name} before anything touches
+    disk. Pass allow_duplicate=True once the user has chosen to save a second
+    copy anyway.
 
     Provide either content (bytes) or source_path — not both.
 
@@ -423,11 +475,15 @@ def save_asset(
         raise ValueError("Provide either content or source_path.")
     if content is not None and source_path is not None:
         raise ValueError("Provide either content or source_path, not both.")
+    if not allow_duplicate:
+        refusal = _refuse_duplicate(title, None, "save_asset")
+        if refusal:
+            return refusal
     if content is None:
         if not Path(source_path).is_absolute():
             raise ValueError("source_path must be an absolute path.")
         content = Path(source_path).read_bytes()
-    from loci.tools.slug import filename as make_filename
+    from loci.tools.write_file import free_filename
 
     uid = _generate_uid()
     loci_root = _loci_root()
@@ -437,8 +493,11 @@ def save_asset(
     asset_final = loci_root / asset_rel_path
     asset_tmp = ar.assets_dir(loci_root) / f".{uid}.{format}.tmp"
 
-    vault_fname = make_filename(title)
-    vault_path = vault_root / vault_fname
+    # The same choice _write_item makes below. Under allow_duplicate the title's
+    # plain filename is taken, and recovery decides whether the proxy node was
+    # written by checking this path — recording the first node's file would
+    # make it skip the write and leave the asset with no node.
+    vault_path = vault_root / free_filename(vault_root, title)
 
     has_asset_list = [
         {
@@ -597,7 +656,11 @@ def execute_inbox_file_batch() -> dict:
     Process next file-category batch from approved plan.
     For each item: read file from staging, save as asset node, delete staging file,
     update plan item to done.
-    Returns {processed: [...], failed: [...], remaining: int}.
+
+    An item whose title already exists in the vault is parked as `duplicate`
+    (staging file kept, nothing written) unless the plan item carries
+    `allow_duplicate: true`; the caller re-queues it with update_inbox_item.
+    Returns {processed: [...], failed: [...], duplicates: [...], remaining: int}.
     """
     from loci.tools.inbox_plan import read_plan, get_pending_batch, update_item_status
 
@@ -629,6 +692,7 @@ def execute_inbox_file_batch() -> dict:
 
     processed = []
     failed = []
+    duplicates = []
 
     for item in batch:
         item_path = item.get("path", "")
@@ -648,6 +712,9 @@ def execute_inbox_file_batch() -> dict:
             if library_uid:
                 relations = [{"uid": library_uid, "type": "belongs-to"}]
 
+            # The plan does not run a duplicate check, so approving it is not
+            # consent to a second copy. A refusal parks the item rather than
+            # failing it, and the per-item flag is the "save anyway".
             result = save_asset(
                 content=content,
                 format=item["format"],
@@ -660,7 +727,14 @@ def execute_inbox_file_batch() -> dict:
                 tags=tags,
                 domains=domains,
                 relations=relations,
+                allow_duplicate=bool(item.get("allow_duplicate")),
             )
+
+            if result.get("duplicate"):
+                existing = {"existing_uid": result["uid"], "existing_path": result["path"], "existing_name": result["name"]}
+                update_item_status(stage_root, item_path, "duplicate", existing)
+                duplicates.append({"path": item_path, "title": title, **existing})
+                continue
 
             update_item_status(
                 stage_root,
@@ -687,7 +761,7 @@ def execute_inbox_file_batch() -> dict:
     plan = read_plan(stage_root)
     remaining = plan["progress"]["files"]["pending"] if plan else 0
 
-    return {"processed": processed, "failed": failed, "remaining": remaining}
+    return {"processed": processed, "failed": failed, "duplicates": duplicates, "remaining": remaining}
 
 
 def get_inbox_content_batch() -> dict:
@@ -736,13 +810,18 @@ def get_inbox_content_batch() -> dict:
     return {"items": items_with_content, "remaining": remaining}
 
 
-def update_inbox_item(path: str, status: str, uid: str = None) -> dict:
-    """Update a content item's status after Claude processes it."""
+def update_inbox_item(path: str, status: str, uid: str = None, allow_duplicate: bool = None) -> dict:
+    """
+    Update a plan item's status. Content items: after Claude processes one.
+    File items parked as `duplicate`: status="skipped" drops the item;
+    status="pending" with allow_duplicate=True re-queues it for the next file
+    batch, which then saves a second copy.
+    """
     from loci.tools.inbox_plan import update_item_status, read_plan
 
     stage_root = _stage_root()
     result_data = {"uid": uid} if uid else None
-    update_item_status(stage_root, path, status, result_data)
+    update_item_status(stage_root, path, status, result_data, allow_duplicate=allow_duplicate)
 
     plan = read_plan(stage_root)
     return {
@@ -891,9 +970,10 @@ def app_version() -> str:
 def read_meta(file: str) -> str:
     """
     Read a vault meta file.
-    file: type-dictionary | tag-dictionary | field-dictionary | relation-dictionary |
-          foreign-definitions | ontology | ontology-user | scheme-dictionary |
-          scheme-dictionary-user | ontology-guide | config
+    file: type-dictionary | type-decision | tag-dictionary | field-dictionary |
+          relation-dictionary | relation-dictionary-user | foreign-definitions |
+          ontology | ontology-user | scheme-dictionary | scheme-dictionary-user |
+          ontology-guide | has-asset-guide | update-workflow | config
     """
     if file == "config":
         cfg = load_config() or {}
@@ -902,6 +982,7 @@ def read_meta(file: str) -> str:
     vault_root = _vault_root()
     file_map = {
         "type-dictionary":           vault_root / "meta" / "type-dictionary.md",
+        "type-decision":             vault_root / "meta" / "type-decision.md",
         "tag-dictionary":            vault_root / "meta" / "tag-dictionary.md",
         "field-dictionary":          vault_root / "meta" / "field-dictionary.md",
         "relation-dictionary":       vault_root / "meta" / "relation-dictionary.yaml",
@@ -912,6 +993,8 @@ def read_meta(file: str) -> str:
         "scheme-dictionary":         vault_root / "meta" / "scheme-dictionary.yaml",
         "scheme-dictionary-user":    vault_root / "meta" / "scheme-dictionary-user.yaml",
         "ontology-guide":            vault_root / "meta" / "ontology-guide.md",
+        "has-asset-guide":           vault_root / "meta" / "has-asset-guide.md",
+        "update-workflow":           vault_root / "meta" / "update-workflow.md",
     }
     p = file_map.get(file)
     if not p:

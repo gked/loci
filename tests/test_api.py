@@ -65,6 +65,125 @@ def test_save_missing_required_field_returns_errors(tmp_vault):
     assert "uid" not in result
 
 
+def test_save_refuses_a_duplicate_title(tmp_vault):
+    first = api.save(type="document", title="Duplicate Me", body="", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="duplicate me", body="", extra_fields={"status": "draft"})
+    assert result["duplicate"] is True
+    assert result["uid"] == first["uid"]
+    assert result["path"] == first["path"]
+    assert "allow_duplicate" in result["message"]
+    # Nothing was written: still exactly one file for that title.
+    assert len([p for p in tmp_vault.glob("*.md") if "duplicate-me" in p.name]) == 1
+
+
+def test_save_refuses_a_duplicate_source_url(tmp_vault):
+    url = "https://example.com/same-page"
+    api.save(type="bookmark", title="First Bookmark", body="", extra_fields={"source_url": url})
+    result = api.save(type="bookmark", title="Second Bookmark", body="", extra_fields={"source_url": url})
+    assert result["duplicate"] is True
+    assert "first-bookmark" in result["name"]
+
+
+def test_save_allow_duplicate_writes_a_second_node(tmp_vault):
+    first = api.save(type="document", title="Duplicate Me", body="first body", extra_fields={"status": "draft"})
+    second = api.save(
+        type="document", title="Duplicate Me", body="second body", extra_fields={"status": "draft"},
+        allow_duplicate=True,
+    )
+    assert "duplicate" not in second
+    assert second["uid"] != first["uid"]
+    assert second["path"] != first["path"]
+    assert Path(second["path"]).exists()
+    # The first node survived: its file, its uid, and its body are all intact.
+    assert Path(first["path"]).exists()
+    assert f"uid: {first['uid']}" in Path(first["path"]).read_text(encoding="utf-8")
+    assert "first body" in Path(first["path"]).read_text(encoding="utf-8")
+    assert api.get(first["uid"])
+
+
+def test_save_does_not_refuse_a_url_prefix(tmp_vault):
+    api.save(
+        type="bookmark", title="Regex Docs", body="",
+        extra_fields={"source_url": "https://docs.python.org/3/library/re.html"},
+    )
+    result = api.save(
+        type="bookmark", title="Python Docs", body="",
+        extra_fields={"source_url": "https://docs.python.org/3/"},
+    )
+    assert "duplicate" not in result
+
+
+def test_save_duplicate_check_sees_a_patched_title(tmp_vault):
+    # The check answers from the graph, so a rename must reach it.
+    node = api.save(type="document", title="Before Rename", body="", extra_fields={"status": "draft"})
+    api.patch(node["uid"], {"title": "After Rename"})
+    assert "duplicate" not in api.save(type="document", title="Before Rename", body="", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="After Rename", body="", extra_fields={"status": "draft"})
+    assert result["duplicate"] is True
+    assert result["uid"] == node["uid"]
+
+
+def test_save_duplicate_check_sees_a_patched_source_url(tmp_vault):
+    node = api.save(type="bookmark", title="Moved Page", body="", extra_fields={"source_url": "https://old.example.com/"})
+    api.patch(node["uid"], {"source_url": "https://new.example.com/"})
+    result = api.save(type="bookmark", title="Another Title", body="", extra_fields={"source_url": "https://new.example.com"})
+    assert result["duplicate"] is True
+    assert result["uid"] == node["uid"]
+
+
+def test_save_does_not_treat_a_cited_url_as_a_duplicate(tmp_vault):
+    # A task that cites a bookmarked page in references is not the bookmark
+    # saved twice; only extra_fields.source_url takes part in the URL check.
+    url = "https://example.com/cited-page"
+    api.save(type="bookmark", title="The Bookmark", body="", extra_fields={"source_url": url})
+    result = api.save(
+        type="task", title="Follow up on the cited page", body="",
+        extra_fields={"status": "todo"},
+        references=[{"url": url, "title": "The page", "source_type": "web"}],
+    )
+    assert "duplicate" not in result
+    assert "uid" in result
+
+
+def test_save_does_not_refuse_titles_that_share_a_slug(tmp_vault):
+    # Slugs truncate at 60 chars; a date past the cut-off must not make the
+    # second note a duplicate of the first. Both land on distinct filenames.
+    stem = "Meeting notes: Q3 planning session with the platform team"
+    first = api.save(type="document", title=f"{stem} — 2026-09-01", body="", extra_fields={"status": "draft"})
+    second = api.save(type="document", title=f"{stem} — 2026-09-08", body="", extra_fields={"status": "draft"})
+    assert "duplicate" not in second
+    assert second["path"] != first["path"]
+
+
+def test_save_keeps_non_latin_titles_apart(tmp_vault):
+    first = api.save(type="document", title="Отчёт 2024", body="", extra_fields={"status": "draft"})
+    second = api.save(type="document", title="План 2024", body="", extra_fields={"status": "draft"})
+    assert "duplicate" not in second
+    assert Path(first["path"]).name == "отчёт-2024.md"
+    assert Path(second["path"]).name == "план-2024.md"
+
+
+def test_resolve_mentions_sees_an_alias_added_by_patch(tmp_vault):
+    # patch re-indexes the node in place — no rebuild happens — so the alias
+    # list it writes must reach the graph, or the mention is reported missing
+    # and the skill offers to create a second entity.
+    from loci.tools import nx_graph as graph
+    node = api.save(type="entity", title="Jonathan Doe", body="", extra_fields={"subtype": "person"})
+    graph.get(tmp_vault)
+    assert graph.resolve_mentions(["John"])["missing"] == ["John"]
+    api.patch(node["uid"], {"aliases": ["John"]})
+    hits = graph.resolve_mentions(["John"])
+    assert hits["missing"] == []
+    assert [h["uid"] for h in hits["found"]] == [node["uid"]]
+    assert hits["found"][0]["via"] == "alias"
+
+
+def test_save_reports_a_bad_type_before_a_duplicate(tmp_vault):
+    # The fixture vault has "Testing Strategies"; the type error must win.
+    with pytest.raises(ValueError, match="Unknown type"):
+        api.save(type="banana", title="Testing Strategies", body="")
+
+
 # ---------------------------------------------------------------------------
 # delete
 # ---------------------------------------------------------------------------
@@ -404,6 +523,7 @@ def test_read_meta_ontology_guide_falls_back_to_references(tmp_vault):
 
 @pytest.mark.parametrize("key", [
     "type-dictionary",
+    "type-decision",
     "tag-dictionary",
     "field-dictionary",
     "relation-dictionary",
@@ -414,6 +534,8 @@ def test_read_meta_ontology_guide_falls_back_to_references(tmp_vault):
     "scheme-dictionary",
     "scheme-dictionary-user",
     "ontology-guide",
+    "has-asset-guide",
+    "update-workflow",
 ])
 def test_read_meta_every_key_falls_back_to_references(tmp_vault, key):
     """An unseeded vault must still answer every meta key.
@@ -729,6 +851,123 @@ def test_save_asset_full_sequence(tmp_vault):
     fm = yaml.safe_load(raw.split("---", 2)[1])
     assert isinstance(fm.get("has_asset"), list)
     assert fm["has_asset"][0]["locations"][0]["scheme"] == "local"
+
+
+def test_save_asset_refuses_a_duplicate_title(tmp_vault):
+    from loci.tools import asset_registry as ar
+    loci_root = tmp_vault.parent
+    first = api.save_asset(content=b"%PDF-1", format="pdf", mime_type="application/pdf", title="Same Ebook")
+    assets_before = sorted(ar.assets_dir(loci_root).iterdir())
+    result = api.save_asset(content=b"%PDF-2", format="pdf", mime_type="application/pdf", title="same  ebook")
+    assert result["duplicate"] is True
+    assert result["uid"] == first["uid"]
+    assert "save_asset" in result["message"] and "allow_duplicate" in result["message"]
+    # Refused before anything touched disk: no second asset, no intent file.
+    assert sorted(ar.assets_dir(loci_root).iterdir()) == assets_before
+    assert not list(ar.pending_dir(loci_root).glob("*.json"))
+
+
+def test_save_asset_intent_records_the_path_the_node_takes(tmp_vault, monkeypatch):
+    # Under allow_duplicate the title's plain filename is already taken and the
+    # node lands on "<slug>-2.md". Recovery decides whether the proxy node was
+    # written by checking the intent's vault_path, so it must be that path —
+    # not the first node's — or a crash leaves the asset with no node.
+    from loci.tools import asset_registry as ar
+    import json
+    loci_root = tmp_vault.parent
+    first = api.save_asset(content=b"%PDF-1", format="pdf", mime_type="application/pdf", title="Same Ebook")
+    captured = {}
+    real_write_intent = ar.write_intent
+
+    def spy(*args, **kwargs):
+        path = real_write_intent(*args, **kwargs)
+        captured["intent"] = json.loads(path.read_text(encoding="utf-8"))
+        return path
+
+    monkeypatch.setattr(ar, "write_intent", spy)
+    second = api.save_asset(
+        content=b"%PDF-2", format="pdf", mime_type="application/pdf", title="Same Ebook",
+        allow_duplicate=True,
+    )
+    assert captured["intent"]["vault_path"] == second["vault_path"]
+    assert captured["intent"]["vault_path"] != first["vault_path"]
+
+
+def _stage_same_ebook(tmp_vault):
+    from loci.tools.inbox_plan import write_plan, approve_plan
+    stage_root = tmp_vault.parent / "loci-stage"
+    stage_root.mkdir()
+    (stage_root / "same-ebook.pdf").write_bytes(b"%PDF-2")
+    write_plan(stage_root, tmp_vault, [{
+        "path": "same-ebook.pdf", "category": "file", "title": "Same Ebook",
+        "format": "pdf", "mime_type": "application/pdf", "subtype": "book",
+    }])
+    approve_plan(stage_root)
+    return stage_root
+
+
+def test_inbox_file_batch_parks_a_title_that_already_exists(tmp_vault):
+    # The plan never ran a duplicate check, so approving it is not consent to
+    # a second copy. The item is parked (not failed), the staging file kept,
+    # and the existing node reported so the skill can ask.
+    from loci.tools.inbox_plan import read_plan
+    existing = api.save_asset(content=b"%PDF-1", format="pdf", mime_type="application/pdf", title="Same Ebook")
+    stage_root = _stage_same_ebook(tmp_vault)
+
+    result = api.execute_inbox_file_batch()
+
+    assert result["processed"] == [] and result["failed"] == []
+    assert len(result["duplicates"]) == 1
+    dup = result["duplicates"][0]
+    assert dup["path"] == "same-ebook.pdf" and dup["title"] == "Same Ebook"
+    assert dup["existing_uid"] == existing["uid"]
+    assert dup["existing_path"] == existing["vault_path"]
+    assert (stage_root / "same-ebook.pdf").exists()
+    plan = read_plan(stage_root)
+    assert plan["items"][0]["status"] == "duplicate"
+    assert plan["items"][0]["result"]["existing_uid"] == existing["uid"]
+    assert plan["progress"]["files"] == {"total": 1, "done": 0, "failed": 0, "duplicate": 1, "pending": 0}
+    # The plan waits on the user's choice: not done, and a parked item is not
+    # re-picked by a second batch.
+    assert result["remaining"] == 0
+    assert plan["status"] == "in-progress"
+    assert api.execute_inbox_file_batch()["duplicates"] == []
+    # Skipping it is what closes the plan.
+    api.update_inbox_item("same-ebook.pdf", status="skipped")
+    assert read_plan(stage_root)["status"] == "done"
+
+
+def test_inbox_file_batch_saves_a_re_queued_duplicate(tmp_vault):
+    # The user said "save anyway": update_inbox_item flips the item back to
+    # pending with allow_duplicate, and the next batch writes the second copy.
+    from loci.tools.inbox_plan import read_plan
+    existing = api.save_asset(content=b"%PDF-1", format="pdf", mime_type="application/pdf", title="Same Ebook")
+    stage_root = _stage_same_ebook(tmp_vault)
+    api.execute_inbox_file_batch()
+
+    api.update_inbox_item("same-ebook.pdf", status="pending", allow_duplicate=True)
+    assert read_plan(stage_root)["items"][0]["allow_duplicate"] is True
+    result = api.execute_inbox_file_batch()
+
+    assert result["duplicates"] == [] and result["failed"] == []
+    assert [p["title"] for p in result["processed"]] == ["Same Ebook"]
+    assert result["processed"][0]["uid"] != existing["uid"]
+    assert not (stage_root / "same-ebook.pdf").exists()
+    assert read_plan(stage_root)["items"][0]["status"] == "done"
+
+
+def test_save_asset_allow_duplicate_keeps_both(tmp_vault):
+    first = api.save_asset(content=b"%PDF-1", format="pdf", mime_type="application/pdf", title="Same Ebook")
+    second = api.save_asset(
+        content=b"%PDF-2", format="pdf", mime_type="application/pdf", title="Same Ebook",
+        allow_duplicate=True,
+    )
+    assert "duplicate" not in second
+    assert second["uid"] != first["uid"]
+    assert second["vault_path"] != first["vault_path"]
+    assert Path(first["vault_path"]).exists() and Path(second["vault_path"]).exists()
+    assert Path(first["asset_path"]).read_bytes() == b"%PDF-1"
+    assert Path(second["asset_path"]).read_bytes() == b"%PDF-2"
 
 
 # ---------------------------------------------------------------------------

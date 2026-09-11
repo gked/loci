@@ -220,3 +220,59 @@ def test_no_prose_or_script_names_a_command_that_was_removed(path):
             f"{path.relative_to(REPO_ROOT)} still names `{removed}` — "
             f"use `{replacement}`"
         )
+
+
+# ---------------------------------------------------------------------------
+# Size and tool-surface guards
+# ---------------------------------------------------------------------------
+
+# A skill is a procedure the model has to hold in its head for a whole
+# interaction. loci-save reached 790 lines and the model skimmed it — a real
+# save on 2026-09-10 skipped the link-scan step and wrote a meeting note
+# without checking for the entity it named. Knowledge belongs in reference
+# files read on demand (`read_meta`), deterministic steps belong in tools;
+# only the procedure belongs here. Raise this number deliberately, not to
+# make a failure go away.
+MAX_SKILL_LINES = 300
+
+TOOL_CALL = re.compile(r"`loci__([a-z_]+)")
+META_READ = re.compile(r'loci__read_meta\(file="([a-z-]+)"\)')
+
+
+@pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)
+def test_skill_stays_short_enough_to_be_followed(skill):
+    lines = len(skill.read_text(encoding="utf-8").splitlines())
+    assert lines <= MAX_SKILL_LINES, (
+        f"{skill.parent.name}/SKILL.md is {lines} lines (cap {MAX_SKILL_LINES}). "
+        "Move knowledge into a reference file served by read_meta, or a "
+        "deterministic step into a tool, rather than raising the cap."
+    )
+
+
+def _registered_tool_names() -> set[str]:
+    return {t.name for t in mcp_server.mcp._tool_manager.list_tools()}
+
+
+@pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)
+def test_every_tool_a_skill_names_is_registered(skill):
+    """
+    The skill ↔ tool sync rule, enforced: a skill that names a tool the server
+    does not register sends the model to a call that fails.
+    """
+    named = set(TOOL_CALL.findall(skill.read_text(encoding="utf-8")))
+    unknown = sorted(named - _registered_tool_names())
+    assert not unknown, f"{skill.parent.name} names tools that do not exist: {unknown}"
+
+
+@pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)
+def test_every_meta_key_a_skill_reads_exists(skill, tmp_vault):
+    """
+    The other half of the sync rule: every `read_meta(file=...)` a skill
+    spells out has to be a key api.read_meta answers — the reference files
+    lifted out of loci-save are only reachable through it.
+    """
+    keys = set(META_READ.findall(skill.read_text(encoding="utf-8")))
+    if not keys:
+        pytest.skip("reads no meta file")
+    for key in sorted(keys):
+        assert api.read_meta(key).strip(), f"{skill.parent.name} reads unknown meta key {key!r}"

@@ -116,10 +116,18 @@ def test_slugify_only_special_chars():
     assert isinstance(result, str)
 
 
-def test_slugify_unicode_non_latin_becomes_hyphen():
-    # Characters not in the replacement table (e.g. Cyrillic) → hyphen → stripped
-    result = slugify("hello мир world")
-    assert result == "hello-world"
+def test_slugify_keeps_non_latin_letters():
+    # Letters outside the accent table are kept, not stripped: a Cyrillic
+    # title used to collapse to whatever digits it contained, so "Отчёт 2024"
+    # and "План 2024" both became "2024".
+    assert slugify("hello мир world") == "hello-мир-world"
+    assert slugify("Отчёт 2024") == "отчёт-2024"
+    assert slugify("Отчёт 2024") != slugify("План 2024")
+
+
+def test_slugify_underscore_is_punctuation():
+    # \w matches underscore; it must still become a hyphen like other punctuation
+    assert slugify("snake_case title") == "snake-case-title"
 
 
 # ---------------------------------------------------------------------------

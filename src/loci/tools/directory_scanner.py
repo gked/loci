@@ -16,6 +16,25 @@ def _format_from_path(p: Path) -> str:
     return p.suffix.lstrip(".").lower() or "unknown"
 
 
+# Ebook formats become asset nodes (subtype book); everything else is a
+# document that happens to point at a file. The skill used to carry this table
+# in prose and re-derive it per file; keeping it here makes the suggestion the
+# same on every run.
+_EBOOK_FORMATS = {"epub", "mobi", "azw", "azw3"}
+
+
+def _suggest_type(fmt: str) -> tuple[str, str | None]:
+    if fmt in _EBOOK_FORMATS:
+        return "asset", "book"
+    return "document", None
+
+
+def _suggest_title(p: Path) -> str:
+    """Humanize a filename: drop the extension, break on `_`/`-`, title-case."""
+    words = p.stem.replace("_", " ").replace("-", " ").split()
+    return " ".join(w if w.isupper() else w.capitalize() for w in words) or p.name
+
+
 def _gather_files(directory: Path, recursive: bool) -> list[Path]:
     results = []
     if recursive:
@@ -79,10 +98,16 @@ def scan_directory(
             "directory": str,
             "recursive": bool,
             "total_files": int,
-            "unregistered": [{"path": str, "filename": str, "format": str}, ...],
+            "unregistered": [{"path": str, "filename": str, "format": str,
+                               "suggested_type": str, "suggested_subtype": str | None,
+                               "suggested_title": str}, ...],
             "registered":   [{"path": str, "filename": str, "format": str,
                                "node_uid": str}, ...],
         }
+
+    The suggested_* fields are derived from the filename alone: ebooks become
+    `asset` / `book`, anything else `document`; the title is the humanized
+    filename. They are a starting point for the model, not a decision.
     """
     dir_path = Path(directory).expanduser().resolve()
     if not dir_path.exists():
@@ -107,7 +132,13 @@ def scan_directory(
         if uid:
             registered.append({**entry, "node_uid": uid})
         else:
-            unregistered.append(entry)
+            suggested_type, suggested_subtype = _suggest_type(entry["format"])
+            unregistered.append({
+                **entry,
+                "suggested_type": suggested_type,
+                "suggested_subtype": suggested_subtype,
+                "suggested_title": _suggest_title(fp),
+            })
 
     return {
         "directory": str(dir_path),

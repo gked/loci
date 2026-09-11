@@ -102,12 +102,17 @@ execute_inbox_file_batch()   processes up to budget_per_run.files items
   for each file:
     1. read file from loci-stage/<path>
     2. call save_asset() → writes to assets/, creates vault node
+       (a title already in the vault is refused: the item is parked as
+       `duplicate`, the file kept, and the existing node reported)
     3. delete file from loci-stage/
     4. update plan status
-  returns {processed: [...], failed: [...], remaining: int}
+  returns {processed: [...], failed: [...], duplicates: [...], remaining: int}
 ```
 
-Repeat `execute_inbox_file_batch()` until `remaining == 0`.
+Repeat `execute_inbox_file_batch()` until `remaining == 0`. A parked duplicate
+keeps the plan open until `update_inbox_item()` resolves it — `status="skipped"`
+to drop it, or `status="pending", allow_duplicate=True` to save a second copy on
+the next batch.
 
 ---
 

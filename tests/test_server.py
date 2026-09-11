@@ -30,6 +30,7 @@ from loci.mcp_server import (
     query_insights,
     find_nodes,
     search_vault,
+    resolve_mentions,
     find_unregistered_assets,
     delete_vault,
     patch_vault,
@@ -298,6 +299,25 @@ def test_write_vault_returns_uid(tmp_vault):
     assert result["uid"] == "abc12345"
 
 
+def test_write_vault_refuses_duplicates_by_default(tmp_vault):
+    first = write_vault("document", "Written Twice", "body", extra_fields={"status": "draft"})
+    second = write_vault("document", "Written Twice", "body", extra_fields={"status": "draft"})
+    assert second["duplicate"] is True
+    assert second["uid"] == first["uid"]
+
+
+def test_write_vault_passes_allow_duplicate_through(tmp_vault):
+    with patch("loci.mcp_server.vault.save", return_value={}) as save:
+        write_vault("document", "T", "body", allow_duplicate=True)
+    assert save.call_args.kwargs["allow_duplicate"] is True
+
+
+def test_save_asset_passes_allow_duplicate_through(tmp_vault):
+    with patch("loci.mcp_server.vault.save_asset", return_value={}) as save:
+        save_asset(format="txt", mime_type="text/plain", title="T", content="x", allow_duplicate=True)
+    assert save.call_args.kwargs["allow_duplicate"] is True
+
+
 def test_patch_vault_accepts_uid_as_path(tmp_vault):
     """No search_vault round-trip needed: the UID resolves on its own."""
     written = write_vault("document", "Patch By UID", "body", extra_fields={"status": "draft"})
@@ -396,6 +416,23 @@ def test_search_vault_returns_results(tmp_vault):
          patch("loci.mcp_server.graph.search", return_value=hits):
         result = search_vault("alpha")
     assert result[0]["uid"] == "n001"
+
+
+def test_resolve_mentions_resolves_against_the_vault(tmp_vault):
+    # The fixture vault has an entity "Jane Smith"; the tool builds the graph
+    # itself, so no patching — this is the round trip the save skill relies on.
+    result = resolve_mentions(["jane smith", "Nobody In Particular"])
+    assert [(h["title"], h["type"], h["via"]) for h in result["found"]] == [
+        ("Jane Smith", "entity", "title")
+    ]
+    assert result["missing"] == ["Nobody In Particular"]
+
+
+def test_resolve_mentions_passes_types_through(tmp_vault):
+    with patch("loci.mcp_server.graph.get"), \
+         patch("loci.mcp_server.graph.resolve_mentions", return_value={"found": [], "missing": ["x"]}) as rm:
+        resolve_mentions(["x"], types=["entity"])
+    rm.assert_called_once_with(["x"], types=["entity"])
 
 
 def test_query_recent_returns_list(tmp_vault):

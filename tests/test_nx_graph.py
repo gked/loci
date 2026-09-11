@@ -238,6 +238,22 @@ def test_get_ignores_files_without_uid(tmp_vault, monkeypatch):
     assert "No UID" not in titles
 
 
+def test_build_indexes_source_url(tmp_vault, monkeypatch):
+    # The duplicate check compares source_url from the graph, not from disk.
+    (tmp_vault / "with-url.md").write_text(
+        "---\nuid: url00001\ntype: bookmark\ntitle: With URL\n"
+        "source_url: https://example.com/page\n---\n\nBody.", encoding="utf-8"
+    )
+    (tmp_vault / "without-url.md").write_text(
+        "---\nuid: url00002\ntype: document\ntitle: Without URL\n---\n\nBody.", encoding="utf-8"
+    )
+    monkeypatch.setattr(g, "_graph", None)
+    monkeypatch.setattr(g, "_built_at", 0.0)
+    graph_obj = g.get(tmp_vault)
+    assert graph_obj.nodes["url00001"]["source_url"] == "https://example.com/page"
+    assert graph_obj.nodes["url00002"]["source_url"] == ""
+
+
 def test_get_rebuilds_when_file_added_outside_session(tmp_vault, monkeypatch):
     """
     A file created after the initial build (simulating a write from another
@@ -725,3 +741,126 @@ def test_insights_excludes_archived_nodes(monkeypatch):
     uids = [r["uid"] for r in result]
     assert "i009" in uids
     assert "i010" not in uids
+
+
+# ---------------------------------------------------------------------------
+# resolve_mentions
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mention_graph(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("e001", **_node_attrs(type="entity", title="Jane Smith", aliases=["J. Smith"]))
+    dg.add_node("e002", **_node_attrs(type="entity", title="Маркеев Олег", aliases=["Oleg Markeev"]))
+    dg.add_node("p001", **_node_attrs(type="project", title="Loci — knowledge vault"))
+    dg.add_node("t001", **_node_attrs(type="topic", title="Loci"))
+    dg.add_node("a001", **_node_attrs(type="entity", title="Old Jane Smith", state="archived"))
+    monkeypatch.setattr(g, "_graph", dg)
+    return g
+
+
+def test_resolve_mentions_matches_title_exactly(mention_graph):
+    result = mention_graph.resolve_mentions(["Jane Smith"])
+    assert result["missing"] == []
+    assert [(h["uid"], h["via"]) for h in result["found"]] == [("e001", "title")]
+
+
+def test_resolve_mentions_is_case_and_whitespace_insensitive(mention_graph):
+    result = mention_graph.resolve_mentions(["  jane   SMITH "])
+    assert [h["uid"] for h in result["found"]] == ["e001"]
+    assert result["found"][0]["name"] == "  jane   SMITH "  # echoed as given
+
+
+def test_resolve_mentions_matches_aliases(mention_graph):
+    result = mention_graph.resolve_mentions(["Oleg Markeev"])
+    assert [(h["uid"], h["via"], h["title"]) for h in result["found"]] == [
+        ("e002", "alias", "Маркеев Олег")
+    ]
+
+
+def test_resolve_mentions_reports_missing_in_order(mention_graph):
+    result = mention_graph.resolve_mentions(["Nobody", "Jane Smith", "Acme Corp"])
+    assert result["missing"] == ["Nobody", "Acme Corp"]
+    assert [h["uid"] for h in result["found"]] == ["e001"]
+
+
+def test_resolve_mentions_exact_hit_wins_over_partial(mention_graph):
+    # "Loci" is the full title of t001 and a word inside p001's title: only the
+    # exact hit comes back, so the model is not asked to disambiguate a
+    # match it already has.
+    result = mention_graph.resolve_mentions(["Loci"])
+    assert [(h["uid"], h["via"]) for h in result["found"]] == [("t001", "title")]
+
+
+def test_resolve_mentions_alias_exact_beats_title_partial(monkeypatch):
+    # Title only contains the name as a word; an alias equals it. The alias
+    # is the exact hit and must not be shadowed by the title's partial one.
+    dg = nx.DiGraph()
+    dg.add_node("x001", **_node_attrs(type="project", title="Loci — knowledge vault", aliases=["Loci"]))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.resolve_mentions(["Loci"])
+    assert [(h["uid"], h["via"]) for h in result["found"]] == [("x001", "alias")]
+
+
+def test_resolve_mentions_survives_non_string_titles_and_aliases(monkeypatch):
+    # YAML reads `title: 2024` and `aliases: [2023]` as ints. One such node
+    # must not fail the whole call — the other names still resolve.
+    dg = nx.DiGraph()
+    dg.add_node("y001", **_node_attrs(type="log", title=2024, aliases=[2023]))
+    dg.add_node("e001", **_node_attrs(type="entity", title="Jane Smith"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.resolve_mentions(["Jane Smith", "2024", "2023"])
+    assert result["missing"] == []
+    assert [(h["uid"], h["via"]) for h in result["found"]] == [
+        ("e001", "title"), ("y001", "title"), ("y001", "alias"),
+    ]
+
+
+def test_resolve_mentions_falls_back_to_whole_word_partial(mention_graph):
+    result = mention_graph.resolve_mentions(["knowledge vault"])
+    assert [(h["uid"], h["via"]) for h in result["found"]] == [("p001", "partial")]
+
+
+def test_resolve_mentions_reports_blank_names_as_missing(mention_graph):
+    # Every name in comes out in exactly one list; a blank is not silently
+    # dropped, or the skill's n-in / n-out bookkeeping is off by one.
+    result = mention_graph.resolve_mentions(["", "   ", "Jane Smith"])
+    assert result["missing"] == ["", "   "]
+    assert [h["uid"] for h in result["found"]] == ["e001"]
+
+
+def test_resolve_mentions_partial_does_not_match_inside_a_word(mention_graph):
+    # "Smit" is a prefix of "Smith", not a word of it.
+    result = mention_graph.resolve_mentions(["Smit"])
+    assert result["found"] == []
+    assert result["missing"] == ["Smit"]
+
+
+def test_resolve_mentions_returns_every_node_for_an_ambiguous_name(monkeypatch):
+    dg = nx.DiGraph()
+    dg.add_node("x001", **_node_attrs(type="entity", title="Alex"))
+    dg.add_node("x002", **_node_attrs(type="entity", title="Alex"))
+    monkeypatch.setattr(g, "_graph", dg)
+    result = g.resolve_mentions(["Alex"])
+    assert sorted(h["uid"] for h in result["found"]) == ["x001", "x002"]
+    assert all(h["name"] == "Alex" for h in result["found"])
+
+
+def test_resolve_mentions_filters_by_type(mention_graph):
+    result = mention_graph.resolve_mentions(["Loci"], types=["project"])
+    assert [(h["uid"], h["via"]) for h in result["found"]] == [("p001", "partial")]
+
+
+def test_resolve_mentions_skips_archived_nodes(mention_graph):
+    result = mention_graph.resolve_mentions(["Old Jane Smith"])
+    assert result["found"] == []
+    assert result["missing"] == ["Old Jane Smith"]
+
+
+def test_resolve_mentions_hit_shape(mention_graph):
+    hit = mention_graph.resolve_mentions(["Jane Smith"])["found"][0]
+    assert set(hit) == {"name", "uid", "title", "type", "path", "summary", "via"}
+
+
+def test_resolve_mentions_when_graph_none(null_graph):
+    assert null_graph.resolve_mentions(["Anyone"]) == {"found": [], "missing": ["Anyone"]}

@@ -5,6 +5,7 @@ patch_item, and check_duplicate.
 """
 
 import yaml
+import os
 import pytest
 from pathlib import Path
 from datetime import datetime, timezone
@@ -232,27 +233,88 @@ def test_patch_item_datetime_strings_preserved(tmp_vault):
 # check_duplicate
 # ---------------------------------------------------------------------------
 
-def test_check_duplicate_matches_title_slug(tmp_vault):
-    # The fixture vault has "doc-testing-strategies.md"
+def test_check_duplicate_matches_title_case_insensitively(tmp_vault):
+    # The fixture vault has "Testing Strategies"
     match = check_duplicate(tmp_vault, "testing strategies")
     assert match is not None
     assert "testing-strategies" in match.name
 
 
-def test_check_duplicate_matches_url_in_content(tmp_vault):
+def test_check_duplicate_does_not_compare_slugs(tmp_vault):
+    # Slugs are truncated at 60 chars, so two titles that differ only past the
+    # cut-off share one. That is a filename collision for free_filename to
+    # handle, not a duplicate item — api.save refuses on a hit.
+    stem = "Meeting notes: Q3 planning session with the platform team"
+    write_item(type="document", title=f"{stem} — 2026-09-01", body="", extra_fields={"status": "draft"}, skip_duplicate_check=True)
+    assert check_duplicate(tmp_vault, f"{stem} — 2026-09-08") is None
+
+
+def test_check_duplicate_matches_source_url(tmp_vault):
     p = tmp_vault / "bookmark-test.md"
     p.write_text(
-        "---\nuid: bkm00001\ntype: bookmark\ntitle: Example\n---\n\nhttps://example.com/article",
+        "---\nuid: bkm00001\ntype: bookmark\ntitle: Example\n"
+        "source_url: https://example.com/article\n---\n\nBody.",
         encoding="utf-8",
     )
     match = check_duplicate(tmp_vault, "something new", url="https://example.com/article")
     assert match is not None
     assert match.name == "bookmark-test.md"
+    # A trailing slash is the same page.
+    assert check_duplicate(tmp_vault, "something new", url="https://example.com/article/") == p
+
+
+def test_check_duplicate_url_is_equality_not_substring(tmp_vault):
+    # An article citing a longer URL in its body, or carrying a longer
+    # source_url, is not a duplicate of the shorter URL. api.save refuses on a
+    # hit, so a substring rule turned every prefix into a false "already exists".
+    p = tmp_vault / "article-test.md"
+    p.write_text(
+        "---\nuid: art00001\ntype: article\ntitle: Regex Notes\n"
+        "source_url: https://docs.python.org/3/library/re.html\n---\n\n"
+        "See https://docs.python.org/3/ for the rest.",
+        encoding="utf-8",
+    )
+    assert check_duplicate(tmp_vault, "Python Docs", url="https://docs.python.org/3/") is None
+    assert check_duplicate(tmp_vault, "Python Docs", url="https://docs.python.org/3/library/re.html") == p
+
+
+def test_check_duplicate_sees_an_in_place_edit_the_graph_index_missed(tmp_vault):
+    # An external editor retitling a note rewrites the file in place, which
+    # does not move any directory mtime — the graph index's only staleness
+    # signal. The gate refuses saves, so it must read the disk, not the index.
+    from loci.tools import nx_graph
+    p = tmp_vault / "weekly-sync.md"
+    p.write_text("---\nuid: doc00099\ntype: document\ntitle: Weekly sync\n---\n\nBody.", encoding="utf-8")
+    nx_graph.get(tmp_vault)
+    dir_mtime = tmp_vault.stat().st_mtime
+    p.write_text("---\nuid: doc00099\ntype: document\ntitle: Weekly sync — Q3\n---\n\nBody.", encoding="utf-8")
+    os.utime(tmp_vault, (dir_mtime, dir_mtime))
+    assert nx_graph.get(tmp_vault).nodes["doc00099"]["title"] == "Weekly sync", "precondition: index is stale"
+    assert check_duplicate(tmp_vault, "Weekly sync") is None
+    assert check_duplicate(tmp_vault, "Weekly sync — Q3") == p
 
 
 def test_check_duplicate_returns_none_when_no_match(tmp_vault):
     match = check_duplicate(tmp_vault, "totally unique xyzzy12345")
     assert match is None
+
+
+def test_check_duplicate_does_not_match_a_substring(tmp_vault):
+    # The fixture vault has "Build test suite"; a save titled "Test" is not a
+    # duplicate of it. api.save refuses on a hit, so a substring rule would
+    # block every short title that appears inside a longer one.
+    assert check_duplicate(tmp_vault, "Test") is None
+    assert check_duplicate(tmp_vault, "suite") is None
+
+
+def test_check_duplicate_matches_frontmatter_title_regardless_of_filename(tmp_vault):
+    p = tmp_vault / "some-unrelated-filename.md"
+    p.write_text(
+        "---\nuid: ttl00001\ntype: document\ntitle: Quarterly   Review\n---\n\nBody.",
+        encoding="utf-8",
+    )
+    match = check_duplicate(tmp_vault, "quarterly review")
+    assert match == p
 
 
 # ---------------------------------------------------------------------------
@@ -271,12 +333,13 @@ def test_resolve_vault_root_raises_when_no_config(monkeypatch, tmp_path):
 # write_item — interactive duplicate check
 # ---------------------------------------------------------------------------
 
-def test_write_item_references_url_used_for_duplicate_check(tmp_vault, monkeypatch):
-    """write_item extracts URL from references[0] when checking duplicates."""
-    # First write a bookmark with a URL in its body so check_duplicate can find it by URL
+def test_write_item_source_url_used_for_duplicate_check(tmp_vault, monkeypatch):
+    """write_item checks extra_fields.source_url against existing nodes."""
+    # First write a bookmark carrying the URL so check_duplicate can find it by URL
     existing = tmp_vault / "bkm-existing.md"
     existing.write_text(
-        "---\nuid: bkm00099\ntype: bookmark\ntitle: Old Bookmark\n---\n\nhttps://example.com/ref-test",
+        "---\nuid: bkm00099\ntype: bookmark\ntitle: Old Bookmark\n"
+        "source_url: https://example.com/ref-test\n---\n\nBody.",
         encoding="utf-8",
     )
     monkeypatch.setattr("builtins.input", lambda: "n")
@@ -285,10 +348,29 @@ def test_write_item_references_url_used_for_duplicate_check(tmp_vault, monkeypat
         title="New Bookmark Different Title",
         body="",
         extra_fields={"source_url": "https://example.com/ref-test"},
-        references=[{"url": "https://example.com/ref-test", "title": "Example", "source_type": "web"}],
     )
     # URL match found → user typed "n" → write aborted
     assert result == {}
+
+
+def test_write_item_references_url_is_not_a_duplicate(tmp_vault, monkeypatch):
+    # Citing a bookmarked page is not saving it twice: only source_url is
+    # compared, never references[].url.
+    existing = tmp_vault / "bkm-existing.md"
+    existing.write_text(
+        "---\nuid: bkm00099\ntype: bookmark\ntitle: Old Bookmark\n"
+        "source_url: https://example.com/ref-test\n---\n\nBody.",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("builtins.input", lambda: (_ for _ in ()).throw(AssertionError("prompted")))
+    result = write_item(
+        type="document",
+        title="Notes citing the bookmark",
+        body="",
+        extra_fields={"status": "draft"},
+        references=[{"url": "https://example.com/ref-test", "title": "Example", "source_type": "web"}],
+    )
+    assert "uid" in result
 
 
 def test_write_item_duplicate_check_aborted(tmp_vault, monkeypatch):
@@ -304,6 +386,27 @@ def test_write_item_duplicate_check_confirmed(tmp_vault, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda: "y")
     result = write_item(type="document", title="Dup Confirmed", body="", extra_fields={"status": "draft"})
     assert result.get("uid") is not None
+
+
+def test_write_item_same_title_twice_keeps_both_files(tmp_vault):
+    # The filename comes from the title, so a second node with the same title
+    # used to land on the first node's path and replace it.
+    first = write_item(type="document", title="Meeting Notes", body="one", extra_fields={"status": "draft"}, skip_duplicate_check=True)
+    second = write_item(type="document", title="Meeting Notes", body="two", extra_fields={"status": "draft"}, skip_duplicate_check=True)
+    third = write_item(type="document", title="Meeting Notes", body="three", extra_fields={"status": "draft"}, skip_duplicate_check=True)
+    assert Path(first["path"]).name == "meeting-notes.md"
+    assert Path(second["path"]).name == "meeting-notes-2.md"
+    assert Path(third["path"]).name == "meeting-notes-3.md"
+    assert first["uid"] in Path(first["path"]).read_text(encoding="utf-8")
+    assert "one" in Path(first["path"]).read_text(encoding="utf-8")
+
+
+def test_free_filename_skips_taken_names(tmp_vault):
+    from loci.tools.write_file import free_filename
+    assert free_filename(tmp_vault, "Brand New Title") == "brand-new-title.md"
+    (tmp_vault / "brand-new-title.md").write_text("x", encoding="utf-8")
+    (tmp_vault / "brand-new-title-2.md").write_text("x", encoding="utf-8")
+    assert free_filename(tmp_vault, "Brand New Title") == "brand-new-title-3.md"
 
 
 # ---------------------------------------------------------------------------

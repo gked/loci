@@ -196,6 +196,35 @@ def test_update_item_status_recomputes_progress(stage_root, vault_root):
     assert plan["progress"]["files"]["pending"] == 1
 
 
+def test_update_item_status_records_allow_duplicate_and_reopens_a_done_plan(stage_root, vault_root):
+    items = _make_items(1, 0)
+    ip.write_plan(stage_root, vault_root, items)
+    ip.approve_plan(stage_root)
+    ip.update_item_status(stage_root, "book0.epub", "skipped")
+    assert ip.read_plan(stage_root)["status"] == "done"
+
+    ip.update_item_status(stage_root, "book0.epub", "pending", allow_duplicate=True)
+    plan = ip.read_plan(stage_root)
+    assert plan["items"][0]["allow_duplicate"] is True
+    assert plan["status"] == "in-progress"
+    assert plan["progress"]["files"]["pending"] == 1
+    # Omitting the flag leaves whatever was recorded alone.
+    ip.update_item_status(stage_root, "book0.epub", "failed", {"error": "x"})
+    assert ip.read_plan(stage_root)["items"][0]["allow_duplicate"] is True
+
+
+def test_a_duplicate_item_keeps_the_plan_open(stage_root, vault_root):
+    items = _make_items(2, 0)
+    ip.write_plan(stage_root, vault_root, items)
+    ip.approve_plan(stage_root)
+    ip.update_item_status(stage_root, "book0.epub", "done", {"uid": "aaa"})
+    ip.update_item_status(stage_root, "book1.epub", "duplicate", {"existing_uid": "bbb"})
+    plan = ip.read_plan(stage_root)
+    assert plan["status"] == "in-progress"
+    assert plan["progress"]["files"] == {"total": 2, "done": 1, "failed": 0, "duplicate": 1, "pending": 0}
+    assert ip.get_pending_batch(plan, "file", 10) == []
+
+
 def test_update_item_status_raises_when_not_found(stage_root, vault_root):
     items = _make_items(1, 0)
     ip.write_plan(stage_root, vault_root, items)

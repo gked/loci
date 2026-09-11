@@ -27,7 +27,7 @@ from typing import Optional
 LEGACY_CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "skills" / "references"
 
-META_VERSION = 9
+META_VERSION = 10
 
 # Records META_VERSION inside the vault. Only env-var mode (Docker) relies on
 # it; a config.yml install tracks the same number there.
@@ -42,12 +42,15 @@ VAULT_FOLDERS = [
 # replace packaged content with newer packaged content.
 META_FILES = [
     "type-dictionary.md",
+    "type-decision.md",
     "field-dictionary.md",
     "relation-dictionary.md",    # human-readable reference; kept alongside the machine-readable registry
     "relation-dictionary.yaml",
     "ontology.yaml",
     "scheme-dictionary.yaml",
     "ontology-guide.md",         # the user's guide to the ontology; prose, not vocabulary
+    "has-asset-guide.md",        # loci-save reads this on demand instead of carrying it inline
+    "update-workflow.md",        # ditto — the update / archive / delete procedure
 ]
 
 # Seeded once on first setup, never overwritten — user owns these.

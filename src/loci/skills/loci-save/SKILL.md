@@ -1,6 +1,6 @@
 ---
 name: loci-save
-skill_version: 23
+skill_version: 25
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, topic, asset, or log — into the Loci personal
@@ -30,761 +30,229 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ## Version Check (run before anything else)
 
-This skill is at `skill_version: 23`.
+This skill is at `skill_version: 25`.
 
-Before following any instructions below:
-1. Call `loci__read_skill` to fetch the latest skill from the vault
-2. Parse the `skill_version` from its frontmatter
-3. If the MCP version is **newer**, switch to following those instructions for this entire interaction — ignore the rest of this document
-4. If versions match, proceed normally below
-
-If `loci__read_skill` is unavailable, tell the user:
-```
-The Loci vault is not reachable.
-```
-Then relay the error text the tool returned verbatim — it names the cause and
-the fix for this install (an unmounted path, a missing volume mount, no vault
-configured yet). Do not substitute a setup command for it: `setup.py` only
-exists in a local checkout, so it is wrong for a Docker or `uvx` install and
-fails outright anywhere but that checkout directory. If there is no error text,
-the MCP server itself is not connected — tell the user to check their MCP
-client config and restart Claude Code / Claude Desktop.
-Do not proceed.
+1. Call `loci__read_skill` and read the `skill_version` in its frontmatter.
+2. If the MCP copy is **newer**, follow it for this entire interaction and ignore the rest of this document.
+3. If `loci__read_skill` is unavailable, tell the user the Loci vault is not reachable, relay the
+   tool's error text verbatim (it names the cause and the fix for this install), and stop. If there
+   is no error text, the MCP server itself is not connected — the user needs to check their MCP
+   client config and restart Claude Code / Claude Desktop.
 
 ---
 
 ## Save Workflow
 
-### Step 0 — Verify vault is reachable
+### Step 0 — Verify the vault is reachable
 
-Call `loci__list_vault` with no arguments. If it errors, read the error code:
+Call `loci__list_vault` with no arguments. If it errors, relay the error text verbatim — it says
+what is wrong and what to do — and stop; on `LOCI_NOT_CONFIGURED`, ask the user where the vault
+should live (never guess a path or offer a default) and call `loci__set_vault_root`.
 
-**`LOCI_NOT_CONFIGURED`** — Loci has never been set up. Ask the user where their
-vault should live, then call `loci__set_vault_root(path=<their answer>)` and
-retry. No restart is needed. Ask a real question and wait for a real answer:
+If the result has a `_notice` key: if it mentions lint errors, ask before continuing —
+"FYI: vault linter reports N errors (likely ontology drift). Want me to generate fix instructions
+first? [yes / continue with save]" — otherwise show it as a one-line FYI. Don't auto-fix.
 
-> Loci isn't set up yet. Where should your vault live? Give me an absolute path
-> — if you keep notes in a synced folder (Dropbox, Nextcloud, iCloud), a `vault`
-> directory inside it is a good choice.
-
-**Never guess a path, and never offer a default.** The vault holds everything
-the user saves; a location they did not choose is one they will never find
-again. If they are unsure, help them decide — do not decide for them.
-
-**`LOCI_VAULT_UNREACHABLE`** — the vault is configured but its directory is not
-there right now. Usually an unmounted drive or a sync folder that has not come
-down yet. Tell the user which path is missing and ask whether to wait for it or
-point Loci somewhere else with `loci__set_vault_root`. **Do not create a new
-vault at that path** — that starts an empty second vault while the real one is
-merely offline.
-
-**Anything else** — tell the user:
-
-```
-The Loci vault is not reachable.
-```
-Then relay the error text the tool returned verbatim — it names the cause and
-the fix for this install (an unmounted path, a missing volume mount, no vault
-configured yet). Do not substitute a setup command for it: `setup.py` only
-exists in a local checkout, so it is wrong for a Docker or `uvx` install and
-fails outright anywhere but that checkout directory. If there is no error text,
-the MCP server itself is not connected — tell the user to check their MCP
-client config and restart Claude Code / Claude Desktop.
-
-Do not proceed until the vault is reachable.
-
-If the result contains a `_notice` key and it does **not** mention lint errors, show it as an FYI before proceeding — e.g.:
-> FYI: Vault meta files were automatically updated to v2 (language and aliases fields added).
-
-If it mentions lint errors, skip the plain FYI — Step 0.5 handles it with a prompt instead.
-
----
-
-### Step 0.5 — Handle ontology drift
-
-If the `_notice` from Step 0 mentions lint errors, surface it before proceeding with the save (interpolate the actual error count from the notice):
-
-```
-FYI: vault linter reports <N> errors (likely ontology drift from older saves).
-Want me to generate fix instructions before continuing? [yes / continue with save]
-```
-
-Don't auto-fix. Don't block the current save unless the user wants to detour. Just surface and ask.
 ---
 
 ### Step 1 — Classify the content
 
-If the content type is not immediately obvious from context, call `loci__read_meta(file="type-dictionary")` and `loci__read_meta(file="type-decision")` to classify it. When the type is unambiguous (e.g. the user said "save this URL" → bookmark, or explicitly named a type), skip these calls and proceed directly.
+If the type is not obvious, call `loci__read_meta(file="type-dictionary")` and
+`loci__read_meta(file="type-decision")`. When it is unambiguous (the user said "save this URL",
+or named a type), skip these. If unsure between two types, ask — type affects frontmatter fields.
 
-**URL detection rule:** if the user shares a bare URL (with or without commentary)
-and does not explicitly ask to extract or read the content, default to `bookmark`.
-Only use `article` when the user asks to capture, summarise, or pull the content
-(e.g. "save this article", "read and save this", "summarize this page").
-When in doubt, ask: "Save as a bookmark, or pull the full content as an article?"
-
-If a `bookmark` is chosen, call `loci__fetch_url_metadata(url)` immediately to
-retrieve title, site name, and description. Use these to populate the title,
-site_name, and summary fields — do not ask the user for them unless the fetch fails.
-**The URL itself goes in the top-level `source_url` field (required), not in `extra_fields`.**
-
-If unsure between two other types, ask the user. Do not guess — type affects
-frontmatter fields.
+**URL rule:** a bare URL, with or without commentary, defaults to `bookmark`. Use `article` only
+when the user asks to capture, summarise, or pull the content. When in doubt: "Save as a bookmark,
+or pull the full content as an article?" For a `bookmark`, call `loci__fetch_url_metadata(url)`
+immediately and use the result for title, site_name, and summary — ask only if the fetch fails.
+**The URL goes in `extra_fields.source_url` (required) — that is the field the duplicate check
+reads, so a URL passed anywhere else is not checked.**
 
 **Subtype tags to apply automatically:**
-- `article` → add format tag: #book, #blog-post, #whitepaper, #research-paper, #news, #magazine, #video, #podcast, or #article
-- `entity` → set `subtype` field to person | organization | place — do NOT add as a tag
-- `procedure` → add domain tag: #recipe, #workout, #protocol, #playbook, #tutorial
-- `document` → add format tag if applicable: #essay, #spec, #design-doc, #meeting-notes, #journal, #note
+- `article` → format tag: #book, #blog-post, #whitepaper, #research-paper, #news, #magazine, #video, #podcast, or #article
+- `entity` → set `subtype` to person | organization | place — do NOT add as a tag
+- `procedure` → domain tag: #recipe, #workout, #protocol, #playbook, #tutorial
+- `document` → format tag if applicable: #essay, #spec, #design-doc, #meeting-notes, #journal, #note
 
-**Binary file / media pattern (video, audio, image, PDF, ebook):**
+**Binary file / media (video, audio, image, PDF, ebook):** use `loci__save_asset`, not
+`loci__write_vault`. It writes the file to `loci/assets/` and creates the proxy node in one
+crash-safe sequence. Pick the path by where the bytes are:
 
-Use `loci__save_asset` instead of `loci__write_vault` whenever the content is a
-binary file. It writes the asset to `loci/assets/` and creates the vault proxy
-node in one crash-safe sequence.
+1. **File on disk** — `loci__save_asset(source_path=<absolute path>, ...)`. No size limit; always
+   the most reliable path.
+2. **Dropped into the conversation and small** (images, PDFs up to a few hundred KB, text Claude
+   generated) — `loci__save_asset(content=<content>, is_base64=<bool>, ...)`.
+3. **Dropped into the conversation and large** (video, audio, raw images, anything truncated or
+   said to be large) — don't attempt inline. Tell the user: "This file is too large to save
+   directly from the conversation. Please drop it into your `loci-stage/` folder, then ask me to
+   run the inbox scan." Then the inbox skill takes over.
 
-**Three scenarios — choose the right path:**
+**Never** base64-encode a file yourself. Set `node_type="asset"` and the right `subtype`
+(`film`, `album`, `book`, `image`, …). `save_asset` returns `{uid, asset_path, vault_path}` —
+confirm all three to the user. It checks for duplicates the same way `write_vault` does (Step 4):
+on `duplicate: true` nothing was written; ask, and retry with `allow_duplicate=true` for "new".
 
-**1. File on disk (user provides a path)**
-Call `loci__save_asset(source_path=<absolute_path>, ...)`. The server reads the
-bytes directly — no file data passes through MCP, no size limit. This is always
-the most reliable path.
-
-**2. File dropped into the conversation (small/medium)**
-Use when the file content landed in context (image, small PDF, generated text).
-Call `loci__save_asset(content=<content>, is_base64=<True|False>, ...)`.
-Treat formats as small enough for this path: images (jpg, png, gif, webp, svg),
-PDFs and documents up to a few hundred KB, any text Claude generated.
-
-**3. File dropped into the conversation (too large)**
-Use when the file is a format that is inherently large, or when the content
-appears truncated or unavailable in context. This includes: video (mp4, mov, avi,
-mkv), audio (mp3, wav, flac, aac, m4a), raw images, and anything the user says
-is large. Do **not** attempt inline — tell the user:
-
-> This file is too large to save directly from the conversation. Please drop it
-> into your `loci-stage/` folder, then ask me to run the inbox scan and I'll
-> process it from there.
-
-Once the user confirms the file is in `loci-stage/`, run:
-`loci__scan_inbox` → `loci__approve_inbox_plan` → `loci__execute_inbox_file_batch`
-
-The inbox workflow reads the file from disk — no size limit, nothing through MCP.
-
-**Never** base64-encode a file yourself to pass it inline. If the file exists on
-disk or belongs in loci-stage, always use `source_path` or the inbox workflow.
-
-Set `node_type="asset"` and the appropriate `subtype` (e.g. `film`, `album`,
-`book`, `image`). `save_asset` returns `{uid, asset_path, vault_path}` — confirm
-all three to the user.
-
-**Book & Library pattern:**
-- **Saving an ebook or book you own** → `asset`, `subtype: book`. Always add `#book` tag for findability. Call `loci__read_meta(file="field-dictionary")` to get the body template, summary convention, and canonical genre list before writing.
-- **Book genre** — set `genre` to exactly one canonical slug from the genre taxonomy in field-dictionary (e.g. `business-economics`, `body-mind-spirit`, `technology-computing`). This field is required for book nodes — do not leave it blank. If the genre is ambiguous, pick the closest match and note it in the body.
-- **Book body** — use the `body_template` from field-dictionary: sections `## Bibliographic`, `## About`, `## Notes`. Fill in known values; leave blank lines blank.
-- **Book summary** — overrides the English-only rule: for non-English books (e.g. `language: ru`), write summary in **both** languages — English paragraph first, native-language paragraph second. English-only books follow the standard rule.
-- **Recording a reading** → `log` (canonical type). Required: `subject_uid` (the book asset's UID), `log_status` (in-progress | finished | abandoned). Add tag `reading`. Also add an `about` relation pointing to the book UID for graph traversal — `subject_uid` is the direct reference, the relation carries the graph edge. One `log` per reading — create a new one for re-reads.
-- **Library container** → a `topic` node titled "Library"; book assets use `belongs-to` → Library. Shelf subtopics (e.g. "To Read", "Philosophy") are optional children of Library linked the same way.
+**Books:**
+- An ebook or book the user owns → `asset`, `subtype: book`, tag `#book`. Call
+  `loci__read_meta(file="field-dictionary")` for the body template, summary convention, and genre
+  list. `genre` is required — exactly one canonical slug; if ambiguous, pick the closest and note
+  it in the body. Body sections: `## Bibliographic`, `## About`, `## Notes`.
+- Non-English books override the English-only summary rule: English paragraph first, native
+  language second.
+- A reading → `log`. Required: `subject_uid` (the book's UID), `log_status`
+  (in-progress | finished | abandoned), tag `reading`, plus an `about` relation to the book. One
+  log per reading — re-reads get a new one.
+- Library container → a `topic` titled "Library"; books use `belongs-to` → Library. Shelf
+  subtopics ("To Read", "Philosophy") are optional children linked the same way.
 
 ---
 
 ### Step 2 — Generate frontmatter
 
-Call `loci__generate_uid` to get the UID.
+Call `loci__generate_uid` for the UID.
 
-**Always** call `loci__read_meta(file="ontology")` before writing any vault item.
-This is the schema source of truth — it defines required fields, optional fields,
-and valid enum values for the chosen type. Skipping it causes silent write failures
-when required fields are missing or enum values are wrong.
+**Always** call `loci__read_meta(file="ontology")` before writing. It is the schema source of
+truth — required fields, optional fields, enum values. Skipping it causes silent write failures.
 
-Call the following **only when needed**:
-- `loci__read_meta(file="tag-dictionary")` — when tags matter for findability; prefer
-  existing tags over synonyms. Add new recurrent tags via `loci__write_meta` first.
-- `loci__read_meta(file="field-dictionary")` — when working with complex objects:
-  `relations`, `references`, entity archiving patterns, or temporal field rules. Do not
-  use it as a source for required/optional status or enum values — use ontology for that.
-- `loci__read_meta(file="relation-dictionary")` — when choosing a non-default relation
-  type; pick the most specific type that fits rather than defaulting to `relates-to`.
-  Also call `loci__read_meta(file="relation-dictionary-user")` to include any
-  user-defined relation types alongside the canonical ones.
+Read these **only when needed**:
+- `tag-dictionary` — when tags matter for findability; prefer existing tags over synonyms, and
+  add new recurrent tags via `loci__write_meta` first.
+- `field-dictionary` — for complex objects (`relations`, `references`, entity archiving,
+  temporal fields). Not a source for required/optional status or enums — that is ontology.
+- `relation-dictionary` and `relation-dictionary-user` — when choosing a non-default relation;
+  pick the most specific type rather than defaulting to `relates-to`.
+- `has-asset-guide` — before writing any `has_asset` entry (a node that points at a file rather
+  than adopting it). Follow it for scheme choice and required fields.
 
-**User-defined types:**
+**User-defined types:** if the requested type is not canonical, call
+`loci__read_meta(file="ontology-user")`. If it is registered there, proceed. If not, ask which
+canonical type it extends, confirm the description, and call
+`loci__define_type(name=, extends=, description=)`; surface errors, then proceed.
 
-If the user asks to save content with a type that is not a canonical type (canonical types are defined in the ontology registry — call `loci__read_meta(file="ontology")` to check):
+**User-defined relations:** if the relation name is in neither dictionary, confirm the
+description (optionally a group and inverse) and call `loci__define_relation(name=, description=)`
+with `group` / `inverse_of` if given. Use it immediately on success; treat warnings as
+informational.
 
-1. Call `loci__read_meta(file="ontology-user")` to check if the type is already
-   registered as a user extension.
-2. If found: proceed normally — the type is valid.
-3. If not found: ask the user which canonical type it extends and confirm the
-   description, then call `loci__define_type(name=<type>, extends=<canonical_parent>,
-   description=<description>)`. Surface any errors to the user.
-   On success, proceed with the save — the registry is updated automatically.
-
-**User-defined relations:**
-
-If the user wants to use a relation name that does not appear in the canonical or
-user relation dictionaries (call `loci__read_meta(file="relation-dictionary")` and
-`loci__read_meta(file="relation-dictionary-user")` to check):
-
-1. Ask the user to confirm the description and optionally a group label and inverse
-   relation name.
-2. Call `loci__define_relation(name=<relation>, description=<description>)` (add
-   `group` and `inverse_of` if provided). Surface any errors; treat warnings as
-   informational.
-3. On success, use the new relation name immediately — the registry is updated
-   automatically.
-
-**Language rule:**
-- `summary` is **always written in English** regardless of the body's language — it is the search bridge.
-- `title` is the canonical name in the content's original language (e.g. `Чёрная луна` for a Russian book).
-- Set `language: <ISO 639-1 code>` (e.g. `ru`, `de`, `zh`) **only** when the body is not in English. Omit for English content.
-
-**Aliases rule:**
-- When `title` or an entity name is non-English, always populate `aliases` with the English transliteration or translation.
-- Also include common abbreviations or alternate spellings if applicable.
-- Examples:
+**Language and aliases:**
+- `summary` is **always English** — it is the search bridge. `title` is the canonical name in the
+  content's original language. Set `language: <ISO 639-1>` only when the body is not English.
+- When `title` or an entity name is non-English, populate `aliases` with the English
+  transliteration or translation; add common abbreviations and alternate spellings too.
   ```yaml
-  # Entity: Russian author
   title: Маркеев Олег
   aliases:
     - Oleg Markeev
-
-  # Article: Russian book
-  title: Чёрная луна
-  aliases:
-    - Black Moon
   ```
 
-**Language rule:**
-- `summary` is **always written in English** regardless of the body's language — it is the search bridge.
-- `title` is the canonical name in the content's original language (e.g. `Чёрная луна` for a Russian book).
-- Set `language: <ISO 639-1 code>` (e.g. `ru`, `de`, `zh`) **only** when the body is not in English. Omit for English content.
-
-**Aliases rule:**
-- When `title` or an entity name is non-English, always populate `aliases` with the English transliteration or translation.
-- Also include common abbreviations or alternate spellings if applicable.
-- Examples:
-  ```yaml
-  # Entity: Russian author
-  title: Маркеев Олег
-  aliases:
-    - Oleg Markeev
-
-  # Article: Russian book
-  title: Чёрная луна
-  aliases:
-    - Black Moon
-  ```
-
-**Relations format:**
+**Relations and references:**
 ```yaml
 relations:
   - uid: b7d4e1a2
     type: influences
-```
-
-**Dependency pairs:** for `depends-on` / `enables`, store only one direction per edge — put `depends-on` on the dependent node. Never write both directions for the same pair.
-
-**References format:**
-```yaml
 references:
   - url: https://example.com
     title: The Article Title
     source_type: article
 ```
+For `depends-on` / `enables`, store one direction only — `depends-on` on the dependent node.
 
 ---
 
-### Step 3 — Scan for links
+### Step 3 — Resolve mentions and link
 
-Call `loci__list_vault(type="projects")`, `loci__list_vault(type="topics")`,
-and `loci__list_vault(type="entities")` to check for existing related nodes.
+**Do this for every save.** Content almost always names things the vault already knows — the
+people in a meeting, the project a task belongs to, the organisation an article is about — and a
+node saved without those links is a node the graph cannot find later.
 
-Present all suggestions together in one prompt — not one at a time:
-
-```
-This looks related to:
-  • Project: [Loci] — link it? [yes / no / create project node]
-  • Entity: [John Smith] — link it? [yes / no / create entity node]
-```
-
-On confirmation, add the UID to `relations` with the appropriate relation type.
-On "create node", save that node first then link back.
-
-**Do not auto-link without confirmation.**
-
-**Topic-specific handling (when type = topic):**
-
-1. If `parent_topic` is set, resolve the parent by calling `loci__search_vault(query=<parent_topic_title>)`, then:
-   - If exactly one result: use its UID directly.
-   - If multiple results: present them to the user ("Which did you mean?") with title and a one-line summary for each, and wait for confirmation before proceeding.
-   - If no results: inform the user the parent topic wasn't found and ask whether to create it first or save without a parent.
-   - Once resolved, set `parent_topic` to that UID and add a `child-of` relation pointing to it.
-2. After the file is saved (Step 6), offer a follow-on scan:
+1. Pull out every proper name in the content and its context: people, organisations, places,
+   projects, topics, products. Include the user's own project if the content is clearly about it.
+2. Call `loci__resolve_mentions(names=[...])` once with all of them.
+3. Present every hit together in one prompt — never one at a time:
    ```
-   Want me to scan existing vault content for items to link to this topic?
+   This looks related to:
+     • Entity: John Smith (a1b2c3d4) — link it? [yes / no]
+     • Project: Loci (partial match on "Loci — knowledge vault") — link it? [yes / no]
+     • Acme Corp — not in the vault. Create an entity node? [yes / no]
    ```
-   If yes, call `loci__search_vault(query=<topic title>)` to find candidates, present them grouped by type, and let the user choose which to link. For each confirmed link, patch the topic node to add the relation (use the appropriate relation type — e.g. `contains`, `relates-to`).
+   A name that resolved to several nodes: show them and ask which. A `partial` hit is a
+   candidate, not a match — say so. Offer to create a node for a `missing` name only when it is
+   the kind of thing worth a node (a person or organisation the user will meet again, a project),
+   not for every noun.
+4. On confirmation, add the UID to `relations` with the most specific relation type that fits.
+   On "create", save that node first, then link back. **Do not auto-link without confirmation.**
+
+**Topics:** when saving a `topic` with a `parent_topic`, resolve the parent through the same
+call. One hit → use its UID and add a `child-of` relation. Several → ask which. None → ask
+whether to create it first or save without a parent. After the save, offer: "Want me to scan
+existing vault content for items to link to this topic?" — on yes, `loci__search_vault` for the
+title, present candidates grouped by type, and patch the topic with the confirmed links.
 
 ---
 
-### Step 4 — Check for duplicates
+### Step 4 — Confirm and write
 
-Call `loci__check_duplicate(type=<type>, title=<title>)`.
-For articles and bookmarks, also pass `url=<url>`.
-
-If a duplicate is found:
-```
-A similar item already exists: <name>
-Save as new item, or update the existing one?
-```
-
----
-
-### Step 5 — Confirm save location
-
-Call `loci__read_meta(file="config")` to get the vault_root.
-
-Show the intended save location and ask for confirmation before writing:
+Call `loci__read_meta(file="config")` for `vault_root` and show the intended location:
 
 ```
 Save to: <vault_root>/<generated-filename>
 Proceed? [yes / no / change location]
 ```
 
-If the user says **no** or **change location**, ask them to provide the desired path and update accordingly before proceeding.
+Do not write until the user confirms. Then call `loci__write_vault` with all assembled fields.
 
-Do not call `loci__write_vault` until the user confirms.
+`write_vault` checks for duplicates itself. If it returns `duplicate: true`, nothing was
+written — the result names the existing node. Ask:
+```
+A similar item already exists: <name>
+Save as a new item, or update the existing one?
+```
+"New" → call `loci__write_vault` again with `allow_duplicate=true`. "Update" → switch to the
+update workflow (below) for that node.
 
 ---
 
-### Step 6 — Write the file
+### Step 5 — Foreign content schema discovery
 
-Call `loci__write_vault` with all assembled fields.
-
-Confirm to the user:
-```
-Saved: <full_path>
-UID: <uid>
-Type: <type>
-Links: <count>
-```
+If the content comes from an external app (Jira, calendar, email, Slack, …), call
+`loci__read_meta(file="foreign-definitions")`. If there is no schema for that source yet, ask:
+"This looks like content from [source]. I don't have a schema for it yet. What metadata matters to
+you from this source? Available fields: [list]". Confirm, then
+`loci__write_meta(file="foreign-definitions", content=<updated content>)`.
 
 ---
 
-### Step 7 — Foreign content schema discovery
+### Wrap-up
 
-If content comes from an external app (Jira, calendar, email, Slack, etc.)
-and no schema exists yet for that source:
+Every save ends here, whichever path it took.
 
-1. Call `loci__read_meta(file="foreign-definitions")`
-2. If no schema found, enter discovery:
+1. Report the result in this shape:
    ```
-   This looks like content from [source]. I don't have a schema for it yet.
-   What metadata matters to you from this source?
-   Available fields: [list visible fields]
+   Saved: <full_path>
+   UID: <uid>
+   Type: <type>
+   Links: <count>
    ```
-3. Confirm schema with user
-4. Call `loci__write_meta(file="foreign-definitions", content=<updated content>)`
+2. Surface anything the tools returned that the user should know — `body_warnings`, lint notices,
+   a `_notice` deferred from Step 0 — in one line each. Don't act on them unasked.
+3. Offer the one follow-on that fits: the topic link scan from Step 3, creating a node for a
+   `missing` mention the user skipped, or reading the saved node back. One offer, not a menu.
 
 ---
 
----
+## Updating an existing node
 
-## Update Workflow
-
-Use this workflow when the user wants to correct or extend an **existing** vault item
-rather than create a new one.
-
-**Triggers:** "update X", "add a link to Y", "fix the relations on Z", "mark that task
-done", "tag that document with X", or when Step 4 (duplicate check) surfaces an existing
-item and the user chooses to update it.
-
-### U1 — Identify the target file
-
-Call `loci__list_vault(type=<type>)` to find candidates, then
-`loci__read_vault(path=<path>)` to read the file and inspect its current frontmatter.
-
-### U2 — Determine what changes
-
-Parse the existing frontmatter values for every field the user wants to change.
-Construct the **complete new value** for each field — patch replaces the whole
-field, it does not append.
-
-Example — adding a relation:
-```
-existing relations: [{uid: "a1b2c3d4", type: "belongs-to"}]
-user wants to add:  {uid: "f9e8d7c6", type: "influences"}
-new relations list: [{uid: "a1b2c3d4", type: "belongs-to"}, {uid: "f9e8d7c6", type: "influences"}]
-```
-
-**Temporal fields (entity type only):**
-
-Some fields represent current state that changes over time. When updating these,
-always archive the old value before setting the new one.
-
-- **`organization`** — archive to `affiliations`:
-  - Append `{organization: <old value>, roles: <current roles>, from: <estimated or null>, to: <today>}` to the `affiliations` array
-  - Update `organization` to the new value
-  - If the roles are also changing with the org, update `roles` too
-
-- **Any other temporal field** (`location`, `website`, etc.) — archive to `history`:
-  - Append `{field: <field name>, value: <old value>, from: <estimated or null>, to: <today>}` to the `history` array
-  - Update the field to the new value
-
-- **Body annotation** — always append a line to a `## History` section at the bottom of the body:
-  ```
-  - 2026-03-22: organization changed from University of Sussex to University of Manchester
-  ```
-  Create the `## History` section if it doesn't exist. This is where context and reasons can be added.
-
-  The body is **not** a frontmatter field. Read the current body with
-  `loci__read_vault`, append your line to it, and pass the whole result as the
-  separate `body=` argument in U4 — never inside `updates`.
-
-### U3 — Confirm with the user
-
-Show a brief summary of what will change before patching:
-```
-Updating: 2026-03-21-my-document.md
-  relations: adding link to [Project X] (f9e8d7c6)
-Proceed? [yes / no]
-```
-
-### U4 — Patch the file
-
-Call `loci__patch_vault(path=<path>, updates={<only changed frontmatter fields>})`.
-
-If the body changed too — the `## History` line from U2, or any other edit to the
-prose — pass it as its own argument:
-
-```
-loci__patch_vault(path=<path>, updates={<only changed frontmatter fields>}, body=<full new body>)
-```
-
-`body` always carries the **complete** new body text, not a fragment. Putting it
-inside `updates` writes it into the frontmatter as a quoted YAML scalar, and a
-`---` line anywhere in it stops the node parsing at all. The tool reroutes a
-misplaced `body` key and warns, but don't rely on that.
-
-`path` accepts the node's 8-character UID as well as a file path — when you already
-know the UID, pass it directly instead of looking the path up first. The same is true
-of `loci__read_vault` and `loci__delete_vault`.
-
-Confirm to the user:
-```
-Updated: <path>
-Changed: <list of field names>
-```
+For "update X", "add a link to Y", "mark that task done", "archive Z", deletions, or when Step 4
+found a duplicate the user wants to update: call `loci__read_meta(file="update-workflow")` and
+follow it. Its rules matter — patch replaces whole fields, `body` is a separate argument, entity
+temporal fields archive the old value before changing — so read it rather than working from
+memory.
 
 ---
 
-### Archiving and unarchiving
-
-**To archive a node** (hide it from graph queries and search by default):
-
-```python
-loci__patch_vault(path=<path>, updates={
-    "state": "archived",
-    "archived_at": "<ISO 8601 timestamp>",
-})
-```
-
-Archived nodes are invisible to `loci__find_nodes` (which defaults to `state="active"`)
-and to `loci__search_vault`. The user must explicitly ask to see archived content.
-
-**To unarchive a node** (restore it to the active graph):
-
-```python
-loci__patch_vault(path=<path>, updates={
-    "state": "active",
-    "archived_at": None,
-})
-```
-
-**Note:** `state` is distinct from type-specific `status` fields (e.g. `document.status`,
-`task.status`). A task can be `status: done` and `state: active` (visible but finished),
-or `state: archived` (hidden from the graph entirely). Archive when the node is no longer
-relevant to day-to-day use, not just when its workflow is complete.
-
----
-
-## Edge Cases
-
-**Deleting an item:** call `loci__list_vault` to identify the file, read it back to confirm
-it's the right one, then ask the user explicitly before calling `loci__delete_vault`.
-Deletion is permanent — there is no undo.
-
-**No clear title:** generate from first sentence or ask. Never leave blank.
-
-**Unknown type:** use `article` if the content has a citable source (URL, author, publication). Use `document` if there is no publication record to track. Ask only when genuinely ambiguous.
-
-**Very long content:** summarize in `summary`, keep full content in body.
-
----
-
-## has_asset Field (Location Refactor — Phase 5 complete)
-
-> **Status:** fully live. Schema, resolver infrastructure, all canonical scheme docs, and production
-> migration (asset-registry → has_asset frontmatter) are all complete. `local` and `url` schemes
-> resolve content directly. All other schemes are pointer-only — Loci stores the location; access
-> happens via the appropriate MCP or native tool. The legacy `has_asset: true` boolean form is no
-> longer written; read existing nodes defensively if they pre-date Phase 5.
-
-`has_asset` is an optional frontmatter field that attaches file variants and their
-storage locations to a vault node. It replaces the legacy separate asset-registry.
-
-### Structure
-
-```yaml
-has_asset:
-  - format: pdf           # required: file format identifier
-    primary: true         # optional: marks the primary/preferred variant (default false)
-    locations:            # required: at least one location entry
-      - scheme: local     # required: scheme name — must appear in scheme-dictionary
-        path: assets/<uid>.pdf  # scheme-specific required fields
-        priority: 1       # optional: lower number = preferred fallback order
-      - scheme: s3
-        bucket: my-backup
-        key: <uid>.pdf
-        priority: 2
-  - format: html
-    locations:
-      - scheme: google-drive
-        file_id: 1aBcD...
-```
-
-**Before writing any has_asset entry:** call `loci__read_meta(file="scheme-dictionary")`
-to confirm valid scheme names and their required fields. Unknown schemes and missing
-required fields are lint errors.
-
-**Authoritative fields only** — store only what cannot be derived: format, primary flag,
-scheme, scheme-specific identifiers, priority. Do NOT store mime_type, size_bytes,
-last_verified_at, or registered_at — these are computed at resolve time.
-
-### Scheme model
-
-Each location's `scheme` names a storage type. The scheme determines which resolver
-handles the location and which fields are required. Current canonical schemes:
-
-| Scheme | Required fields | enumerate? |
-|---|---|---|
-| `local` | `path` | yes |
-| `google-drive` | `file_id` | yes |
-| `nextcloud` | `path` | yes |
-| `onedrive` | `item_id` | no |
-| `dropbox` | `path` | no |
-| `icloud-drive` | `path` | no |
-| `url` | `url` | no |
-| `gmail` | `thread_id`, `message_id` | yes |
-| `s3` | `bucket`, `key` | yes |
-| `ssh-remote` | `host`, `path` | yes |
-
-User-defined schemes go in scheme-dictionary-user. They must not collide with canonical names.
-
-### Two relationships to content
-
-- **Adopt** — file lives under `loci/assets/`. Vault is canonical. Use `scheme: local`
-  with `path: assets/<uid>.<format>`.
-- **Reference** — file lives elsewhere (Drive, Gmail, URL, etc.). Vault carries a pointer;
-  the original remains canonical. Use the appropriate non-local scheme.
-
-A single variant can mix both — a local copy as primary, a cloud mirror as fallback.
-
-### find_nodes filters
-
-`loci__find_nodes` now accepts:
-- `has_asset=True` — return only nodes with an asset attached (either form)
-- `has_asset_scheme="google-drive"` — return only nodes with a location using that scheme
-
-### Scheme: url
-
-Use `scheme: url` to reference a specific web resource by its HTTP/HTTPS address. Suitable for web pages, downloadable files, publicly accessible PDFs, API endpoints, or any single resource reachable via a URL.
-
-**When to use:** the content lives at a stable URL you want to record as the canonical location. Contrast with `source_url` (which is a vault frontmatter field for the *origin* of the content), and with bookmarks (vault nodes whose *subject* is a URL). Use `has_asset` with `scheme: url` when you want the URL to be resolvable — i.e. when the system should be able to fetch the content on demand.
-
-**Required field:** `url` — the full `https://` or `http://` URL.
-
-**No enumerate.** A bare URL points to a single resource, not a container. `sync_locations` skips `url` locations silently.
-
-**Example:**
-
-```yaml
-has_asset:
-  - format: pdf
-    primary: true
-    locations:
-      - scheme: url
-        url: https://arxiv.org/pdf/2401.00001
-```
-
-**Limitations:**
-- No authentication support. Use a different scheme for resources behind OAuth or API keys.
-- Resolver respects HTTP redirects and returns the final URL in the result.
-
-> **Note on external schemes (all schemes below):** For non-local, non-URL schemes, Loci stores the location pointer only. It does not fetch content from the service. To access the file, use the appropriate MCP server or native tool for that service (google-docs MCP for Drive/Gmail, native Nextcloud client, AWS CLI for S3, etc.).
-
-### Scheme: google-drive
-
-Use `scheme: google-drive` when the file lives in Google Drive and you want to record its canonical Drive location.
-
-**When to use:** the file is owned or primarily stored in Drive — shared decks, collaborative docs, uploaded attachments. Not needed if the file is already synced locally and `scheme: local` covers it.
-
-**Required field:** `file_id` — the Drive file ID. Find it in the file's URL: `https://drive.google.com/file/d/<file_id>/view`.
-
-**Enumerate:** supported (folder listing). Scope field: `file_id` pointing to a Drive folder ID.
-
-**Example:**
-```yaml
-has_asset:
-  - format: pdf
-    primary: true
-    locations:
-      - scheme: google-drive
-        file_id: 1aBcDeFgHiJkLmNoPqRsTuVwXyZ
-```
-
-### Scheme: nextcloud
-
-Use `scheme: nextcloud` for files on a Nextcloud server accessed via WebDAV.
-
-**When to use:** the file lives on a Nextcloud instance and you want to reference it by server path — especially useful when the file is not synced locally on all devices.
-
-**Required field:** `path` — path relative to the user's Nextcloud root (e.g. `Documents/report.pdf`).
-
-**Optional field:** `host` — Nextcloud server base URL (e.g. `https://cloud.example.com`). If omitted, the resolver falls back to the `NEXTCLOUD_HOST` environment variable.
-
-**Enumerate:** supported (WebDAV directory listing). Scope fields: `path`, optional `host`.
-
-**Example:**
-```yaml
-has_asset:
-  - format: pdf
-    locations:
-      - scheme: nextcloud
-        path: loci/assets/report.pdf
-        host: https://cloud.example.com
-```
-
-### Scheme: gmail
-
-Use `scheme: gmail` when the vault node represents a Gmail message — e.g. an important email thread saved as a reference.
-
-**When to use:** the *content itself* is an email (not just a link to one). Both `thread_id` and `message_id` are required so the message can be uniquely located.
-
-**Required fields:** `thread_id` and `message_id`. Find them in the Gmail URL: `https://mail.google.com/mail/u/0/#inbox/<thread_id>`, or via the Gmail API.
-
-**Enumerate:** supported (label listing). Scope field: `label_id` (e.g. `"INBOX"` or a custom label ID).
-
-**Example:**
-```yaml
-has_asset:
-  - format: message
-    primary: true
-    locations:
-      - scheme: gmail
-        thread_id: 18f3a2b1c0d4e5f6
-        message_id: 18f3a2b1c0d4e5f6
-```
-
-### Scheme: icloud-drive
-
-Use `scheme: icloud-drive` for files in iCloud Drive, referenced by their local sync path.
-
-**When to use:** the file is in iCloud Drive and synced to the local filesystem. The path is device-specific (where iCloud syncs on that machine). If the file is reliably present locally, `scheme: local` with the synced path works too — `icloud-drive` signals the semantic intent that this is iCloud-managed content.
-
-**Required field:** `path` — absolute or `~`-relative path to the iCloud-synced file (e.g. `~/Library/Mobile Documents/com~apple~CloudDocs/Documents/file.pdf`).
-
-**No enumerate.**
-
-**Example:**
-```yaml
-has_asset:
-  - format: pdf
-    locations:
-      - scheme: icloud-drive
-        path: ~/Library/Mobile Documents/com~apple~CloudDocs/Papers/paper.pdf
-```
-
-### Scheme: onedrive
-
-Use `scheme: onedrive` for files in Microsoft OneDrive, identified by their Microsoft Graph item ID.
-
-**When to use:** the file is owned in OneDrive and you want to record its canonical location by Graph item ID (stable across renames and moves).
-
-**Required field:** `item_id` — Microsoft Graph Drive item ID. Retrieve it via the Graph API or from the OneDrive sharing URL parameters.
-
-**No enumerate.**
-
-**Example:**
-```yaml
-has_asset:
-  - format: docx
-    locations:
-      - scheme: onedrive
-        item_id: 01ABCDEFGHIJKLMNOPQRST
-```
-
-### Scheme: dropbox
-
-Use `scheme: dropbox` for files in Dropbox, identified by their Dropbox path.
-
-**When to use:** the file lives in Dropbox and you want the canonical Dropbox path recorded. The path is stable as long as the file isn't moved within Dropbox.
-
-**Required field:** `path` — Dropbox path starting with `/` (e.g. `/Documents/report.pdf`).
-
-**No enumerate.**
-
-**Example:**
-```yaml
-has_asset:
-  - format: pdf
-    locations:
-      - scheme: dropbox
-        path: /Research/papers/2024/paper.pdf
-```
-
-### Scheme: s3
-
-Use `scheme: s3` for objects in AWS S3.
-
-**When to use:** the file is stored in S3 — uploaded artifacts, large binaries, backups. Both `bucket` and `key` are required.
-
-**Required fields:** `bucket` and `key`.
-
-**Optional field:** `region` — AWS region (e.g. `us-east-1`). Omit to use the default from the AWS credential chain.
-
-**Enumerate:** supported (prefix listing). Scope fields: `bucket`, optional `key` as prefix.
-
-**Example:**
-```yaml
-has_asset:
-  - format: zip
-    locations:
-      - scheme: s3
-        bucket: my-artifacts
-        key: builds/2024-05-01/release.zip
-        region: us-west-2
-```
-
-### Scheme: ssh-remote
-
-Use `scheme: ssh-remote` for files on a remote server accessible via SSH.
-
-**When to use:** the file lives on a server you access by SSH — build outputs, logs, data files on a remote machine. Auth is via the system SSH agent and default key files; no credentials are stored in Loci.
-
-**Required fields:** `host` and `path` (absolute path on the remote host).
-
-**Optional fields:** `user` (SSH username; defaults to current user) and `port` (defaults to 22).
-
-**Enumerate:** supported (remote `ls`). Scope fields: `host`, `path`, optional `user` and `port`.
-
-**Example:**
-```yaml
-has_asset:
-  - format: log
-    locations:
-      - scheme: ssh-remote
-        host: build-server.example.com
-        path: /var/log/build/output.log
-        user: ci
-```
+## Edge cases
+
+- **No clear title:** generate from the first sentence or ask. Never leave it blank.
+- **Unknown type:** `article` if there is a citable source (URL, author, publication);
+  `document` if there is no publication record to track. Ask only when genuinely ambiguous.
+- **Very long content:** summarise in `summary`, keep the full content in the body.

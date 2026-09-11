@@ -4,7 +4,9 @@ Converts a title string into a filesystem-safe slug for Loci filenames.
 
 Rules:
 - Lowercase
-- Replace spaces and special characters with hyphens
+- Replace spaces and punctuation with hyphens; letters and digits in any
+  script are kept (a Cyrillic title keeps its words rather than collapsing
+  to whatever digits it contains)
 - Strip leading/trailing hyphens
 - Collapse consecutive hyphens
 - Truncate at 60 characters (on word boundary where possible)
@@ -34,8 +36,10 @@ def slugify(title: str, max_length: int = 60) -> str:
     for char, replacement in replacements.items():
         slug = slug.replace(char, replacement)
 
-    # Replace anything that isn't alphanumeric or hyphen with a hyphen
-    slug = re.sub(r'[^a-z0-9]+', '-', slug)
+    # Replace anything that isn't a letter or digit with a hyphen. \w is
+    # Unicode-aware, so non-Latin scripts survive; underscore is \w too and is
+    # listed explicitly so it becomes a hyphen like other punctuation.
+    slug = re.sub(r'[\W_]+', '-', slug)
 
     # Strip leading/trailing hyphens
     slug = slug.strip('-')

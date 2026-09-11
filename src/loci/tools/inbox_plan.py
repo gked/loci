@@ -58,8 +58,9 @@ def _recompute_progress(plan: dict) -> dict:
         done = sum(1 for it in lst if it.get("status") == "done")
         failed = sum(1 for it in lst if it.get("status") == "failed")
         skipped = sum(1 for it in lst if it.get("status") == "skipped")
-        pending = total - done - failed - skipped
-        return {"total": total, "done": done, "failed": failed, "pending": pending}
+        duplicate = sum(1 for it in lst if it.get("status") == "duplicate")
+        pending = total - done - failed - skipped - duplicate
+        return {"total": total, "done": done, "failed": failed, "duplicate": duplicate, "pending": pending}
 
     plan["progress"] = {
         "files": counts(file_items),
@@ -104,12 +105,14 @@ def write_plan(
                 "total": total_files,
                 "done": 0,
                 "failed": 0,
+                "duplicate": 0,
                 "pending": total_files,
             },
             "content": {
                 "total": total_content,
                 "done": 0,
                 "failed": 0,
+                "duplicate": 0,
                 "pending": total_content,
             },
         },
@@ -148,9 +151,15 @@ def update_item_status(
     item_path: str,
     status: str,
     result: dict = None,
+    allow_duplicate: bool = None,
 ) -> None:
     """
     Find item by path, update status and result, recompute progress, write file.
+
+    allow_duplicate, when given, is recorded on the item: the file batch reads
+    it to decide whether a title that already exists in the vault is saved
+    anyway. Setting it together with status="pending" is how an item the
+    batch parked as `duplicate` gets re-queued.
     """
     with _plan_lock(stage_root):
         plan = read_plan(stage_root)
@@ -163,6 +172,8 @@ def update_item_status(
             if item.get("path") == item_path:
                 item["status"] = status
                 item["result"] = result
+                if allow_duplicate is not None:
+                    item["allow_duplicate"] = allow_duplicate
                 found = True
                 break
 
@@ -172,12 +183,15 @@ def update_item_status(
         _recompute_progress(plan)
 
         # Auto-advance plan status regardless of whether approve_plan() was called
+        # `duplicate` is not terminal: the item waits on the user (skipped, or
+        # pending + allow_duplicate), so the plan stays open until they say.
         all_done_or_failed = all(
             it.get("status") in ("done", "failed", "skipped") for it in items
         )
         if all_done_or_failed and items:
             plan["status"] = "done"
-        elif plan.get("status") in ("approved", "pending"):
+        elif plan.get("status") in ("approved", "pending", "done"):
+            # "done" → "in-progress" covers an item re-queued after the fact.
             plan["status"] = "in-progress"
 
         _atomic_write(plan_path(stage_root), yaml.dump(plan, sort_keys=False, allow_unicode=True))
