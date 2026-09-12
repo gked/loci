@@ -22,9 +22,11 @@ uv run setup.py
   │    └─ writes mcpServers.loci entry into
   │         ~/Library/Application Support/Claude/claude_desktop_config.json
   │
-  └─ install_skill_symlinks()
-       └─ ~/.claude/skills/loci-save  → <project>/src/loci/skills/loci-save
-       └─ ~/.claude/skills/loci-query → <project>/src/loci/skills/loci-query
+  └─ install_skill_stubs()            # loci.skills_install
+       └─ ~/.claude/skills/loci-save/SKILL.md   # stub: packaged frontmatter over
+       └─ ~/.claude/skills/loci-query/SKILL.md  #   "call loci__read_skill and follow it"
+       └─ ... one per src/loci/skills/<name>/   # read_skill serves the procedure
+                                                #   + vault/meta/<name>-user.md
 
 User restarts Claude Code / Claude Desktop
 Claude Code spawns:  uv run loci-mcp  (stdio transport)
@@ -89,7 +91,9 @@ uv run setup.py                        # safe to re-run (idempotent)
   │
   ├─ register_mcp_claude_desktop()     # overwrites mcpServers.loci entry
   │
-  └─ install_skill_symlinks()          # replaces symlinks (unlink + re-link)
+  └─ install_skill_stubs()             # rewrites any stub whose frontmatter
+                                       #   changed; replaces a symlink from an
+                                       #   older install with a stub
 
 User restarts Claude Code / Claude Desktop
 ```

@@ -225,10 +225,12 @@ clone to install them (they block commits and merges on `main`, block pushes to
 
 The same directory carries two hooks that are conveniences rather than gates:
 `post-checkout` and `post-merge` run `loci skills --yes` when a branch switch
-or a pull changed anything under `src/loci/skills/`. A procedure edit is
-already live through the MCP server, so this exists for what the stubs cannot
-do for themselves — a skill someone else *added*, or a reworded description,
-which arrives with the pull and has no stub in `~/.claude/skills/`. They never
+or a pull changed a `src/loci/skills/*/SKILL.md` or `skills_install.py` — the
+two things a stub is built from. A procedure edit is already live through the
+MCP server, so this exists for what the stubs cannot do for themselves — a
+skill someone else *added*, a reworded description, or a reworded stub
+template, which arrives with the pull and leaves `~/.claude/skills/` behind.
+Changes under `skills/references/` don't fire it; no stub reads them. They never
 fail the git command they are attached to; `LOCI_SKIP_SKILL_INSTALL=1` turns
 them off.
 

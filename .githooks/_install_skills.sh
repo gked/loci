@@ -33,7 +33,15 @@ git rev-parse --verify --quiet "$new_rev" >/dev/null || exit 0
 
 # The common case by a wide margin: a branch switch that touched no skill.
 # Checking first keeps the hook off the critical path of every checkout.
-if git diff --quiet "$old_rev" "$new_rev" -- src/loci/skills 2>/dev/null; then
+#
+# Only the SKILL.md files and the stub writer itself count. A stub is a
+# skill's frontmatter over a body template in skills_install.py, and nothing
+# else, so a change under skills/references/ (ontology, tag seeds, the
+# *-user.md overlay seeds) cannot move one — running here would print
+# "skills changed" and spawn uv for a listing that finds nothing to do. A
+# pull that rewords the template, on the other hand, leaves every installed
+# stub carrying the old text, which is exactly the gap this hook is for.
+if git diff --quiet "$old_rev" "$new_rev" -- 'src/loci/skills/*/SKILL.md' src/loci/skills_install.py 2>/dev/null; then
 	exit 0
 fi
 

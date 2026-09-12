@@ -52,6 +52,7 @@ def repo(tmp_path):
     repo = tmp_path / "repo"
     (repo / "src" / "loci" / "skills" / "loci-save").mkdir(parents=True)
     (repo / "src" / "loci" / "skills" / "loci-save" / "SKILL.md").write_text("v1\n")
+    (repo / "src" / "loci" / "skills_install.py").write_text("_STUB_BODY = 'v1'\n")
     (repo / "other.txt").write_text("unrelated\n")
 
     hooks = repo / ".githooks"
@@ -101,10 +102,24 @@ def _change_skill(repo, text="v2\n"):
     _git(repo.path, "commit", "-qm", "skill change")
 
 
+def _change_stub_writer(repo):
+    (repo.path / "src" / "loci" / "skills_install.py").write_text("_STUB_BODY = 'v2'\n")
+    _git(repo.path, "add", ".")
+    _git(repo.path, "commit", "-qm", "stub template change")
+
+
 def _change_other(repo):
     (repo.path / "other.txt").write_text("changed\n")
     _git(repo.path, "add", ".")
     _git(repo.path, "commit", "-qm", "unrelated change")
+
+
+def _change_reference(repo):
+    refs = repo.path / "src" / "loci" / "skills" / "references"
+    refs.mkdir(exist_ok=True)
+    (refs / "loci-save-user.md").write_text("# Your additions\n\n- a seed rule\n")
+    _git(repo.path, "add", ".")
+    _git(repo.path, "commit", "-qm", "reference change")
 
 
 def _head(repo) -> str:
@@ -139,6 +154,21 @@ def test_the_reinstall_writes_stubs_not_links(repo):
     assert "--force" not in _calls(repo)
 
 
+def test_a_stub_template_change_triggers_a_reinstall(repo):
+    """The stub is frontmatter over a body template that lives in
+    skills_install.py. A pull that rewords the template changes what every
+    stub should say, with no SKILL.md moving — the one stale-stub case a
+    SKILL.md-only pathspec would miss."""
+    before = _head(repo)
+    _change_stub_writer(repo)
+    after = _head(repo)
+
+    result = _run_hook(repo, "post-checkout", before, after, "1")
+
+    assert result.returncode == 0
+    assert "loci skills --yes" in _calls(repo)
+
+
 def test_an_unrelated_change_does_not(repo):
     """Every branch switch fires this hook. Running a skill install on each one
     would put it on the critical path of a command people run constantly."""
@@ -149,6 +179,21 @@ def test_an_unrelated_change_does_not(repo):
     _run_hook(repo, "post-checkout", before, after, "1")
 
     assert _calls(repo) == ""
+
+
+def test_a_references_change_does_not(repo):
+    """skills/references/ sits under the skills tree but holds the ontology,
+    the tag seeds and the overlay seeds — none of which a stub is built from.
+    A stub is the packaged frontmatter and nothing else, so a pull that only
+    touched references/ has nothing for `loci skills` to do."""
+    before = _head(repo)
+    _change_reference(repo)
+    after = _head(repo)
+
+    result = _run_hook(repo, "post-checkout", before, after, "1")
+
+    assert _calls(repo) == ""
+    assert "skills changed" not in result.stderr
 
 
 def test_a_file_checkout_does_not(repo):
