@@ -9,9 +9,12 @@ to act on after upgrading. Two things qualify:
   * META_VERSION moved — the seeded files under vault/meta/ are reseeded on the
     next start, without the user doing anything. Worth stating, because their
     vault changes underneath them.
-  * a skill_version moved — the copy in ~/.claude/skills/ is now stale, and
-    Claude Code keeps loading the old one until `loci skills` is run. That one
-    needs an action, so it must not be buried in a PR list.
+  * a skill stub changed — a skill was added, or its frontmatter (the trigger
+    description Claude Code matches on) was reworded. The stub in
+    ~/.claude/skills/ carries that frontmatter and nothing else, so it is now
+    stale until `loci skills` is run. That one needs an action, so it must
+    not be buried in a PR list. A change to the procedure itself is not
+    reported: the MCP server serves it live, and nothing is installed.
 
 Nothing here reaches a repo at import time: the two version snapshots are read
 out of git by the caller and passed in as text, so the interesting half is
@@ -39,7 +42,6 @@ VAULT_INIT = "src/loci/tools/vault_init.py"
 SKILLS_GLOB = "src/loci/skills"
 
 _META_RE = re.compile(r"^META_VERSION\s*=\s*(\d+)\s*$", re.MULTILINE)
-_SKILL_RE = re.compile(r"^skill_version:\s*(\d+)\s*$", re.MULTILINE)
 
 
 @dataclass
@@ -47,7 +49,9 @@ class Snapshot:
     """The user-facing version numbers at one point in history."""
 
     meta_version: int | None = None
-    skills: dict[str, int] = field(default_factory=dict)
+    # Skill name -> its SKILL.md frontmatter. That block is what the installed
+    # stub is generated from, so it changing is what makes the stub stale.
+    skills: dict[str, str] = field(default_factory=dict)
 
 
 def parse_meta_version(text: str) -> int | None:
@@ -55,9 +59,17 @@ def parse_meta_version(text: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def parse_skill_version(text: str) -> int | None:
-    match = _SKILL_RE.search(text)
-    return int(match.group(1)) if match else None
+def parse_skill_frontmatter(text: str) -> str | None:
+    """The frontmatter block of a SKILL.md, or None if it has none.
+
+    Kept in step with loci.skill_assembly.split_frontmatter rather than
+    importing it: this script runs in the release workflow before the package
+    is installed.
+    """
+    if not text.startswith("---\n"):
+        return None
+    end = text.find("\n---\n", 4)
+    return None if end == -1 else text[: end + len("\n---\n")]
 
 
 def meta_line(previous: Snapshot, current: Snapshot) -> str | None:
@@ -73,26 +85,26 @@ def meta_line(previous: Snapshot, current: Snapshot) -> str | None:
     return (
         f"- Vault meta files changed (meta version {before} → {after}). They are "
         "reseeded automatically the next time Loci starts; your own "
-        "`*-user.yaml` files are left alone."
+        "`*-user.*` files are left alone."
     )
 
 
 def skill_lines(previous: Snapshot, current: Snapshot) -> list[str]:
-    """One line per skill whose version moved, plus the action to take."""
+    """One line naming every skill whose stub changed, plus the action to take."""
     changed = []
     for name in sorted(current.skills):
         after = current.skills[name]
         before = previous.skills.get(name)
         if before is None:
-            changed.append(f"`{name}` (new, v{after})")
+            changed.append(f"`{name}` (new)")
         elif before != after:
-            changed.append(f"`{name}` (v{before} → v{after})")
+            changed.append(f"`{name}`")
 
     if not changed:
         return []
     return [
         f"- Skills changed: {', '.join(changed)}. Run `loci skills` to update "
-        "your installed copies, then restart Claude Code.",
+        "the stubs in `~/.claude/skills/`, then restart Claude Code.",
     ]
 
 
@@ -152,7 +164,7 @@ def _skill_paths(ref: str) -> list[str]:
 
 
 def snapshot(ref: str) -> Snapshot:
-    """Read a ref's meta and skill versions out of git."""
+    """Read a ref's meta version and skill frontmatter out of git."""
     if not ref:
         return Snapshot()
 
@@ -162,10 +174,10 @@ def snapshot(ref: str) -> Snapshot:
 
     for path in _skill_paths(ref):
         text = _show(ref, path)
-        version = parse_skill_version(text) if text else None
-        if version is not None:
+        frontmatter = parse_skill_frontmatter(text) if text else None
+        if frontmatter is not None:
             # ".../skills/loci-save/SKILL.md" -> "loci-save"
-            snap.skills[path.split("/")[-2]] = version
+            snap.skills[path.split("/")[-2]] = frontmatter
     return snap
 
 

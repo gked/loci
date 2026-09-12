@@ -1,6 +1,5 @@
 ---
 name: loci-save
-skill_version: 25
 description: >
   Save any piece of content — a document, article, bookmark, conversation, task, project,
   event, entity, procedure, topic, asset, or log — into the Loci personal
@@ -18,7 +17,7 @@ frontmatter, via the Loci MCP tools.
 
 ---
 
-## Ground rule
+## 🔒 Ground rule
 
 **When in doubt, ask. Never guess on anything that requires user intent.**
 
@@ -28,22 +27,9 @@ and let the user choose. One focused question is better than a wrong assumption.
 
 ---
 
-## Version Check (run before anything else)
-
-This skill is at `skill_version: 25`.
-
-1. Call `loci__read_skill` and read the `skill_version` in its frontmatter.
-2. If the MCP copy is **newer**, follow it for this entire interaction and ignore the rest of this document.
-3. If `loci__read_skill` is unavailable, tell the user the Loci vault is not reachable, relay the
-   tool's error text verbatim (it names the cause and the fix for this install), and stop. If there
-   is no error text, the MCP server itself is not connected — the user needs to check their MCP
-   client config and restart Claude Code / Claude Desktop.
-
----
-
 ## Save Workflow
 
-### Step 0 — Verify the vault is reachable
+### 🔒 Step 0 — Verify the vault is reachable
 
 Call `loci__list_vault` with no arguments. If it errors, relay the error text verbatim — it says
 what is wrong and what to do — and stop; on `LOCI_NOT_CONFIGURED`, ask the user where the vault
@@ -190,7 +176,7 @@ title, present candidates grouped by type, and patch the topic with the confirme
 
 ---
 
-### Step 4 — Confirm and write
+### 🔒 Step 4 — Confirm and write
 
 Call `loci__read_meta(file="config")` for `vault_root` and show the intended location:
 

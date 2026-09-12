@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Relink the skills after a merge — in practice, after `git pull` brings in a
+# Reinstall the skill stubs after a merge — in practice, after `git pull` brings in a
 # skill someone else added or renamed.
 #
 # git passes the squash flag as $1 and nothing useful about the range, so the
 # comparison is against ORIG_HEAD, which merge sets to the pre-merge commit.
 set -uo pipefail
 
-exec "$(dirname "$0")/_link_skills.sh" ORIG_HEAD HEAD
+exec "$(dirname "$0")/_install_skills.sh" ORIG_HEAD HEAD

@@ -1,38 +1,44 @@
 """
-Install the packaged Loci skills into a Claude Code skills directory.
+Install the Loci skill stubs into a Claude Code skills directory.
 
-This is how an installed Loci — a wheel, with no checkout anywhere on the
-machine — gets its skills in front of Claude Code. The skills ship inside the
-package (`loci/skills/<name>/`), and this module copies them to
-`~/.claude/skills/<name>/`, which is where Claude Code looks.
+This is how Claude Code learns the skills exist. Each packaged skill
+(`loci/skills/<name>/SKILL.md`) is the procedure the MCP server serves through
+`read_skill`, assembled with the user's own additions from the vault (see
+skill_assembly.py). What goes into `~/.claude/skills/<name>/SKILL.md` is not
+that file but a stub generated from it: the same frontmatter — name and the
+trigger description Claude Code matches on — over a body that says "call
+`read_skill` and follow what it returns".
 
-Copies, not symlinks, by default. A symlink into the package works beautifully
-from a checkout and not at all from an install: `uv tool install --upgrade`
-replaces the site-packages tree wholesale, so every link into it dangles. The
-`link=True` path exists for callers that *know* they are running from a
-checkout — setup.py does, because live-editing a skill is the point there — and
-is never inferred here. Inferring it would mean asking "am I inside a repo?" at
-runtime, which an installed copy cannot answer and must not try to.
+A stub, not a copy, because a copy would run. The previous design installed
+the whole procedure and opened it with a version check that deferred to the
+server only when the packaged number had moved; whenever the numbers matched,
+the local copy ran on its own and anything the server had composed — the
+user's overlay above all — was never seen. The stub cannot run on its own, so
+the assembled skill is the only one there is.
+
+Two consequences. A change to the procedure needs no reinstall — the server
+reads the file on every call — so this command only has work to do when a
+stub itself would change: a new or removed skill, or a reworded trigger
+description. And there is no longer any reason to symlink: a link into the
+package would hand Claude Code the procedure directly, which is the exact
+failure the stub exists to prevent, so a symlink found at the destination is
+replaced like any other stale install.
 
 What is no longer packaged is also taken out. A skill renamed or dropped
 upstream would otherwise sit in ~/.claude/skills/ forever with Claude Code
 still loading it — beside its replacement, in the rename case. Only entries
 this installer could have created are ever removed; see _orphans().
-
-The copies are also what makes `skill_version` mean anything. Each SKILL.md
-opens by comparing its own version against the packaged one via `read_skill`;
-under a symlink those are the same bytes and the check can never fire. Under a
-copy it becomes a real "your skill is stale, run `loci skills`" signal.
 """
 
 from __future__ import annotations
 
 import argparse
-import re
 import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from loci.skill_assembly import split_frontmatter
 
 # The skills live beside this module, inside the package. Not a repo path:
 # this resolves to site-packages on an installed copy, which is the point.
@@ -45,24 +51,37 @@ NOT_SKILLS = frozenset({"references"})
 
 DEFAULT_SKILLS_ROOT = Path.home() / ".claude" / "skills"
 
-# Every skill Loci ships is named this way, and it is the only marker a copied
-# skill directory carries once it is out of the package. See _orphans().
+# Every skill Loci ships is named this way, and it is the only marker a stub
+# directory carries once it is out of the package. See _orphans().
 SKILL_NAME_PREFIX = "loci-"
 
-_VERSION_RE = re.compile(r"^skill_version:\s*(\d+)\s*$", re.MULTILINE)
-
-# What to do with each skill. Only INSTALL and UPDATE write anything.
+# What to do with each skill. Only INSTALL, UPDATE and REMOVE write anything.
 INSTALL = "install"
 UPDATE = "update"
 CURRENT = "up to date"
-LINKED = "dev symlink"
-AHEAD = "newer than packaged"
 REMOVE = "removed — no longer shipped"
+
+_STUB_BODY = """
+# {name}
+
+This file is a stub. The skill itself is assembled by the Loci MCP server from
+the packaged procedure and your own additions kept in the vault, so the copy
+here never goes stale and never needs reinstalling.
+
+Call `loci__read_skill(skill="{name}")` and follow what it returns for the whole
+interaction.
+
+If the call is unavailable or errors, tell the user the Loci vault is not
+reachable, relay the tool's error text verbatim (it names the cause and the fix
+for this install), and stop. If there is no error text, the MCP server itself is
+not connected — the user needs to check their MCP client config and restart
+Claude Code / Claude Desktop.
+"""
 
 
 @dataclass(frozen=True)
 class SkillStatus:
-    """One skill's packaged version, installed version, and what to do.
+    """One skill's source, destination, and what to do.
 
     `source` is None for a REMOVE: the skill is only in the destination, which
     is the whole reason it is being taken out.
@@ -71,8 +90,6 @@ class SkillStatus:
     name: str
     source: Path | None
     dest: Path
-    packaged_version: int | None
-    installed_version: int | None
     action: str
 
     @property
@@ -80,18 +97,19 @@ class SkillStatus:
         return self.action in (INSTALL, UPDATE, REMOVE)
 
 
-def read_skill_version(skill_md: Path) -> int | None:
-    """The `skill_version` in a SKILL.md's frontmatter, or None if unreadable.
+def stub(name: str, skill_md: str) -> str:
+    """The SKILL.md Claude Code gets, built from the packaged skill's frontmatter.
 
-    None is a legitimate answer, not an error: a hand-edited or truncated
-    SKILL.md still sits in the skills directory and still has to be reported.
+    The frontmatter is carried over verbatim: `name` and `description` are what
+    Claude Code reads to decide when the skill applies, and they have to say
+    exactly what the packaged skill says.
     """
-    try:
-        text = skill_md.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    match = _VERSION_RE.search(text)
-    return int(match.group(1)) if match else None
+    frontmatter, _ = split_frontmatter(skill_md)
+    return frontmatter + _STUB_BODY.format(name=name)
+
+
+def packaged_stub(skill_source: Path) -> str:
+    return stub(skill_source.name, (skill_source / "SKILL.md").read_text(encoding="utf-8"))
 
 
 def packaged_skills(source: Path | None = None) -> list[Path]:
@@ -118,10 +136,9 @@ def _source_root(source: Path | None) -> Path:
 def _points_into_source(dest: Path, source_root: Path) -> bool:
     """True when dest is a symlink aimed anywhere inside the packaged tree.
 
-    Deliberately weaker than _links_into_package(): the target here no longer
-    exists — it is a skill that was renamed or dropped — so the comparison is
-    against the tree rather than a specific skill. resolve() answers for a
-    dangling link too, which is exactly the case this has to catch.
+    That is the old checkout setup, and the one shape of destination this
+    installer can be sure it made. resolve() answers for a dangling link too —
+    a skill renamed or dropped — which is exactly the case _orphans() needs.
     """
     if not dest.is_symlink():
         return False
@@ -129,6 +146,14 @@ def _points_into_source(dest: Path, source_root: Path) -> bool:
         return dest.resolve().is_relative_to(source_root.resolve())
     except OSError:
         return False
+
+
+def _installed_text(dest: Path) -> str | None:
+    """What is at the destination now, or None if nothing readable is."""
+    try:
+        return (dest / "SKILL.md").read_text(encoding="utf-8")
+    except OSError:
+        return None
 
 
 def _orphans(skills_root: Path, packaged: set[str], source_root: Path) -> list[SkillStatus]:
@@ -152,64 +177,31 @@ def _orphans(skills_root: Path, packaged: set[str], source_root: Path) -> list[S
         )
         if not ours:
             continue
-        stale.append(
-            SkillStatus(
-                name=dest.name,
-                source=None,
-                dest=dest,
-                packaged_version=None,
-                installed_version=read_skill_version(dest / "SKILL.md"),
-                action=REMOVE,
-            )
-        )
+        stale.append(SkillStatus(name=dest.name, source=None, dest=dest, action=REMOVE))
     return stale
 
 
-def _links_into_package(dest: Path, source: Path) -> bool:
-    """True when dest is a symlink already pointing at this package's skill.
-
-    That is the checkout setup: ~/.claude/skills/loci-save -> <repo>/src/loci/
-    skills/loci-save. Overwriting it with a copy would take away the live
-    editing the developer set it up for, so it is left alone unless forced.
-    """
-    if not dest.is_symlink():
-        return False
-    try:
-        return dest.resolve() == source.resolve()
-    except OSError:
-        return False
-
-
-def plan(
-    skills_root: Path | None = None,
-    source: Path | None = None,
-    force: bool = False,
-) -> list[SkillStatus]:
+def plan(skills_root: Path | None = None, source: Path | None = None) -> list[SkillStatus]:
     """Work out what installing would do, without touching anything."""
     skills_root = DEFAULT_SKILLS_ROOT if skills_root is None else skills_root
     statuses = []
     for skill_source in packaged_skills(source):
         name = skill_source.name
         dest = skills_root / name
-        packaged = read_skill_version(skill_source / "SKILL.md")
-        installed = read_skill_version(dest / "SKILL.md") if dest.exists() else None
 
-        if _links_into_package(dest, skill_source) and not force:
-            action = LINKED
-        elif not dest.exists():
+        if not dest.exists() and not dest.is_symlink():
             action = INSTALL
-        elif installed is None or packaged is None:
-            # An unparseable version on either side is not a reason to leave a
-            # skill stale — reinstalling restores a known state.
+        elif dest.is_symlink():
+            # Whatever it points at, it is not a stub: a link into the package
+            # serves the procedure directly, and a link anywhere else is not
+            # ours to trust. Either way the stub goes in its place.
             action = UPDATE
-        elif installed > packaged and not force:
-            action = AHEAD
-        elif installed == packaged and not force:
+        elif _installed_text(dest) == packaged_stub(skill_source):
             action = CURRENT
         else:
             action = UPDATE
 
-        statuses.append(SkillStatus(name, skill_source, dest, packaged, installed, action))
+        statuses.append(SkillStatus(name, skill_source, dest, action))
 
     if not statuses:
         # Nothing packaged means nothing to compare against, and every
@@ -223,61 +215,45 @@ def plan(
     return statuses + _orphans(skills_root, packaged_names, _source_root(source))
 
 
-def uninstall(status: SkillStatus) -> None:
-    """Take one skill out of the skills directory."""
-    if status.dest.is_symlink():
-        status.dest.unlink()
-    elif status.dest.is_dir():
-        shutil.rmtree(status.dest)
-    elif status.dest.exists():
-        status.dest.unlink()
-
-
-def install(status: SkillStatus, link: bool = False) -> None:
-    """Put one skill in place, replacing whatever is there."""
-    assert status.source is not None, "install() called on a removal"
-    status.dest.parent.mkdir(parents=True, exist_ok=True)
-
+def _clear(dest: Path) -> None:
     # is_symlink() first: a symlink to a directory answers True to is_dir(),
     # and rmtree on it raises rather than removing the link.
-    if status.dest.is_symlink():
-        status.dest.unlink()
-    elif status.dest.is_dir():
-        shutil.rmtree(status.dest)
-    elif status.dest.exists():
-        status.dest.unlink()
-
-    if link:
-        status.dest.symlink_to(status.source)
-    else:
-        # The whole directory, not just SKILL.md, so a skill that grows a
-        # reference file or a script gets it installed too.
-        shutil.copytree(status.source, status.dest)
+    if dest.is_symlink():
+        dest.unlink()
+    elif dest.is_dir():
+        shutil.rmtree(dest)
+    elif dest.exists():
+        dest.unlink()
 
 
-def apply(statuses: list[SkillStatus], link: bool = False) -> list[SkillStatus]:
+def uninstall(status: SkillStatus) -> None:
+    """Take one skill out of the skills directory."""
+    _clear(status.dest)
+
+
+def install(status: SkillStatus) -> None:
+    """Put one stub in place, replacing whatever is there."""
+    assert status.source is not None, "install() called on a removal"
+    status.dest.parent.mkdir(parents=True, exist_ok=True)
+    _clear(status.dest)
+    status.dest.mkdir()
+    (status.dest / "SKILL.md").write_text(packaged_stub(status.source), encoding="utf-8")
+
+
+def apply(statuses: list[SkillStatus]) -> list[SkillStatus]:
     """Install every status that calls for it. Returns the ones written."""
     written = [s for s in statuses if s.writes]
     for status in written:
         if status.action == REMOVE:
             uninstall(status)
         else:
-            install(status, link=link)
+            install(status)
     return written
 
 
-def install_all(
-    skills_root: Path | None = None,
-    source: Path | None = None,
-    link: bool = False,
-    force: bool = False,
-) -> list[SkillStatus]:
+def install_all(skills_root: Path | None = None, source: Path | None = None) -> list[SkillStatus]:
     """Plan and apply in one call — the entry point for setup scripts."""
-    return apply(plan(skills_root, source, force=force), link=link)
-
-
-def _format_version(value: int | None) -> str:
-    return "—" if value is None else f"v{value}"
+    return apply(plan(skills_root, source))
 
 
 def _render(statuses: list[SkillStatus], skills_root: Path) -> str:
@@ -288,13 +264,7 @@ def _render(statuses: list[SkillStatus], skills_root: Path) -> str:
     width = max(len(s.name) for s in statuses)
     lines = [f"Loci skills → {skills_root}", ""]
     for s in statuses:
-        if s.action in (INSTALL, UPDATE):
-            versions = f"{_format_version(s.installed_version)} → {_format_version(s.packaged_version)}"
-        elif s.action == REMOVE:
-            versions = f"{_format_version(s.installed_version)} → —"
-        else:
-            versions = _format_version(s.installed_version)
-        lines.append(f"  {s.name:<{width}}  {versions:<12}  {s.action}")
+        lines.append(f"  {s.name:<{width}}  {s.action}")
     return "\n".join(lines)
 
 
@@ -321,7 +291,7 @@ def run(argv: list[str] | None = None, stdin=None, stdout=None) -> int:
     args = parser.parse_args(argv)
     skills_root = Path(args.dir).expanduser() if args.dir else DEFAULT_SKILLS_ROOT
 
-    statuses = plan(skills_root, force=args.force)
+    statuses = plan(skills_root)
     print(_render(statuses, skills_root), file=out)
     print("", file=out)
 
@@ -342,7 +312,7 @@ def run(argv: list[str] | None = None, stdin=None, stdout=None) -> int:
             print("Nothing written.", file=out)
             return 1
 
-    written = apply(statuses, link=args.link)
+    written = apply(statuses)
     print("", file=out)
     for status in written:
         print(f"  {status.action}: {status.dest}", file=out)
@@ -353,7 +323,7 @@ def run(argv: list[str] | None = None, stdin=None, stdout=None) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="loci skills",
-        description="Install or update the Loci skills in Claude Code.",
+        description="Install or update the Loci skill stubs in Claude Code.",
     )
     parser.add_argument(
         "--dir",
@@ -363,13 +333,5 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-y", "--yes", action="store_true",
         help="Install without asking. Required when stdin is not a terminal.",
-    )
-    parser.add_argument(
-        "--force", action="store_true",
-        help="Reinstall even skills that are current, newer, or dev symlinks.",
-    )
-    parser.add_argument(
-        "--link", action="store_true",
-        help="Symlink instead of copying. Only sensible from a checkout.",
     )
     return parser

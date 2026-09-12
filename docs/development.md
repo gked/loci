@@ -24,12 +24,15 @@ loci/
     api.py                          ← public facade, single entry point for all callers
     http_server.py                  ← FastAPI backend for the web UI; `loci` entry point
     mcp_server.py                   ← MCP tool definitions and docstrings; `loci-mcp` entry point
+    skill_assembly.py               ← read_skill: packaged procedure + the user's overlay
+    skills_install.py               ← `loci skills`: writes the stubs into ~/.claude/skills/
     skills/
       loci-save/SKILL.md            ← saving content
       loci-query/SKILL.md           ← querying and traversal
       loci-inbox/SKILL.md           ← processing loci-stage/
       loci-ingest-directory/SKILL.md ← cataloguing a directory in place
       references/                   ← source of truth for vault/meta/ seed files
+        <skill>-user.md             ← skill overlay seeds (seeded once, user-owned)
         ontology.yaml               ← type system (TypeRegistry source)
         ontology-user.yaml          ← user type extensions (seeded once, user-owned)
         relation-dictionary.yaml    ← relation vocabulary (RelationRegistry source)
@@ -263,17 +266,19 @@ To build the wheel without releasing anything:
 make wheel          # dist/*.whl, with app/ compiled into src/loci/static/
 ```
 
-#### The two counters the notes call out
+#### What the notes call out
 
 `release_notes.py` diffs the release against the previous tag and opens the
 notes with anything the user has to know about:
 
 - **`META_VERSION` moved** → the vault's meta files reseed on the next start.
-- **A `skill_version` moved** → the user's copy in `~/.claude/skills/` is stale
-  until they run `loci skills`.
+- **A skill's frontmatter changed, or a skill was added** → the stub in
+  `~/.claude/skills/` is stale until they run `loci skills`. A change to the
+  procedure below the frontmatter is served live by the MCP server and is not
+  reported — there is no `skill_version` to bump.
 
-Nothing has to be done by hand for that, which is exactly why both numbers must
-be bumped in the same PR as the change they describe — the notes can only
+Nothing has to be done by hand for that, which is exactly why `META_VERSION`
+must be bumped in the same PR as the change it describes — the notes can only
 report what the diff contains.
 
 ### Contributing rules

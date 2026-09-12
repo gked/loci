@@ -1074,34 +1074,16 @@ def test_fetch_url_metadata_error_returns_dict():
 
 # ---------------------------------------------------------------------------
 # read_skill / write_skill
+#
+# The assembly itself — procedure plus the user's overlay — is covered in
+# test_skill_assembly.py. What is held here is the facade's default argument.
 # ---------------------------------------------------------------------------
 
-def test_read_skill_returns_content(tmp_path, monkeypatch):
-    skill_dir = tmp_path / "skills" / "loci-save"
-    skill_dir.mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text("# Save Skill\n", encoding="utf-8")
-    monkeypatch.setattr(api, "__file__", str(tmp_path / "api.py"))
-    result = api.read_skill()
-    assert result == "# Save Skill\n"
+def test_read_skill_defaults_to_loci_save(tmp_vault):
+    assert api.read_skill() == api.read_skill("loci-save")
 
 
-def test_read_skill_raises_when_missing(tmp_path, monkeypatch):
-    monkeypatch.setattr(api, "__file__", str(tmp_path / "api.py"))
-    with pytest.raises(FileNotFoundError):
-        api.read_skill()
+def test_write_skill_defaults_to_loci_save(tmp_vault):
+    path = api.write_skill("- rule\n")
 
-
-def test_write_skill_writes_content(tmp_path, monkeypatch):
-    skill_dir = tmp_path / "skills" / "loci-save"
-    skill_dir.mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text("# original\n", encoding="utf-8")
-    monkeypatch.setattr(api, "__file__", str(tmp_path / "api.py"))
-    returned_path = api.write_skill("# updated\n")
-    assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == "# updated\n"
-    assert returned_path == str(skill_dir / "SKILL.md")
-
-
-def test_write_skill_raises_when_missing(tmp_path, monkeypatch):
-    monkeypatch.setattr(api, "__file__", str(tmp_path / "api.py"))
-    with pytest.raises(FileNotFoundError):
-        api.write_skill("content")
+    assert path.endswith("meta/loci-save-user.md")

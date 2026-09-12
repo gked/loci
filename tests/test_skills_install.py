@@ -1,12 +1,13 @@
 """
 tests/test_skills_install.py
-Tests for `loci skills` — the installer that puts the packaged skills into
-~/.claude/skills/.
+Tests for `loci skills` — the installer that puts a stub for each packaged
+skill into ~/.claude/skills/.
 
-This is the command that makes an installed wheel usable: there is no checkout
-to symlink from, so the skills have to be copied out of the package. The cases
-that matter are the ones where it writes over something the user already has,
-so most of these are about what it refuses to touch.
+A stub, not the skill: the stub calls `read_skill`, and the MCP server serves
+the procedure assembled with the user's overlay. A full copy — or a symlink
+into the package — would run on its own and never see that overlay, so the
+cases that matter most here are the ones about what lands at the destination
+and what it refuses to touch.
 """
 
 import io
@@ -23,25 +24,34 @@ def skills_root(tmp_path):
     return tmp_path / "skills"
 
 
+FRONTMATTER = "---\nname: {name}\ndescription: >\n  Does {name} things.\n---\n"
+
+
+def _skill_md(name, procedure="body\n"):
+    return FRONTMATTER.format(name=name) + procedure
+
+
 @pytest.fixture
 def fake_package(tmp_path):
-    """A stand-in for the package's skills/ dir, with versions we control."""
+    """A stand-in for the package's skills/ dir."""
     source = tmp_path / "packaged"
-    for name, version in (("loci-save", 23), ("loci-query", 1)):
+    for name in ("loci-save", "loci-query"):
         skill = source / name
         skill.mkdir(parents=True)
-        (skill / "SKILL.md").write_text(
-            f"---\nname: {name}\nskill_version: {version}\n---\nbody\n"
-        )
+        (skill / "SKILL.md").write_text(_skill_md(name))
     return source
 
 
-def _install(skills_root, source, version, name="loci-save"):
+def _install(skills_root, text, name="loci-save"):
     """Put a skill at the destination as if an older Loci had installed it."""
     dest = skills_root / name
     dest.mkdir(parents=True)
-    (dest / "SKILL.md").write_text(f"---\nskill_version: {version}\n---\nold\n")
+    (dest / "SKILL.md").write_text(text)
     return dest
+
+
+def _installed(skills_root, name="loci-save"):
+    return (skills_root / name / "SKILL.md").read_text()
 
 
 # ---------------------------------------------------------------------------
@@ -69,159 +79,170 @@ def test_skills_ship_inside_the_package():
     assert skills_install.SKILLS_SOURCE.is_dir()
 
 
-def test_packaged_skills_all_declare_a_version():
-    """The install/update decision is made on this number. A skill without one
-    is reinstalled every time, which is noise, not breakage — but it means the
-    version check inside the SKILL.md cannot work either."""
-    for skill in skills_install.packaged_skills():
-        assert skills_install.read_skill_version(skill / "SKILL.md") is not None, skill.name
+# ---------------------------------------------------------------------------
+# The stub
+# ---------------------------------------------------------------------------
+
+def test_stub_keeps_the_frontmatter_verbatim():
+    """`name` and `description` are what Claude Code matches on to decide the
+    skill applies. The stub has to declare exactly what the packaged skill
+    declares, or the trigger phrases in the skill's description stop working."""
+    text = _skill_md("loci-save", "## Step 1\nDo the thing.\n")
+
+    stub = skills_install.stub("loci-save", text)
+
+    assert stub.startswith(FRONTMATTER.format(name="loci-save"))
+
+
+def test_stub_carries_none_of_the_procedure():
+    """The whole point. A procedure in the local copy is a procedure that
+    runs locally, and the user's overlay lives on the other side of read_skill."""
+    stub = skills_install.stub("loci-save", _skill_md("loci-save", "## Step 1\nDo the thing.\n"))
+
+    assert "Do the thing" not in stub
+    assert 'loci__read_skill(skill="loci-save")' in stub
+
+
+def test_stub_tells_the_model_what_to_do_when_the_server_is_missing():
+    """The stub is the only thing Claude Code has when the MCP server is not
+    connected, so the failure path has to live in it rather than in the
+    procedure the server would have served."""
+    stub = skills_install.stub("loci-query", _skill_md("loci-query"))
+
+    assert "error text verbatim" in stub
+    assert "check their MCP client config" in stub
+
+
+@pytest.mark.parametrize("skill", skills_install.packaged_skills(), ids=lambda p: p.name)
+def test_every_packaged_skill_produces_a_stub_that_names_itself(skill):
+    stub = skills_install.packaged_stub(skill)
+
+    assert f"name: {skill.name}" in stub
+    assert f'loci__read_skill(skill="{skill.name}")' in stub
 
 
 # ---------------------------------------------------------------------------
-# Planning
+# Deciding what to do
 # ---------------------------------------------------------------------------
 
 def test_missing_skill_is_an_install(skills_root, fake_package):
-    statuses = skills_install.plan(skills_root, fake_package)
+    plan = skills_install.plan(skills_root, fake_package)
 
-    assert {s.name: s.action for s in statuses} == {
+    assert {s.name: s.action for s in plan} == {
         "loci-save": skills_install.INSTALL,
         "loci-query": skills_install.INSTALL,
     }
 
 
-def test_older_installed_version_is_an_update(skills_root, fake_package):
-    _install(skills_root, fake_package, version=21)
+def test_a_full_copy_from_an_older_loci_is_an_update(skills_root, fake_package):
+    """What every install before the stubs left behind: the whole procedure,
+    version check and all. It has to be replaced — left in place it runs on
+    its own and never reaches the overlay."""
+    _install(skills_root, "---\nname: loci-save\nskill_version: 23\n---\nold procedure\n")
 
-    by_name = {s.name: s for s in skills_install.plan(skills_root, fake_package)}
+    plan = skills_install.plan(skills_root, fake_package)
 
-    assert by_name["loci-save"].action == skills_install.UPDATE
-    assert by_name["loci-save"].installed_version == 21
-    assert by_name["loci-save"].packaged_version == 23
-
-
-def test_matching_version_is_left_alone(skills_root, fake_package):
-    dest = _install(skills_root, fake_package, version=23)
-
-    statuses = skills_install.plan(skills_root, fake_package)
-    written = skills_install.apply(statuses)
-
-    assert [s.name for s in written] == ["loci-query"]
-    assert (dest / "SKILL.md").read_text().endswith("old\n")
+    assert [s.action for s in plan if s.name == "loci-save"] == [skills_install.UPDATE]
 
 
-def test_installed_version_newer_than_packaged_is_not_clobbered(skills_root, fake_package):
-    """Downgrading Loci should not silently roll a skill backwards."""
-    dest = _install(skills_root, fake_package, version=99)
+def test_an_identical_stub_is_left_alone(skills_root, fake_package):
+    skills_install.install_all(skills_root, fake_package)
 
-    by_name = {s.name: s for s in skills_install.plan(skills_root, fake_package)}
-    skills_install.apply(list(by_name.values()))
+    plan = skills_install.plan(skills_root, fake_package)
 
-    assert by_name["loci-save"].action == skills_install.AHEAD
-    assert (dest / "SKILL.md").read_text().endswith("old\n")
+    assert {s.action for s in plan} == {skills_install.CURRENT}
 
 
-def test_unparseable_installed_skill_is_reinstalled(skills_root, fake_package):
+def test_a_reworded_description_is_an_update(skills_root, fake_package):
+    """The one kind of packaged change that reaches the stub."""
+    skills_install.install_all(skills_root, fake_package)
+    (fake_package / "loci-save" / "SKILL.md").write_text(
+        "---\nname: loci-save\ndescription: now also triggers on 'stash this'\n---\nbody\n"
+    )
+
+    plan = skills_install.plan(skills_root, fake_package)
+
+    assert [s.action for s in plan if s.name == "loci-save"] == [skills_install.UPDATE]
+    assert [s.action for s in plan if s.name == "loci-query"] == [skills_install.CURRENT]
+
+
+def test_a_procedure_edit_alone_is_not_an_update(skills_root, fake_package):
+    """The server reads the procedure live; nothing installed changes."""
+    skills_install.install_all(skills_root, fake_package)
+    (fake_package / "loci-save" / "SKILL.md").write_text(_skill_md("loci-save", "rewritten\n"))
+
+    plan = skills_install.plan(skills_root, fake_package)
+
+    assert [s.action for s in plan if s.name == "loci-save"] == [skills_install.CURRENT]
+
+
+def test_a_dev_symlink_into_the_package_is_replaced(skills_root, fake_package):
+    """The old checkout setup. Left in place it hands Claude Code the procedure
+    directly and the overlay is never seen — so it goes, unconditionally."""
+    skills_root.mkdir(parents=True)
+    (skills_root / "loci-save").symlink_to(fake_package / "loci-save")
+
+    written = skills_install.install_all(skills_root, fake_package)
+
     dest = skills_root / "loci-save"
-    dest.mkdir(parents=True)
-    (dest / "SKILL.md").write_text("truncated, no frontmatter\n")
-
-    by_name = {s.name: s for s in skills_install.plan(skills_root, fake_package)}
-
-    assert by_name["loci-save"].action == skills_install.UPDATE
-    assert by_name["loci-save"].installed_version is None
-
-
-# ---------------------------------------------------------------------------
-# Symlinks — the developer's setup, and the broken one it replaces
-# ---------------------------------------------------------------------------
-
-def test_dev_symlink_into_the_package_is_preserved(skills_root, fake_package):
-    """A checkout links ~/.claude/skills/loci-save at the repo so edits are
-    live. Replacing that with a copy would take the live editing away without
-    saying so."""
-    skills_root.mkdir(parents=True)
-    (skills_root / "loci-save").symlink_to(fake_package / "loci-save")
-
-    by_name = {s.name: s for s in skills_install.plan(skills_root, fake_package)}
-    skills_install.apply(list(by_name.values()))
-
-    assert by_name["loci-save"].action == skills_install.LINKED
-    assert (skills_root / "loci-save").is_symlink()
-
-
-def test_force_replaces_a_dev_symlink_with_a_copy(skills_root, fake_package):
-    skills_root.mkdir(parents=True)
-    (skills_root / "loci-save").symlink_to(fake_package / "loci-save")
-
-    statuses = skills_install.plan(skills_root, fake_package, force=True)
-    skills_install.apply(statuses)
-
-    assert not (skills_root / "loci-save").is_symlink()
-    assert (skills_root / "loci-save" / "SKILL.md").is_file()
+    assert [s.action for s in written if s.name == "loci-save"] == [skills_install.UPDATE]
+    assert not dest.is_symlink()
+    assert _installed(skills_root) == skills_install.packaged_stub(fake_package / "loci-save")
 
 
 def test_dangling_symlink_is_repaired(skills_root, fake_package):
-    """The state this machine was actually left in by the src/loci/ move: a
-    symlink to a path that no longer exists. It reads as an installed skill and
-    fails at load, so it has to be replaced, not skipped."""
     skills_root.mkdir(parents=True)
-    (skills_root / "loci-save").symlink_to(fake_package / "gone")
+    (skills_root / "loci-save").symlink_to(fake_package / "does-not-exist")
 
-    skills_install.apply(skills_install.plan(skills_root, fake_package))
+    skills_install.install_all(skills_root, fake_package)
 
+    assert (skills_root / "loci-save" / "SKILL.md").is_file()
     assert not (skills_root / "loci-save").is_symlink()
-    assert "skill_version: 23" in (skills_root / "loci-save" / "SKILL.md").read_text()
 
 
 def test_a_symlink_elsewhere_is_replaced_not_followed(skills_root, tmp_path, fake_package):
-    """A link pointing outside the package is someone else's skill, not our
-    dev setup. It is replaced — but by unlinking, never by writing through it
-    into whatever it pointed at."""
-    other = tmp_path / "other" / "loci-save"
-    other.mkdir(parents=True)
-    (other / "SKILL.md").write_text("not ours\n")
+    """Replacing the link must not write through it into whatever it points at."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "SKILL.md").write_text("theirs\n")
     skills_root.mkdir(parents=True)
-    (skills_root / "loci-save").symlink_to(other)
-
-    skills_install.apply(skills_install.plan(skills_root, fake_package))
-
-    assert (other / "SKILL.md").read_text() == "not ours\n"
-    assert "skill_version: 23" in (skills_root / "loci-save" / "SKILL.md").read_text()
-
-
-# ---------------------------------------------------------------------------
-# Installing
-# ---------------------------------------------------------------------------
-
-def test_install_copies_the_whole_directory(skills_root, fake_package):
-    (fake_package / "loci-save" / "reference.md").write_text("supporting file\n")
+    (skills_root / "loci-save").symlink_to(elsewhere)
 
     skills_install.install_all(skills_root, fake_package)
 
-    assert (skills_root / "loci-save" / "reference.md").read_text() == "supporting file\n"
-
-
-def test_install_copies_rather_than_links_by_default(skills_root, fake_package):
-    """A link into site-packages dangles on the next `uv tool install
-    --upgrade`, which is exactly how the machine this replaces got broken."""
-    skills_install.install_all(skills_root, fake_package)
-
+    assert (elsewhere / "SKILL.md").read_text() == "theirs\n"
     assert not (skills_root / "loci-save").is_symlink()
 
 
-def test_link_mode_symlinks_back_to_the_source(skills_root, fake_package):
-    skills_install.install_all(skills_root, fake_package, link=True)
+# ---------------------------------------------------------------------------
+# Writing
+# ---------------------------------------------------------------------------
 
-    link = skills_root / "loci-save"
-    assert link.is_symlink()
-    assert link.resolve() == (fake_package / "loci-save").resolve()
+def test_install_writes_the_stub_and_only_the_stub(skills_root, fake_package):
+    (fake_package / "loci-save" / "extra.md").write_text("reference\n")
+
+    skills_install.install_all(skills_root, fake_package)
+
+    dest = skills_root / "loci-save"
+    assert sorted(p.name for p in dest.iterdir()) == ["SKILL.md"]
+    assert _installed(skills_root) == skills_install.packaged_stub(fake_package / "loci-save")
+
+
+def test_install_replaces_leftovers_from_a_whole_directory_copy(skills_root, fake_package):
+    """Older installs copied the skill directory wholesale."""
+    dest = _install(skills_root, "old\n")
+    (dest / "reference.md").write_text("stale\n")
+
+    skills_install.install_all(skills_root, fake_package)
+
+    assert sorted(p.name for p in dest.iterdir()) == ["SKILL.md"]
 
 
 def test_install_is_rerunnable(skills_root, fake_package):
     skills_install.install_all(skills_root, fake_package)
-    skills_install.install_all(skills_root, fake_package, force=True)
+    written = skills_install.install_all(skills_root, fake_package)
 
+    assert written == []
     assert (skills_root / "loci-save" / "SKILL.md").is_file()
 
 
@@ -229,9 +250,7 @@ def test_nothing_packaged_writes_nothing(skills_root, tmp_path):
     """Guards the failure the package move caused once already: an installer
     that deletes the user's skill before discovering it has nothing to put
     back."""
-    existing = skills_root / "loci-save"
-    existing.mkdir(parents=True)
-    (existing / "SKILL.md").write_text("the user's working skill\n")
+    existing = _install(skills_root, "the user's working skill\n")
 
     written = skills_install.install_all(skills_root, tmp_path / "nowhere")
 
@@ -248,7 +267,7 @@ def test_nothing_packaged_writes_nothing(skills_root, tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_a_skill_that_is_no_longer_packaged_is_removed(skills_root, fake_package):
-    stale = _install(skills_root, fake_package, 4, name="loci-renamed-away")
+    stale = _install(skills_root, "old\n", name="loci-renamed-away")
 
     written = skills_install.install_all(skills_root, fake_package)
 
@@ -273,7 +292,7 @@ def test_a_dev_symlink_to_a_skill_that_is_gone_is_removed(skills_root, fake_pack
 def test_a_users_own_skill_is_left_alone(skills_root, fake_package):
     """~/.claude/skills/ is shared with every other skill the user has. Only
     the packaged prefix and links into the package mark one as ours."""
-    theirs = _install(skills_root, fake_package, 1, name="my-own-skill")
+    theirs = _install(skills_root, "mine\n", name="my-own-skill")
 
     skills_install.install_all(skills_root, fake_package)
 
@@ -297,7 +316,7 @@ def test_nothing_packaged_removes_nothing(skills_root, tmp_path):
     """The mirror of test_nothing_packaged_writes_nothing. With no packaged
     set to compare against, every installed skill looks orphaned — and the
     installer would delete the lot."""
-    existing = _install(skills_root, None, 23)
+    existing = _install(skills_root, "old\n")
 
     written = skills_install.install_all(skills_root, tmp_path / "nowhere")
 
@@ -308,7 +327,7 @@ def test_nothing_packaged_removes_nothing(skills_root, tmp_path):
 def test_removals_are_reported_in_the_plan(skills_root, fake_package, monkeypatch):
     """It is a deletion in the user's Claude Code config, so it has to appear
     in the table they confirm against."""
-    _install(skills_root, fake_package, 4, name="loci-renamed-away")
+    _install(skills_root, "old\n", name="loci-renamed-away")
     monkeypatch.setattr(skills_install, "DEFAULT_SKILLS_ROOT", skills_root)
     monkeypatch.setattr(skills_install, "SKILLS_SOURCE", fake_package)
     out = io.StringIO()
@@ -386,6 +405,18 @@ def test_run_reports_up_to_date_without_prompting(skills_root, fake_package, mon
 
     assert code == 0
     assert "Everything is up to date." in out.getvalue()
+
+
+def test_run_has_no_way_to_ask_for_symlinks(skills_root, fake_package, monkeypatch):
+    """`--link` and `--force` are gone on purpose: a link into the package is
+    the one install this command must never produce, and there is nothing a
+    force could override now that the decision is a byte comparison."""
+    monkeypatch.setattr(skills_install, "SKILLS_SOURCE", fake_package)
+
+    with pytest.raises(SystemExit):
+        skills_install.run(["--dir", str(skills_root), "--yes", "--link"])
+    with pytest.raises(SystemExit):
+        skills_install.run(["--dir", str(skills_root), "--yes", "--force"])
 
 
 def test_run_defaults_to_the_packaged_skills(skills_root, monkeypatch):

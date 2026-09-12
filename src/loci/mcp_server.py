@@ -470,8 +470,12 @@ def scan_directory(path: str, recursive: bool = False) -> dict:
 @mcp.tool()
 def read_skill(skill: str = "loci-save") -> str:
     """
-    Read Loci skill instructions.
+    Read a Loci skill: the packaged procedure with the user's own additions
+    appended. Follow the returned document for the whole interaction.
     skill: loci-save | loci-query | loci-inbox | loci-ingest-directory
+
+    Answers without a vault too — the procedure is what tells the model to
+    ask for one — but the additions only load once a vault is configured.
     """
     try:
         return vault.read_skill(skill)
@@ -480,20 +484,21 @@ def read_skill(skill: str = "loci-save") -> str:
 
 
 @mcp.tool()
-def write_skill(content: str, skill: str = "loci-save") -> str:
+@requires_vault
+def write_skill(content: str, skill: str = "loci-save", append: bool = False) -> str:
     """
-    Overwrite Loci skill instructions.
+    Write the user's additions to a Loci skill — the "Your additions" section
+    read_skill returns, kept in vault/meta/<skill>-user.md.
     skill: loci-save | loci-query | loci-inbox | loci-ingest-directory
 
-    Writes the package's copy. A checkout symlinks ~/.claude/skills/<skill>/
-    back to it, so the edit is live at once. An installed copy does not: the
-    edit needs `loci skills --force` to reach Claude Code, and plain
-    `loci skills` will not do it — an edit that leaves skill_version alone
-    reads as up to date.
-    Claude Desktop users will need to re-paste into Project custom instructions.
+    Replaces the whole file unless append=True, so read the current additions
+    (the tail of read_skill) before rewriting them. The packaged procedure is
+    not writable: it ships inside Loci and is replaced on upgrade, while the
+    additions live in the vault and survive one. Nothing to reinstall — the
+    next read_skill call returns the change.
     """
     try:
-        return vault.write_skill(content, skill)
+        return vault.write_skill(content, skill, append=append)
     except FileNotFoundError as e:
         return str(e)
 

@@ -408,8 +408,7 @@ def test_set_vault_root_expands_a_tilde(unconfigured, tmp_path, monkeypatch):
 VAULT_FREE_TOOLS = {
     "generate_uid",        # random hex, no I/O
     "fetch_url_metadata",  # network only
-    "read_skill",          # src/loci/skills/<name>/SKILL.md, inside the package
-    "write_skill",         # ditto
+    "read_skill",          # the packaged procedure; the overlay is optional (see below)
     "set_vault_root",      # the way out; guarding it would lock the door
     "read_meta",           # guards itself — every key but "config"
 }
@@ -486,7 +485,19 @@ def test_guarded_tool_refuses_with_the_code(unconfigured):
 def test_vault_free_tools_still_answer_unconfigured(unconfigured):
     """A server with no vault is not a broken server."""
     assert len(server.generate_uid()) == 8
-    assert "skill_version" in server.read_skill("loci-save")
+    assert "Ground rule" in server.read_skill("loci-save")
+
+
+def test_read_skill_unconfigured_says_the_additions_are_missing(unconfigured):
+    """
+    read_skill is deliberately unguarded: the procedure it returns is what
+    tells the model to ask for a vault. But half of it — the user's additions
+    — lives in the vault, so with none configured the model has to be told
+    that half is absent rather than handed a document that looks complete.
+    """
+    out = server.read_skill("loci-save")
+    assert "No vault is configured yet" in out
+    assert "Rules" not in out.split("# Your additions", 1)[1]
 
 
 def test_read_meta_config_answers_unconfigured(unconfigured):

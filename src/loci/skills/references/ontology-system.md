@@ -200,8 +200,8 @@ nothing at runtime** — you must edit all three places. Same for `state`'s enum
 4. Add a color to `TYPES` in `app/src/constants.js` — the UI list is hardcoded
    and a type missing from it renders without a dot color.
 5. Check the save skill (`src/loci/skills/loci-save/SKILL.md`) for whether the new
-   type needs classification guidance, and bump its `skill_version` (both the
-   frontmatter and the body check line) if you change instructions.
+   type needs classification guidance. There is nothing to bump: the MCP server
+   serves the procedure live.
 6. Tests: a write happy path, a missing-required-field rejection, a bad-enum
    rejection, and a lint case. Plus an e2e test if the UI renders it.
 
@@ -303,9 +303,10 @@ Recorded so the next person doesn't rediscover them the hard way.
 
 The ontology is consumed by an LLM, not just by code, so a change here is only
 half done until the skills agree. When you change any file in this directory,
-walk the "Skill ↔ Tool sync rule" in CLAUDE.md in both directions, and bump
-`skill_version` in both places (frontmatter and the body check line) whenever
-the change alters what a skill should do.
+walk the "Skill ↔ Tool sync rule" in CLAUDE.md in both directions. There is
+no version to bump — the MCP server serves each procedure live — but keep the
+frontmatter untouched unless the trigger description genuinely changed, since
+that is the one part that reaches the installed stub.
 
 Relevant tool surface:
 

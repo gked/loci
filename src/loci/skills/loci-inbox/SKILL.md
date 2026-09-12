@@ -1,6 +1,5 @@
 ---
 name: loci-inbox
-skill_version: 6
 description: >
   Process the loci-stage inbox: scan staged files, present a plan to the user,
   then execute file ingestion and content processing in batches. Use whenever
@@ -14,18 +13,7 @@ Processes loci-stage/ into the vault in two phases: analysis then execution.
 
 ---
 
-## Version Check
-
-This skill is at `skill_version: 6`.
-
-Before following any instructions:
-1. Call `loci__read_skill` with skill="loci-inbox" to fetch the latest version
-2. If MCP version is newer, follow those instructions instead
-3. If versions match, proceed below
-
----
-
-## Step 0 — Check vault reachability
+## 🔒 Step 0 — Check vault reachability
 
 Call `loci__list_vault` with no arguments. If it errors, relay the error text verbatim — it says
 what is wrong and what to do — and stop; on `LOCI_NOT_CONFIGURED`, ask the user where the vault
@@ -130,7 +118,7 @@ Every session ends here, whether the user stopped after one batch or the plan re
 
 ---
 
-## General rules
+## 🔒 General rules
 
 - Never execute without an approved plan.
 - Always show batch results before offering to continue — never auto-chain without user confirmation.

@@ -11,15 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from loci import api, mcp_server
+from loci import api, mcp_server, skill_assembly
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = REPO_ROOT / "src" / "loci" / "skills"
 
 SKILL_FILES = sorted(SKILLS_DIR.glob("*/SKILL.md"))
-
-FRONTMATTER_VERSION = re.compile(r"^skill_version:\s*(\d+)\s*$", re.MULTILINE)
-BODY_VERSION = re.compile(r"This skill is at `skill_version: (\d+)`\.")
 
 # Invocations that no longer exist after the package move. The value is what to
 # use instead, so a failure says what to write rather than only what is wrong.
@@ -86,29 +83,63 @@ def test_there_are_skill_files_to_check():
 
 
 @pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)
-def test_frontmatter_and_body_versions_agree(skill):
+def test_skill_carries_no_version_check(skill):
     """
-    A skill states its version twice — once in frontmatter, once in the body
-    line the version check reads. Bumping one and not the other leaves the
-    deployed copy claiming a version it does not have, and the check that is
-    supposed to catch a stale deploy silently stops working.
+    The version check was how a local copy decided whether to defer to the
+    server: whenever the numbers matched it ran on its own, and anything the
+    server composed — the user's overlay — was never seen. The local copy is
+    a stub now (skills_install.py) and the server serves every procedure
+    live, so a version has nothing to compare against and a check would only
+    invite the model to skip the assembled document it was already given.
     """
     text = skill.read_text(encoding="utf-8")
-    frontmatter = FRONTMATTER_VERSION.search(_frontmatter(text))
-    body = BODY_VERSION.search(text)
+    assert "skill_version" not in text, f"{skill.parent.name} still declares a skill_version"
+    assert "Version Check" not in text, f"{skill.parent.name} still carries a version check"
 
-    # Not a skip: an unversioned skill is the one case the check cannot catch,
-    # because a stale copy has nothing to compare against.
-    assert frontmatter is not None or body is not None, (
-        f"{skill.parent.name} declares no skill_version — a user running a "
-        f"pasted copy has no way to find out it is stale"
-    )
-    assert frontmatter is not None, f"{skill.parent.name}: body states a version, frontmatter does not"
-    assert body is not None, f"{skill.parent.name}: frontmatter states a version, body does not"
-    assert frontmatter.group(1) == body.group(1), (
-        f"{skill.parent.name}: frontmatter says {frontmatter.group(1)}, "
-        f"body says {body.group(1)} — both have to be bumped together"
-    )
+
+@pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)
+def test_skill_frontmatter_is_only_what_the_stub_needs(skill):
+    """
+    The stub copies the frontmatter verbatim, so it is the one part of a
+    skill that reaches ~/.claude/skills/ — and a key added here ships to every
+    install and stays until the next `loci skills`. Keep it to what Claude
+    Code reads to trigger the skill.
+    """
+    frontmatter, _ = skill_assembly.split_frontmatter(skill.read_text(encoding="utf-8"))
+    assert frontmatter, f"{skill.parent.name} has no frontmatter — Claude Code needs name and description"
+    keys = re.findall(r"^([a-z_]+):", frontmatter, re.MULTILINE)
+    assert keys == ["name", "description"], f"{skill.parent.name} frontmatter keys: {keys}"
+    assert f"name: {skill.parent.name}\n" in frontmatter
+
+
+@pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)
+def test_skill_protects_at_least_one_section(skill):
+    """
+    The overlay contract is "the user's additions win, except under 🔒". A
+    procedure with no 🔒 heading has handed the user every rule it has —
+    including "ask before writing" — which is not what the marker is for.
+    """
+    text = skill.read_text(encoding="utf-8")
+    protected = [
+        line for line in text.splitlines()
+        if line.startswith("#") and skill_assembly.PROTECTED in line
+    ]
+    assert protected, f"{skill.parent.name} marks no heading with {skill_assembly.PROTECTED}"
+
+
+@pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)
+def test_skill_has_an_overlay_seed(skill):
+    """
+    Every packaged skill needs its `<name>-user.md` in references/ — that is
+    what vault_init seeds, and what read_skill falls back to for a vault seeded
+    before the overlay existed. A skill without one reads as having no
+    additions at all, silently.
+    """
+    from loci.tools.vault_init import USER_META_FILES
+
+    name = skill_assembly.overlay_filename(skill.parent.name)
+    assert (SKILLS_DIR / "references" / name).is_file(), f"missing references/{name}"
+    assert name in USER_META_FILES, f"{name} is not seeded — add it to USER_META_FILES"
 
 
 @pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)
@@ -124,18 +155,16 @@ def test_no_skill_names_a_command_that_was_removed(skill):
         )
 
 
-# `read_skill` takes the skill name and defaults to this one, so a version check
-# that omits the argument fetches this skill no matter which file it is in.
-# test_read_skill_default_is_the_skill_whose_check_omits_it holds the code to it.
+# `read_skill` defaults to this skill, and the stub always passes the name
+# explicitly — the default only matters when a caller drops the argument.
 READ_SKILL_DEFAULT = "loci-save"
 
 
 def test_read_skill_default_names_a_skill_that_exists():
     """
-    Renaming the loci-save directory satisfies the other guards — the version
-    check inside it just gains an explicit argument — while leaving the code
-    default pointing at a path that is gone, so `loci__read_skill` with no
-    argument raises FileNotFoundError with the suite still green.
+    Renaming the loci-save directory satisfies every other guard while leaving
+    the code default pointing at a path that is gone, so `loci__read_skill`
+    with no argument raises FileNotFoundError with the suite still green.
     """
     assert (SKILLS_DIR / READ_SKILL_DEFAULT / "SKILL.md").exists(), (
         f"read_skill defaults to {READ_SKILL_DEFAULT!r}, but "
@@ -147,47 +176,13 @@ def test_read_skill_default_names_a_skill_that_exists():
 @pytest.mark.parametrize(
     "func", [api.read_skill, mcp_server.read_skill], ids=["api", "mcp_server"]
 )
-def test_read_skill_default_is_the_skill_whose_check_omits_it(func):
-    """
-    loci-save's version check calls `loci__read_skill` with no argument, which
-    is correct only while the default resolves to loci-save. Repointing the
-    default silently sends that check another skill's version number — the
-    failure the exemption above assumes away — and the skill prose, being
-    prose, cannot notice. Fail here instead, where the cause is named.
-    """
-    # .get, not [...]: renaming the parameter is the same breakage as
-    # repointing it, and a bare KeyError would name neither loci-save nor why.
+def test_read_skill_default_is_a_skill_that_ships(func):
     param = inspect.signature(func).parameters.get("skill")
     default = param.default if param else "<no `skill` parameter>"
     assert default == READ_SKILL_DEFAULT, (
         f"{func.__module__}.read_skill now defaults to {default!r}; "
-        f"loci-save/SKILL.md omits the argument and expects "
-        f"{READ_SKILL_DEFAULT!r} — give that check an explicit "
-        f'skill="{READ_SKILL_DEFAULT}" before changing the default'
+        "keep it in step with READ_SKILL_DEFAULT above"
     )
-
-
-@pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)
-def test_version_check_fetches_the_skill_it_is_in(skill):
-    """
-    The version check compares this file's number against the one the MCP
-    server returns, which is only meaningful if the server returns *this*
-    skill. Omitting the argument fetches `loci-save` instead, and its version
-    (far ahead of the newer skills') reads as "the MCP copy is newer" — so the
-    model abandons the skill it was invoked for and follows loci-save's steps.
-    """
-    text = skill.read_text(encoding="utf-8")
-    if BODY_VERSION.search(text) is None:
-        pytest.skip("no version check to fetch anything")
-
-    name = skill.parent.name
-    assert "loci__read_skill" in text, f"{name}: version check fetches nothing"
-    if name != READ_SKILL_DEFAULT:
-        assert f'skill="{name}"' in text, (
-            f'{name}: version check must name skill="{name}" — without it '
-            f"`read_skill` returns {READ_SKILL_DEFAULT}, whose version is not "
-            f"comparable to this skill's"
-        )
 
 
 def test_the_removed_command_search_covers_something():

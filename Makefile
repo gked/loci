@@ -1,6 +1,6 @@
 .PHONY: test test-fast test-e2e test-cov cov-html e2e-install dev dev-api dev-ui
 .PHONY: run run-api run-ui run-check hooks screenshots
-.PHONY: skills skills-link wheel release release-bump release-publish
+.PHONY: skills wheel release release-bump release-publish
 
 # One-time per clone: point git at the versioned hooks in .githooks/.
 # They block commits, merges, and pushes that land directly on main.
@@ -159,23 +159,14 @@ run-ui: run-check $(NODE_MODULES)
 # Skills and releases
 # ---------------------------------------------------------------------------
 
-# Install the packaged skills into ~/.claude/skills/. From a checkout this is
-# what setup.py already does; the point of having it here is that it is the
-# same code path an installed wheel runs, so it gets exercised.
+# Install the skill stubs into ~/.claude/skills/. Each stub calls read_skill,
+# and the MCP server reads src/loci/skills/<name>/SKILL.md on every call, so
+# editing a skill is live with nothing to re-run. The stubs only change when a
+# skill is added, removed, or its trigger description reworded — and the
+# post-checkout and post-merge hooks run this for you when a pull or a branch
+# switch touches the skills tree. Same code path an installed wheel runs.
 skills:
 	uv run loci skills
-
-# The developer's install: symlinks, so editing a skill under src/loci/skills/
-# is live in Claude Code with nothing to re-run. `make skills` copies instead,
-# which is what an installed wheel does. The post-checkout and post-merge hooks
-# run this for you when a pull or a branch switch changes the skills.
-#
-# --force, matching the hooks, and for the same reason: asking for links is a
-# statement about what you want in ~/.claude/skills/, not a question about
-# versions. Without it a copy left by `make skills` stays a copy whenever the
-# packaged skill_version has not moved, and the command silently does nothing.
-skills-link:
-	uv run loci skills --link --yes --force
 
 # Build the distributable wheel — with the UI inside it.
 #

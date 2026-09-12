@@ -39,28 +39,30 @@ def test_every_installed_skill_exists_in_the_package():
         assert (setup.SKILLS_DIR / skill_name / "SKILL.md").is_file(), skill_name
 
 
-def test_install_skill_symlink_links_to_the_packaged_skill(fake_home):
-    setup.install_skill_symlink()
+def test_install_skill_stubs_writes_a_stub_per_skill(fake_home):
+    from loci import skills_install
+
+    setup.install_skill_stubs()
 
     for skill_name in setup.SKILLS:
-        link = fake_home / ".claude" / "skills" / skill_name
-        assert link.is_symlink()
-        assert link.resolve() == (setup.SKILLS_DIR / skill_name).resolve()
-        # The link resolving is the whole point: a dangling one reads as an
-        # installed skill to the client and fails at load.
-        assert (link / "SKILL.md").is_file()
+        dest = fake_home / ".claude" / "skills" / skill_name
+        # A stub, never a link: a symlink into the checkout would hand Claude
+        # Code the procedure directly and skip the user's overlay.
+        assert not dest.is_symlink()
+        assert (dest / "SKILL.md").read_text() == skills_install.packaged_stub(
+            setup.SKILLS_DIR / skill_name
+        )
 
 
-def test_install_skill_symlink_is_rerunnable(fake_home):
-    setup.install_skill_symlink()
-    setup.install_skill_symlink()
+def test_install_skill_stubs_is_rerunnable(fake_home):
+    setup.install_skill_stubs()
+    setup.install_skill_stubs()
 
     for skill_name in setup.SKILLS:
-        link = fake_home / ".claude" / "skills" / skill_name
-        assert (link / "SKILL.md").is_file()
+        assert (fake_home / ".claude" / "skills" / skill_name / "SKILL.md").is_file()
 
 
-def test_install_skill_symlink_keeps_an_existing_skill_when_the_source_is_gone(
+def test_install_skill_stubs_keeps_an_existing_skill_when_the_source_is_gone(
     fake_home, tmp_path, monkeypatch
 ):
     """
@@ -73,17 +75,20 @@ def test_install_skill_symlink_keeps_an_existing_skill_when_the_source_is_gone(
     existing.mkdir(parents=True)
     (existing / "SKILL.md").write_text("# the user's working skill\n")
 
-    setup.install_skill_symlink()
+    setup.install_skill_stubs()
 
     assert (existing / "SKILL.md").read_text() == "# the user's working skill\n"
 
 
-def test_desktop_fallback_prints_the_skill_bodies(capsys):
-    """It reads SKILL.md off the same path the symlink uses — when that path
-    was stale this printed 'Skill file not found' for every skill."""
+def test_desktop_fallback_prints_the_stubs_not_the_procedures(capsys):
+    """It reads SKILL.md off the same path the installer uses — when that path
+    was stale this printed 'Skill file not found' for every skill. And it
+    prints the stub: a pasted procedure would run on its own in Desktop and
+    never see the user's overlay."""
     setup.print_desktop_fallback()
 
     out = capsys.readouterr().out
     assert "Skill file not found" not in out
     for skill_name in setup.SKILLS:
-        assert skill_name in out
+        assert f'loci__read_skill(skill="{skill_name}")' in out
+    assert "Ground rule" not in out

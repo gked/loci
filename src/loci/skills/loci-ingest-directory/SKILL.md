@@ -1,6 +1,5 @@
 ---
 name: loci-ingest-directory
-skill_version: 5
 description: >
   Scan a directory and create vault nodes for any files that don't already
   have one. Use when the user wants to register files from an arbitrary
@@ -14,23 +13,6 @@ description: >
 
 Creates vault nodes for files in a given directory that don't already have one,
 using `has_asset` frontmatter with `scheme: local`.
-
----
-
-## Version Check (run before anything else)
-
-This skill is at `skill_version: 5`.
-
-Before following any instructions below:
-1. Call `loci__read_skill(skill="loci-ingest-directory")` to fetch the latest version
-2. Parse the `skill_version` from its frontmatter
-3. If the MCP version is **newer**, follow those instructions instead — ignore the rest of this document
-4. If versions match, proceed normally below
-
-If `loci__read_skill` is unavailable, tell the user the Loci vault is not reachable, relay the
-tool's error text verbatim (it names the cause and the fix for this install), and stop. If there
-is no error text, the MCP server itself is not connected — the user needs to check their MCP
-client config and restart Claude Code / Claude Desktop.
 
 ---
 
@@ -135,7 +117,7 @@ After processing all files:
 
 ---
 
-## Rules
+## 🔒 Rules
 
 - **Never guess on ambiguous filenames.** If the type or title is genuinely unclear, ask the user.
 - **Always show the scan result before writing anything.** The user must confirm.

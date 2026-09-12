@@ -1,6 +1,5 @@
 ---
 name: loci-query
-skill_version: 2
 description: >
   Query the Loci vault to retrieve, relate, and summarize knowledge. Use
   whenever the user asks what they know about a topic, wants to find notes or
@@ -17,21 +16,7 @@ Retrieves and synthesizes content from the Loci vault using the graph layer.
 
 ---
 
-## Version Check
-
-This skill is at `skill_version: 2`.
-
-Before following any instructions:
-1. Call `loci__read_skill` with skill="loci-query" to fetch the latest version
-2. Confirm the returned skill's `name` is `loci-query` — the tool defaults to
-   another skill when the argument is dropped, and its version number is not
-   comparable to this one. If it is not, call again with skill="loci-query"
-3. If MCP version is newer, follow those instructions instead
-4. If versions match, proceed below
-
----
-
-## Step 0 — Verify vault is reachable
+## 🔒 Step 0 — Verify vault is reachable
 
 Call `loci__list_vault` with no arguments. If it errors, relay the error text verbatim — it says
 what is wrong and what to do — and stop; on `LOCI_NOT_CONFIGURED`, ask the user where the vault

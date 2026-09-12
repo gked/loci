@@ -49,9 +49,15 @@ shell.
 ### 2. Install the skills and register the server
 
 ```bash
-loci skills                                    # skills → ~/.claude/skills/
+loci skills                                    # skill stubs → ~/.claude/skills/
 claude mcp add --scope user loci loci-mcp      # register the MCP server
 ```
+
+What lands in `~/.claude/skills/` is a stub per skill — its name and trigger
+description, over "call `read_skill` and follow it". The skill itself is
+served by the MCP server, assembled from the packaged procedure and
+[your own additions](usage.md#customising-the-skills) kept in the vault, so
+the installed copy never goes stale.
 
 ### 3. Point it at a vault
 
@@ -76,12 +82,14 @@ Every release's notes open with whatever the upgrade asks of you, because
 `scripts/release_notes.py` works it out by diffing against the previous tag:
 
 - **`META_VERSION` moved** — the files under `vault/meta/` are reseeded on the
-  next start. Nothing to do, but your vault changes underneath you.
-- **A `skill_version` moved** — your copy in `~/.claude/skills/` is stale, and
-  Claude Code keeps loading the old one until `loci skills` runs.
+  next start. Nothing to do, but your vault changes underneath you. Your own
+  `*-user.*` files, the skill additions among them, are never touched.
+- **A skill was added or its description reworded** — the stub in
+  `~/.claude/skills/` is stale until `loci skills` runs. A change to the
+  procedure itself needs nothing: the server serves it live.
 
-Running `loci skills` regardless is the safe habit: it prints every packaged
-skill against what you have installed and does nothing if nothing moved.
+Running `loci skills` regardless is the safe habit: it compares each installed
+stub against the one it would write and does nothing if nothing moved.
 
 How those wheels are built and published is [Releasing](development.md#releasing).
 
@@ -145,35 +153,36 @@ script, not background sync.
 
 ### 4. Install the Loci skills in Claude Code
 
-`uv run setup.py` already did this — step 2 installs all four skills. To
-reinstall them, or to see which are out of date:
+`uv run setup.py` already did this — step 2 installs a stub for each of the
+four skills. To reinstall them, or to see which are out of date:
 
 ```bash
 uv run loci skills
 ```
 
-It lists every packaged skill against what is in `~/.claude/skills/`, says
-which need installing or updating, and asks before writing:
+It compares every packaged skill's stub against what is in `~/.claude/skills/`,
+says which need installing or updating, and asks before writing:
 
 ```
 Loci skills → /Users/you/.claude/skills
 
-  loci-inbox             — → v4         install
-  loci-ingest-directory  — → v4         install
-  loci-query             v1             up to date
-  loci-save              v21 → v23      update
+  loci-inbox             install
+  loci-ingest-directory  install
+  loci-query             up to date
+  loci-save              update
 
-1 to install, 1 to update
+2 to install, 1 to update
 Proceed? [y/N]
 ```
 
-Run it again after every upgrade — a skill whose `skill_version` moved keeps
-loading from its old copy until you do. `--yes` skips the prompt, `--dir`
-installs somewhere other than `~/.claude/skills`, and `--force` reinstalls
-everything regardless of version.
-
-From a checkout, `setup.py` symlinks the skills instead of copying them, so
-edits under `src/loci/skills/` are live without reinstalling.
+A stub is the skill's name and trigger description over one instruction: call
+`loci__read_skill` and follow what it returns. The procedure is served by the
+MCP server, with [your additions](usage.md#customising-the-skills) appended,
+so editing `src/loci/skills/<name>/SKILL.md` is live without reinstalling
+anything. The stub only changes when a skill is added, removed, or its
+description reworded — and the git hooks run this command for you when a pull
+brings that in. `--yes` skips the prompt, `--dir` installs somewhere other
+than `~/.claude/skills`.
 
 ### 5. Restart the MCP server
 
@@ -224,7 +233,7 @@ The script will:
 - Ask where the vault should live — an absolute path, required, no default
 - Optionally point rclone at a remote for the daily backup (Nextcloud, Dropbox, Google Drive, S3, and more)
 - Build the image and start the container
-- Symlink the Loci skills into `~/.claude/skills/`
+- Install the Loci skill stubs into `~/.claude/skills/`
 - Verify the server is responding
 
 ### 3. Restart Claude Code

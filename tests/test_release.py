@@ -129,6 +129,11 @@ def test_check_tag_rejects_a_mismatch_and_says_why():
 # The upgrade section
 # ---------------------------------------------------------------------------
 
+FM_A = "---\nname: loci-save\ndescription: save things\n---\n"
+FM_B = "---\nname: loci-save\ndescription: save things, and remember things\n---\n"
+FM_Q = "---\nname: loci-query\ndescription: ask things\n---\n"
+
+
 def _snap(meta=None, **skills):
     return release_notes.Snapshot(meta_version=meta, skills=skills)
 
@@ -136,14 +141,14 @@ def _snap(meta=None, **skills):
 def test_nothing_moved_produces_no_section():
     """Most releases touch neither. An empty string is what keeps a pointless
     'Upgrading: nothing to do' heading off every set of notes."""
-    before = _snap(meta=9, **{"loci-save": 23})
+    before = _snap(meta=9, **{"loci-save": FM_A})
     assert release_notes.upgrade_section(before, before) == ""
 
 
 def test_meta_bump_says_it_reseeds_itself():
     section = release_notes.upgrade_section(
-        _snap(meta=9, **{"loci-save": 23}),
-        _snap(meta=10, **{"loci-save": 23}),
+        _snap(meta=9, **{"loci-save": FM_A}),
+        _snap(meta=10, **{"loci-save": FM_A}),
     )
 
     assert "meta version 9 → 10" in section
@@ -151,58 +156,68 @@ def test_meta_bump_says_it_reseeds_itself():
     assert "loci skills" not in section  # nothing for the user to run
 
 
-def test_skill_bump_names_the_skill_and_the_command():
-    """This is the one that needs an action: the installed copy in
-    ~/.claude/skills/ is stale until `loci skills` is run."""
+def test_a_reworded_description_names_the_skill_and_the_command():
+    """This is the one that needs an action: the stub in ~/.claude/skills/
+    carries the frontmatter, so it is stale until `loci skills` is run."""
     section = release_notes.upgrade_section(
-        _snap(meta=9, **{"loci-save": 23, "loci-query": 1}),
-        _snap(meta=9, **{"loci-save": 24, "loci-query": 1}),
+        _snap(meta=9, **{"loci-save": FM_A, "loci-query": FM_Q}),
+        _snap(meta=9, **{"loci-save": FM_B, "loci-query": FM_Q}),
     )
 
-    assert "`loci-save` (v23 → v24)" in section
+    assert "`loci-save`" in section
     assert "loci-query" not in section
     assert "Run `loci skills`" in section
 
 
 def test_a_new_skill_is_reported_as_new():
     section = release_notes.upgrade_section(
-        _snap(meta=9, **{"loci-save": 23}),
-        _snap(meta=9, **{"loci-save": 23, "loci-inbox": 4}),
+        _snap(meta=9, **{"loci-save": FM_A}),
+        _snap(meta=9, **{"loci-save": FM_A, "loci-inbox": FM_Q}),
     )
 
-    assert "`loci-inbox` (new, v4)" in section
+    assert "`loci-inbox` (new)" in section
 
 
 def test_both_kinds_of_change_appear_together():
     section = release_notes.upgrade_section(
-        _snap(meta=9, **{"loci-save": 23}),
-        _snap(meta=10, **{"loci-save": 24}),
+        _snap(meta=9, **{"loci-save": FM_A}),
+        _snap(meta=10, **{"loci-save": FM_B}),
     )
 
     assert "meta version 9 → 10" in section
-    assert "v23 → v24" in section
+    assert "`loci-save`" in section
 
 
 def test_first_release_has_no_previous_versions():
-    """Before the first tag there is nothing to diff against, and every version
+    """Before the first tag there is nothing to diff against, and every skill
     reads as new rather than as a change."""
     section = release_notes.upgrade_section(
         release_notes.Snapshot(),
-        _snap(meta=9, **{"loci-save": 23}),
+        _snap(meta=9, **{"loci-save": FM_A}),
     )
 
     assert "meta files are at version 9" in section
-    assert "`loci-save` (new, v23)" in section
+    assert "`loci-save` (new)" in section
 
 
 def test_a_removed_skill_does_not_appear():
     """Nothing to install, so nothing to tell the user to run."""
     section = release_notes.upgrade_section(
-        _snap(meta=9, **{"loci-save": 23, "loci-gone": 2}),
-        _snap(meta=9, **{"loci-save": 23}),
+        _snap(meta=9, **{"loci-save": FM_A, "loci-gone": FM_Q}),
+        _snap(meta=9, **{"loci-save": FM_A}),
     )
 
     assert section == ""
+
+
+def test_a_procedure_edit_alone_is_not_an_upgrade_step():
+    """The stub is generated from the frontmatter and nothing else. The
+    procedure below it is served live by the MCP server, so a change there
+    reaches every install with nothing to run — reporting it would send the
+    user to a command that prints "Everything is up to date"."""
+    assert release_notes.parse_skill_frontmatter(FM_A + "step one\n") == FM_A
+    assert release_notes.parse_skill_frontmatter(FM_A + "step two\n") == FM_A
+    assert release_notes.parse_skill_frontmatter("no frontmatter\n") is None
 
 
 # ---------------------------------------------------------------------------
@@ -434,14 +449,14 @@ def history(tmp_path, monkeypatch):
     skill = repo / "src" / "loci" / "skills" / "loci-save" / "SKILL.md"
 
     vault_init.write_text("META_VERSION = 9\n")
-    skill.write_text("---\nskill_version: 23\n---\n")
+    skill.write_text(FM_A + "procedure\n")
     _git(repo, "init", "-q", "-b", "main")
     _git(repo, "add", ".")
     _git(repo, "commit", "-qm", "first")
     _git(repo, "tag", "v0.1.0")
 
     vault_init.write_text("META_VERSION = 10\n")
-    skill.write_text("---\nskill_version: 24\n---\n")
+    skill.write_text(FM_B + "procedure\n")
     _git(repo, "add", ".")
     _git(repo, "commit", "-qm", "second")
 
@@ -455,14 +470,14 @@ def test_snapshot_reads_an_old_tag_not_the_worktree(history):
     old = release_notes.snapshot("v0.1.0")
 
     assert old.meta_version == 9
-    assert old.skills == {"loci-save": 23}
+    assert old.skills == {"loci-save": FM_A}
 
 
 def test_snapshot_reads_the_current_ref(history):
     current = release_notes.snapshot("HEAD")
 
     assert current.meta_version == 10
-    assert current.skills == {"loci-save": 24}
+    assert current.skills == {"loci-save": FM_B}
 
 
 def test_snapshot_of_history_composes_the_real_section(history):
@@ -471,7 +486,8 @@ def test_snapshot_of_history_composes_the_real_section(history):
     )
 
     assert "meta version 9 → 10" in section
-    assert "`loci-save` (v23 → v24)" in section
+    assert "`loci-save`" in section
+    assert "Run `loci skills`" in section
 
 
 def test_empty_previous_ref_is_the_first_release(history):
@@ -501,7 +517,7 @@ def test_git_is_run_against_the_repo_not_the_callers_cwd(history, tmp_path, monk
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
 
-    assert release_notes.snapshot("HEAD").skills == {"loci-save": 24}
+    assert release_notes.snapshot("HEAD").skills == {"loci-save": FM_B}
 
 
 # ---------------------------------------------------------------------------

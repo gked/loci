@@ -27,7 +27,7 @@ from typing import Optional
 LEGACY_CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "skills" / "references"
 
-META_VERSION = 10
+META_VERSION = 11
 
 # Records META_VERSION inside the vault. Only env-var mode (Docker) relies on
 # it; a config.yml install tracks the same number there.
@@ -62,12 +62,21 @@ META_FILES = [
 # holds a tag vocabulary and a set of source schemas that exist nowhere else,
 # so a reseed would destroy work with no way back. That is also what README's
 # "the files you own ... are never overwritten" promises.
+#
+# The *-user.md files are the skill overlays: one per packaged skill, appended
+# to the procedure by read_skill and written by write_skill (see
+# skill_assembly.py). They are the user's rules and nothing else, which is
+# the whole reason they sit in the vault rather than in the package.
 USER_META_FILES = [
     "ontology-user.yaml",
     "relation-dictionary-user.yaml",
     "scheme-dictionary-user.yaml",
     "tag-dictionary.md",
     "foreign-definitions.md",
+    "loci-save-user.md",
+    "loci-query-user.md",
+    "loci-inbox-user.md",
+    "loci-ingest-directory-user.md",
 ]
 
 

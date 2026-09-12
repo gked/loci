@@ -15,7 +15,7 @@ Walks through:
   3. rclone sync config (optional)
   4. Building and starting the container
   5. Verifying the server is up
-  6. Installing the Loci skill in Claude Code
+  6. Installing the Loci skill stubs in Claude Code
   7. Registering the local stdio MCP server with Claude Code and Claude Desktop
 """
 
@@ -260,7 +260,7 @@ def verify() -> None:
 # ---------------------------------------------------------------------------
 
 def install_skill() -> None:
-    """Link every packaged skill into ~/.claude/skills/.
+    """Install a stub for every packaged skill into ~/.claude/skills/.
 
     Shares one implementation with setup.py and `loci skills` via
     loci.skills_install. The hand-rolled loop this replaces installed two of
@@ -268,7 +268,8 @@ def install_skill() -> None:
     raised NotADirectoryError on a re-run, because a symlink to a directory
     answers True to is_dir() and rmtree refuses to follow it.
 
-    link=True: the docker wizard runs from a checkout, like setup.py.
+    Stubs, not links, even from a checkout: the stub calls read_skill on the
+    container's server, which is where the user's overlay is assembled in.
     """
     from loci import skills_install
 
@@ -278,17 +279,13 @@ def install_skill() -> None:
     statuses = skills_install.plan(
         skills_root=Path.home() / ".claude" / "skills",
         source=skills_source,
-        force=True,
     )
     if not statuses:
         print(f"  Skill source not found at {skills_source} — skipping.")
         return
 
-    for status in skills_install.apply(statuses, link=True):
-        if status.action == skills_install.REMOVE:
-            print(f"  Removed: {status.dest} (no longer shipped)")
-        else:
-            print(f"  Installed: {status.dest} → {status.source}")
+    for status in skills_install.apply(statuses):
+        print(f"  {status.action}: {status.dest}")
 
     print("  Restart Claude Code to pick them up.")
 

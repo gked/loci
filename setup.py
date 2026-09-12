@@ -7,7 +7,7 @@ What this does:
   2. Initializes the vault structure
   3. Registers the Loci MCP server in Claude Code  (~/.claude.json, user scope via `claude mcp add`)
   4. Registers the Loci MCP server in Claude Desktop (~/Library/Application Support/Claude/claude_desktop_config.json)
-  5. Creates symlink ~/.claude/skills/<skill>/ → src/loci/skills/<skill>/
+  5. Installs the skill stubs into ~/.claude/skills/<skill>/
 
 Usage (from the loci checkout):
   uv run setup.py
@@ -88,15 +88,15 @@ def register_mcp_claude_desktop(config_path: Path) -> None:
     print(f"  Registered: {config_path}")
 
 
-def install_skill_symlink() -> None:
-    """Point ~/.claude/skills/<skill>/ at each packaged skill.
+def install_skill_stubs() -> None:
+    """Install a stub for each packaged skill into ~/.claude/skills/.
 
     Delegates to loci.skills_install so the checkout path and the installed
-    path share one implementation and cannot drift. link=True because this
-    script only ever runs from a checkout, where editing a skill and seeing it
-    live is the point; `loci skills` copies instead, since a link into an
-    installed wheel dangles the moment it is upgraded. force=True keeps the old
-    behaviour of relinking unconditionally.
+    path share one implementation and cannot drift. Stubs, not symlinks, from
+    a checkout too: the stub calls read_skill, and the MCP server reads the
+    checkout's SKILL.md on every call, so an edit to a skill is live without
+    any link. A symlink would hand Claude Code the procedure directly and
+    skip the user's overlay — see skills_install.py.
 
     Imported inside the function, not at module scope: the package only becomes
     importable once sync_and_init_vault() has run `uv sync`.
@@ -106,24 +106,30 @@ def install_skill_symlink() -> None:
     statuses = skills_install.plan(
         skills_root=Path.home() / ".claude" / "skills",
         source=SKILLS_DIR,
-        force=True,
     )
     if not statuses:
-        # Nothing packaged means nothing to link. Saying so beats silence: the
-        # alternative once was unlinking a working skill and pointing it at a
-        # directory that did not exist.
+        # Nothing packaged means nothing to install. Saying so beats silence:
+        # the alternative once was unlinking a working skill and pointing it
+        # at a directory that did not exist.
         print(f"  Skipped: no skills found in {SKILLS_DIR}")
         return
 
-    for status in skills_install.apply(statuses, link=True):
-        if status.action == skills_install.REMOVE:
-            print(f"  {status.dest} (removed — no longer shipped)")
-        else:
-            print(f"  {status.dest} → {status.source}")
+    for status in skills_install.apply(statuses):
+        print(f"  {status.action}: {status.dest}")
+    if not any(s.writes for s in statuses):
+        print("  Up to date.")
 
 
 def print_desktop_fallback() -> None:
-    """Print skill contents for manual paste into Claude Desktop Project."""
+    """Print the skill stubs for manual paste into a Claude Desktop Project.
+
+    The stubs, not the procedures: the procedure is served by the MCP server
+    with the user's additions appended, and a pasted copy of it would run on
+    its own and never see them. The stub is short and never changes, so this
+    is a one-time paste.
+    """
+    from loci import skills_install
+
     print()
     print("=" * 60)
     print("Claude Desktop — if the skills do not auto-load")
@@ -132,7 +138,10 @@ def print_desktop_fallback() -> None:
     for skill_name in SKILLS:
         skill_md = SKILLS_DIR / skill_name / "SKILL.md"
         print(f"\n--- {skill_name} ---\n")
-        print(skill_md.read_text() if skill_md.exists() else f"Skill file not found: {skill_md}")
+        if skill_md.exists():
+            print(skills_install.stub(skill_name, skill_md.read_text()))
+        else:
+            print(f"Skill file not found: {skill_md}")
     print("=" * 60)
 
 
@@ -168,8 +177,8 @@ def main() -> None:
     register_mcp_claude_desktop(CLAUDE_DESKTOP_CONFIG)
     print()
 
-    print("Step 4 — Skill symlink")
-    install_skill_symlink()
+    print("Step 4 — Skill stubs")
+    install_skill_stubs()
     print()
 
     print("Done.")

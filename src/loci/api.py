@@ -18,6 +18,7 @@ from typing import Optional
 
 import yaml
 
+from loci import skill_assembly
 from loci.tools.uid_generator import generate_uid as _generate_uid
 from loci.tools.vault_init import NOT_CONFIGURED_MESSAGE, load_config
 from loci.tools.write_file import (
@@ -1081,11 +1082,17 @@ def scan_directory(path: str, recursive: bool = False) -> dict:
 
 
 def read_skill(skill: str = "loci-save") -> str:
-    """Read Loci skill instructions for the named skill."""
-    p = Path(__file__).parent / "skills" / skill / "SKILL.md"
-    if not p.exists():
-        raise FileNotFoundError(f"Skill file not found: {p}")
-    return p.read_text(encoding="utf-8")
+    """
+    The assembled skill: packaged procedure plus the user's additions from
+    vault/meta/<skill>-user.md. Works with no vault configured — the packaged
+    half is what tells the model to ask for one — and says so in place of the
+    additions.
+    """
+    try:
+        vault_root = _vault_root()
+    except RuntimeError:
+        vault_root = None
+    return skill_assembly.assemble(skill, vault_root)
 
 
 def validate_type(name: str, extends: str, fields: list[dict] = None) -> dict:
@@ -1104,24 +1111,16 @@ def lint_vault() -> dict:
     return _lint_vault(_vault_root())
 
 
-def write_skill(content: str, skill: str = "loci-save") -> str:
+def write_skill(content: str, skill: str = "loci-save", append: bool = False) -> str:
     """
-    Overwrite Loci skill instructions for the named skill. Returns the path written.
+    Write the user's additions for a skill — vault/meta/<skill>-user.md, the
+    file read_skill appends to the packaged procedure. Returns the path written.
 
-    The write lands in the package's own copy of the skill. From a checkout,
-    where ~/.claude/skills/<skill>/ symlinks back to it, that is live at once.
-
-    On an installed copy it is not, and the remedy is narrower than it looks:
-    an edit that leaves skill_version alone makes the packaged and installed
-    copies equal, so `loci skills` reports "up to date" and copies nothing —
-    it takes `loci skills --force`. The edit is lost on the next upgrade
-    either way, which replaces the package tree.
-    Claude Desktop users need to re-paste regardless.
+    Only that file. The packaged procedure ships inside the wheel and is
+    replaced on upgrade, so an edit there was lost on the next install; the
+    overlay lives in the vault, which is the user's, and is never reseeded.
     """
-    p = Path(__file__).parent / "skills" / skill / "SKILL.md"
-    if not p.exists():
-        raise FileNotFoundError(f"Skill file not found: {p}")
-    p.write_text(content, encoding="utf-8")
+    p = skill_assembly.write_overlay(_vault_root(), skill, content, append=append)
     return str(p)
 
 

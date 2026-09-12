@@ -129,6 +129,50 @@ Ingest ~/Documents/papers into my loci vault
 
 ---
 
+## Customising the skills
+
+Each skill has two halves. The packaged procedure ships inside Loci and is
+replaced on every upgrade. Your additions live in the vault —
+`<vault>/meta/loci-save-user.md`, `loci-query-user.md`, `loci-inbox-user.md`,
+`loci-ingest-directory-user.md` — seeded once and never overwritten. Every
+time a skill runs, the MCP server hands Claude the procedure with your file
+appended, under a preamble that says how they combine: **your additions win
+wherever they disagree with the procedure, except under headings marked 🔒**,
+which hold no matter what you write. (The locked sections are the safety
+rails — verify the vault first, ask before writing, never guess at intent.)
+
+Add a rule the way you would tell a colleague:
+
+```
+From now on, when saving meeting notes, always tag them #meeting-notes and
+link every attendee who has an entity node.
+```
+
+Claude writes it to the overlay with `write_skill`, and it is in force on the
+next save — nothing to reinstall, nothing to restart. Rules that have earned
+their place there look like:
+
+```
+- Bookmarks from arxiv.org are articles, not bookmarks — pull the abstract.
+- This vault is work only: default `domains: [work]` unless I say otherwise.
+- When I ask about a person, include their most recent log entries.
+- Anything in `loci-stage/receipts/` is a `document` tagged #receipt; don't ask.
+```
+
+The file is plain Markdown, so you can also edit it by hand. Keep each rule
+short and concrete: the model follows them verbatim, and a paragraph of
+context is a paragraph it has to hold in its head on every run. To see what is
+currently in force, ask Claude to read the skill — the additions are the last
+section of what `read_skill` returns.
+
+What goes where:
+
+| You want to… | Put it in |
+|---|---|
+| Change how a skill behaves for you | the skill's `*-user.md` overlay |
+| Add a type, relation, or scheme | `ontology-user.yaml` and friends — see below |
+| Teach Claude which words mean "use Loci" | `~/.claude/CLAUDE.md` — see [above](#teach-the-agent-once) |
+
 ## Extending the ontology
 
 The vocabulary comes in two layers, and the split is what lets Loci upgrade
