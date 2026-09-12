@@ -80,3 +80,42 @@ def test_a_failed_generation_leaves_no_target_behind(tmp_path):
     assert "python3" in result.stdout + result.stderr
     assert not target.exists()
     assert not target.with_suffix(".yml.tmp").exists()
+
+
+def test_creating_the_dev_vault_copies_the_seed(tmp_path):
+    """
+    An empty vault renders a blank graph, which reads as the app being broken.
+    dev-vault/ is created from the committed dev-vault-seed/ instead.
+    """
+    target = tmp_path / "dev-vault"
+
+    result = _make(f"DEV_VAULT={target}", str(target))
+
+    assert result.returncode == 0, result.stderr
+    seed = sorted(p.name for p in (REPO_ROOT / "dev-vault-seed").glob("*.md"))
+    assert sorted(p.name for p in target.glob("*.md")) == seed
+    assert len(seed) == 500
+
+
+def test_creating_the_dev_vault_leaves_no_tmp_dir_behind(tmp_path):
+    target = tmp_path / "dev-vault"
+
+    result = _make(f"DEV_VAULT={target}", str(target))
+
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / "dev-vault.tmp").exists()
+
+
+def test_a_failed_seed_copy_leaves_no_dev_vault_behind(tmp_path):
+    """
+    make treats an existing directory as built. An empty dev-vault/ left by a
+    failed copy would have every later `make dev` serve a blank vault — the
+    very symptom the seed exists to prevent — with nothing to say why.
+    """
+    target = tmp_path / "dev-vault"
+
+    result = _make(f"DEV_VAULT={target}", f"DEV_VAULT_SEED={tmp_path}/no-such-seed", str(target))
+
+    assert result.returncode != 0
+    assert not target.exists()
+    assert not (tmp_path / "dev-vault.tmp").exists()

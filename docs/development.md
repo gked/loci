@@ -117,6 +117,7 @@ loci/
   config.sample.yml                 ← template for ~/.config/loci/config.yml
   dev-config.yml                    ← scratch config for `make dev` (gitignored)
   dev-vault/                        ← scratch vault for `make dev` (gitignored)
+  dev-vault-seed/                   ← 500 generated nodes dev-vault/ is created from
   Makefile
   pyproject.toml
   CLAUDE.md                         ← working rules for Claude in this repo
@@ -177,6 +178,14 @@ The `dev` targets run against `dev-config.yml` and `dev-vault/` in the project
 root, both gitignored and created on first use, so a stray `make dev` cannot
 write into the vault you keep real notes in. `./run_server.sh` and an installed
 server use the config file proper.
+
+`dev-vault/` is created as a copy of `dev-vault-seed/` — 500 generated nodes,
+committed, so the UI comes up populated at the size a real vault has rather
+than blank. It is copied once; delete `dev-vault/` to start over from the seed.
+The seed is what ships; `scripts/dev_seed.py` regenerates it after an ontology
+change (`uv run python scripts/dev_seed.py --out dev-vault-seed --force`), and
+`tests/test_dev_seed.py` fails if the two ever disagree or the seed stops
+linting clean.
 
 The `run` targets are the other half of that split: they set no `LOCI_CONFIG` or
 `LOCI_VAULT_ROOT`, so both halves read `~/.config/loci/config.yml` and serve the

@@ -51,6 +51,7 @@ cov-html:
 # stray `make dev` can't write into the vault you actually keep notes in.
 DEV_CONFIG := $(CURDIR)/dev-config.yml
 DEV_VAULT  := $(CURDIR)/dev-vault
+DEV_VAULT_SEED := $(CURDIR)/dev-vault-seed
 
 dev dev-api dev-ui: export LOCI_CONFIG = $(DEV_CONFIG)
 dev dev-api dev-ui: export LOCI_VAULT_ROOT = $(DEV_VAULT)
@@ -74,9 +75,20 @@ $(DEV_CONFIG):
 # an absent directory means the mount is missing, and seeding it would write
 # into the container layer where the files vanish on restart. There is no mount
 # here, so the directory is ours to make; the server seeds it once it exists.
+#
+# It is created populated: an empty vault renders a blank graph, which reads as
+# the app being broken. dev-vault-seed/ is 500 generated nodes, committed, and
+# only copied on creation — delete dev-vault/ to start over from the seed.
+# scripts/dev_seed.py regenerates the seed after an ontology change.
+#
+# Copied via a temp directory for the same reason $(DEV_CONFIG) is: make treats
+# an existing directory as built, so a failed copy that left an empty dev-vault/
+# behind would have every later `make dev` serve a blank vault without a word.
 $(DEV_VAULT):
-	@mkdir -p $@
-	@echo "created $@ (gitignored)"
+	@rm -rf $@.tmp && mkdir -p $@.tmp
+	@cp $(DEV_VAULT_SEED)/*.md $@.tmp/ || { rm -rf $@.tmp; exit 1; }
+	@mv $@.tmp $@
+	@echo "created $@ from $(DEV_VAULT_SEED) (gitignored)"
 
 # Both prerequisites are built here, before the sub-makes fork. Leaving them to
 # dev-api and dev-ui let the two race on a clean checkout: each generated its own

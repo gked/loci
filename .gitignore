@@ -3,6 +3,7 @@ config.yml.migrated
 # Scratch config and vault used by `make dev` — never the real ones.
 dev-config.yml
 dev-vault/
+dev-vault.tmp/
 vault/
 !tests/fixtures/vault/
 __pycache__/
