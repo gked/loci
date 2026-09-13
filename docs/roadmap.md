@@ -9,7 +9,8 @@ uneven. What that means concretely:
 |---|---|
 | Vault format, ontology, registries | Stable, in daily use |
 | MCP server and skills | Stable, in daily use |
-| Local (Python) setup | Stable, in daily use |
+| Released wheel install | Stable, in daily use |
+| Checkout setup (`setup.py`) | Stable |
 | Web UI | In daily use, read-only. No editing yet |
 | Test suite (unit + browser e2e) | Runs on every push and PR |
 | Packaging and releases | `make release` cuts the tag; CI builds and publishes the wheel |

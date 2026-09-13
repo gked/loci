@@ -111,7 +111,7 @@ loci/
     rclone.conf.sample              ← rclone remote config template
     sync.sh                         ← push/pull/bisync wrapper
 
-  setup.py                          ← local setup wizard
+  setup.py                          ← checkout setup wizard (the wheel uses `loci skills` + `claude mcp add`)
   setup_docker.py                   ← Docker setup wizard
   run_server.sh
   config.sample.yml                 ← template for ~/.config/loci/config.yml

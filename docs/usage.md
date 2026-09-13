@@ -307,7 +307,7 @@ The graph as a force-directed map, coloured by type and filterable by relation. 
 The vault is **flat**: every node is a Markdown file at the vault root, named by a slug of its title (`why-i-left-twitter.md`). There are no per-type folders; type is frontmatter, and the graph index does the organizing. The only subdirectory is `meta/`.
 
 ```
-~/Nextcloud/loci/                    ← loci root (all stores are siblings)
+~/loci/                              ← loci root (all stores are siblings)
   knowledge-vault/                   ← knowledge graph, markdown only
     <slug>.md                        ← one file per node, flat
     meta/

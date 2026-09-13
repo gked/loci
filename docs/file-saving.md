@@ -8,7 +8,7 @@ becomes a vault node.
 ## Directory layout
 
 ```
-~/Nextcloud/loci/                    ← loci_root  (_loci_root() in api.py)
+~/loci/                              ← loci_root  (_loci_root() in api.py)
   ├── knowledge-vault/               ← vault_root  (_vault_root())
   │   └── *.md                       (markdown nodes — text & frontmatter only)
   ├── assets/                        ← binary files live here

@@ -1,6 +1,6 @@
 # Setup
 
-Three ways to run Loci. The **released wheel** is the path for using it; **Local (Python)** is the checkout path and what development needs; **Docker** is experimental.
+Three ways to run Loci. The **released wheel** is the path for using it; **From a checkout** is what developing it needs; **Docker** is experimental.
 
 ---
 
@@ -66,8 +66,8 @@ Restart Claude Code, then tell it where the vault should live — "point Loci at
 on first use; nothing is written until you name a path.
 
 Do this before running `loci`: with no vault configured the server refuses to
-start, and the error it prints tells you to run `setup.py`, which only exists in
-a checkout. `set_vault_root` is the wheel's way in.
+start. The error it prints names `set_vault_root` first and `setup.py` second —
+the latter only exists in a checkout, so `set_vault_root` is the wheel's way in.
 
 ### Upgrading
 
@@ -95,18 +95,17 @@ How those wheels are built and published is [Releasing](development.md#releasing
 
 ---
 
-## Local (Python)
+## From a checkout
 
-Runs the MCP server directly on your machine from a checkout. This is the path
-in daily use, and the one to take if you will be changing Loci as well as using
-it.
+Runs the MCP server directly from a clone of the repo. Take this path if you
+will be changing Loci as well as using it; the UI is served separately by vite
+here, and `setup.py` stands in for the wheel's `loci skills` + `claude mcp add`.
 
 **Requires:** Python 3.13+, [uv](https://docs.astral.sh/uv/), [rclone](https://rclone.org/) (optional, for backup), Node 20+ (optional, for the web UI)
 
 > **Just want to use Loci?** Install a [released wheel](#a-released-wheel)
 > instead — no checkout, no Node, and the UI comes compiled inside it. The steps
-> below are the checkout path, for developing Loci itself, where the UI is served
-> separately by vite (`make dev`, `make run`).
+> below are for developing Loci itself (`make dev`, `make run`).
 
 ### 1. Clone the repo
 
@@ -206,8 +205,8 @@ Save this to my loci vault as a note: Loci is now set up and working.
 
 ## Docker (experimental)
 
-> **Lightly tested.** The local Python setup above is the path actually in daily
-> use. Docker works in principle and the compose file is kept current, but it
+> **Lightly tested.** The released wheel is the path actually in daily use.
+> Docker works in principle and the compose file is kept current, but it
 > has not been exercised much, so expect rough edges. Nothing here is covered by
 > the test suite.
 

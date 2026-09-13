@@ -4,7 +4,30 @@
 
 ## 1. Brand New Installation
 
-### 1.1 Python Project (`setup.py`)
+### 1.1 Released wheel (the path for using Loci)
+
+```
+gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
+uv tool install /tmp/loci-wheel/loci-*.whl
+  │
+  └─ puts `loci-mcp` and `loci` on PATH; the UI bundle is inside the wheel
+
+loci skills                            # skills_install: stub per skill → ~/.claude/skills/
+claude mcp add --scope user loci loci-mcp
+  │
+  └─ writes entry to ~/.claude.json
+
+User restarts Claude Code and says "point Loci at ~/vault"
+  │
+  └─ set_vault_root(path, create)      # records the path in ~/.config/loci/config.yml,
+                                       #   creates + seeds the vault, in one call
+Claude Code spawns:  loci-mcp  (stdio transport)
+```
+
+No default vault path exists: until `set_vault_root` runs, every vault-touching
+tool raises `LOCI_NOT_CONFIGURED` and the model asks for one.
+
+### 1.2 From a checkout (`setup.py`)
 
 ```
 git clone <repo>
@@ -32,7 +55,7 @@ User restarts Claude Code / Claude Desktop
 Claude Code spawns:  uv run loci-mcp  (stdio transport)
 ```
 
-### 1.2 Docker (`setup-homelab.sh`)
+### 1.3 Docker (`setup-homelab.sh`)
 
 ```
 bash deploy/setup-homelab.sh
@@ -74,7 +97,19 @@ User registers client:
 
 ## 2. Update to Existing MCP
 
-### 2.1 Python Project
+### 2.1 Released wheel
+
+```
+rm -rf /tmp/loci-wheel
+gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
+uv tool install --force /tmp/loci-wheel/loci-*.whl
+loci skills                            # rewrites any stub whose frontmatter changed
+
+User restarts Claude Code / Claude Desktop
+  └─ first tool call reseeds vault/meta/ if META_VERSION moved
+```
+
+### 2.2 From a checkout
 
 ```
 git pull                               # fetch new code
@@ -98,7 +133,7 @@ uv run setup.py                        # safe to re-run (idempotent)
 User restarts Claude Code / Claude Desktop
 ```
 
-### 2.2 Docker
+### 2.3 Docker
 
 ```
 git -C ~/loci pull                     # or: cd ~/loci && git pull
@@ -120,9 +155,9 @@ Cloudflare tunnel and systemd service unchanged — no restart needed
 
 ## Summary
 
-| | Python | Docker |
-|---|---|---|
-| Transport | stdio (Claude spawns process) | SSE (HTTP, always-on) |
-| Vault location | `<project>/vault/` (default) | External volume (`VAULT_PATH`) |
-| Client registration | `setup.py` handles it | Manual `claude mcp add --transport sse` |
-| Updates | `git pull` + `uv run setup.py` | `git pull` + `docker compose up -d --build` |
+| | Wheel | Checkout | Docker |
+|---|---|---|---|
+| Transport | stdio (Claude spawns process) | stdio (Claude spawns process) | SSE (HTTP, always-on) |
+| Vault location | chosen in chat via `set_vault_root`; no default | asked by `setup.py`; no default | External volume (`VAULT_PATH`) |
+| Client registration | `claude mcp add --scope user loci loci-mcp` | `setup.py` handles it | Manual `claude mcp add --transport sse` |
+| Updates | re-download + `uv tool install --force` + `loci skills` | `git pull` + `uv run setup.py` | `git pull` + `docker compose up -d --build` |
