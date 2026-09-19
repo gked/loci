@@ -174,8 +174,10 @@ def apply_change(change: Change, fm: dict, body: str) -> str:
     for key, val in fm.items():
         if isinstance(val, datetime):
             fm[key] = val.strftime("%Y-%m-%dT%H:%M:%SZ")
-    # serialize_frontmatter sorts keys, the same way every other vault write does.
-    return serialize_frontmatter(fm) + body
+    # serialize_frontmatter sorts keys, and the body is joined the way
+    # patch_item joins it — split_frontmatter leaves the fence's newline on
+    # the body, so a plain `+ body` would add a blank line after the fence.
+    return serialize_frontmatter(fm) + "\n" + body.lstrip("\n")
 
 
 def plan_vault(vault_root: Path) -> tuple[list[Change], list[str]]:

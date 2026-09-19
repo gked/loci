@@ -9,6 +9,7 @@ import pytest
 from pathlib import Path
 
 from loci import api
+from loci.tools.frontmatter import split_frontmatter
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -96,8 +97,11 @@ def test_save_allow_duplicate_writes_a_second_node(tmp_vault):
     assert Path(second["path"]).exists()
     # The first node survived: its file, its uid, and its body are all intact.
     assert Path(first["path"]).exists()
-    assert f"uid: {first['uid']}" in Path(first["path"]).read_text(encoding="utf-8")
-    assert "first body" in Path(first["path"]).read_text(encoding="utf-8")
+    # Compare the parsed uid: an all-digit uid is quoted on write, so a raw
+    # `uid: <n>` substring check flakes on 1 run in 40.
+    first_fm, first_body = split_frontmatter(Path(first["path"]).read_text(encoding="utf-8"))
+    assert str(yaml.safe_load(first_fm)["uid"]) == first["uid"]
+    assert "first body" in first_body
     assert api.get(first["uid"])
 
 

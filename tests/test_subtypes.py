@@ -371,6 +371,14 @@ def test_migration_keeps_bare_timestamps_in_the_canonical_spelling(tmp_path):
     assert "2026-01-01 00:00:00" not in raw
 
 
+def test_migration_leaves_the_body_as_it_was(tmp_path):
+    # One blank line after the fence, as every vault write leaves it.
+    (tmp_path / "t.md").write_text("---\ntype: task\ntitle: Anything\n---\n\n# Heading\n\nbody\n")
+    changes, _ = migrate_subtypes.plan_vault(tmp_path)
+    migrate_subtypes.apply_vault(changes)
+    assert (tmp_path / "t.md").read_text().endswith("---\n\n# Heading\n\nbody\n")
+
+
 def test_migration_apply_leaves_a_vault_the_linter_accepts(tmp_vault):
     _strip_subtypes(tmp_vault)
     assert lint_vault(tmp_vault)["errors"], "stripping subtypes should make the vault lint red"
