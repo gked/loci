@@ -62,6 +62,14 @@ TYPE_COUNTS = {
     "project": 1,
 }
 
+# Subtype counts among default-visible nodes of one type (drives the subtype
+# strip under the type chips). Every task and document carries a subtype since
+# ontology v2; these are the fixture's spread.
+SUBTYPE_COUNTS = {
+    "task": {"feature": 4, "chore": 1},
+    "document": {"note": 14, "spec": 2},
+}
+
 # Tag counts among default-visible nodes (drives the rail).
 TAG_COUNTS = {
     "python": 7,

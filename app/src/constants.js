@@ -10,6 +10,7 @@ export const TYPES = [
   ["topic", "#a4421f"],
   ["event", "#7a5cc1"],
   ["asset", "#5e7a8c"],
+  ["log", "#8a7f5c"],
 ];
 
 export const TYPE_COLOR = Object.fromEntries(TYPES);

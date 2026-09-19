@@ -184,6 +184,11 @@ class TypeRegistry:
     # Public interface
     # ------------------------------------------------------------------
 
+    def types(self) -> list["TypeDef"]:
+        """Every loaded type in declaration order — canonical first, as the
+        ontology file lists them, then user extensions in their file's order."""
+        return list(self._types.values())
+
     def type_names(self) -> set[str]:
         """All valid type names (canonical + accepted user types)."""
         return set(self._types.keys())
@@ -286,15 +291,26 @@ class TypeRegistry:
 
 _registry: Optional[TypeRegistry] = None
 _registry_vault: Optional[Path] = None
+_registry_mtimes: tuple = ()  # source-file mtimes observed at last load
+
+
+def _source_mtimes(ontology_path: Path, user_path: Optional[Path]) -> tuple:
+    """mtimes of the files the registry was built from; 0.0 for an absent overlay."""
+    user_mtime = user_path.stat().st_mtime if (user_path and user_path.exists()) else 0.0
+    return (ontology_path.stat().st_mtime, user_mtime)
 
 
 def get_registry(vault_root: Optional[Path] = None) -> TypeRegistry:
     """
-    Return the shared TypeRegistry, loading it on first call.
+    Return the shared TypeRegistry, loading it on first call and reloading
+    when either source file has changed on disk since. The `loci` HTTP server
+    and `loci-mcp` are separate processes, so a type defined through one has
+    to reach the other by the file's mtime — the same way nx_graph picks up
+    nodes written by the other process.
     Falls back to the references directory if ontology.yaml is not in the vault.
     Pass vault_root=None to force a load from references (useful in tests).
     """
-    global _registry, _registry_vault
+    global _registry, _registry_vault, _registry_mtimes
 
     if vault_root is not None:
         ontology_path = vault_root / "meta" / "ontology.yaml"
@@ -308,18 +324,21 @@ def get_registry(vault_root: Optional[Path] = None) -> TypeRegistry:
         ontology_path = REFERENCES_DIR / "ontology.yaml"
         user_path = None
 
-    if _registry is None or _registry_vault != vault_root:
+    mtimes = _source_mtimes(ontology_path, user_path)
+    if _registry is None or _registry_vault != vault_root or _registry_mtimes != mtimes:
         _registry = TypeRegistry.load(
             ontology_path,
             user_path if (user_path and user_path.exists()) else None,
         )
         _registry_vault = vault_root
+        _registry_mtimes = mtimes
 
     return _registry
 
 
 def reset_registry() -> None:
     """Force the next get_registry() call to reload. Used in tests."""
-    global _registry, _registry_vault
+    global _registry, _registry_vault, _registry_mtimes
     _registry = None
     _registry_vault = None
+    _registry_mtimes = ()

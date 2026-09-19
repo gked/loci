@@ -32,6 +32,7 @@ from loci.tools.vault_init import (
     migrate_legacy_config,
 )
 from loci.tools import nx_graph as graph
+from loci.tools.type_registry import get_registry
 from loci.tools.frontmatter import split_frontmatter
 from loci import api as vault_api
 
@@ -424,6 +425,26 @@ def nodes_list(
             "updated_at": attrs.get("updated_at", ""),
         })
     return augmented
+
+
+@app.get("/api/types")
+def types_list():
+    """The type vocabulary, as the vault's registry has it: canonical types in
+    ontology order, then any user-defined ones. The UI's type chips and subtype
+    chips are driven from here rather than from a list in the bundle, so a type
+    added to the ontology (or by the user) shows up without a frontend change.
+    The registry reloads when its files change on disk, so a type defined
+    through `loci-mcp` reaches this process on the next request.
+    Colours stay in the bundle — they are a design decision, not vocabulary."""
+    registry = get_registry(_vault_root())
+    result = []
+    for td in registry.types():
+        subtypes: list[str] = []
+        for f in td.required_fields + td.optional_fields:
+            if f.name == "subtype" and f.values:
+                subtypes = list(f.values)
+        result.append({"name": td.name, "subtypes": subtypes})
+    return result
 
 
 @app.get("/api/nodes/{uid}/neighbors")

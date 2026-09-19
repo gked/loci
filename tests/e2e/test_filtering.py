@@ -80,6 +80,101 @@ def test_every_type_count_matches(app_page):
 
 
 # ---------------------------------------------------------------------------
+# Subtype chips
+# ---------------------------------------------------------------------------
+
+STRIP = "[data-testid='subtype-strip']"
+
+
+def _subtype_chip(page, subtype):
+    return page.locator(f"[data-testid='subtype-filter'][data-subtype='{subtype}']")
+
+
+def test_subtype_strip_absent_until_a_type_is_chosen(app_page):
+    expect(app_page.locator(STRIP)).to_have_count(0)
+    app_page.locator("[data-testid='type-filter'][data-type='task']").click()
+    expect(app_page.locator(STRIP)).to_have_count(1)
+
+
+def test_subtype_chips_come_from_the_registry_with_counts(app_page):
+    app_page.locator("[data-testid='type-filter'][data-type='task']").click()
+
+    chips = app_page.locator("[data-testid='subtype-filter']")
+    expect(chips).to_have_count(4)  # bug, feature, question, chore — the full enum, not just what's present
+    for subtype, expected in vf.SUBTYPE_COUNTS["task"].items():
+        expect(_subtype_chip(app_page, subtype)).to_have_attribute("data-count", str(expected))
+    expect(_subtype_chip(app_page, "bug")).to_have_attribute("data-count", "0")
+
+
+def test_subtype_chip_narrows_and_marks_itself_active(app_page):
+    app_page.locator("[data-testid='type-filter'][data-type='document']").click()
+    chip = _subtype_chip(app_page, "spec")
+    expect(chip).to_have_attribute("data-active", "false")
+
+    chip.click()
+    expect(chip).to_have_attribute("data-active", "true")
+    expect(_rows(app_page)).to_have_count(vf.SUBTYPE_COUNTS["document"]["spec"])
+    expect(app_page.locator("[data-testid='row-subtype']").first).to_have_text("spec")
+
+    chip.click()
+    expect(_rows(app_page)).to_have_count(vf.TYPE_COUNTS["document"])
+
+
+def test_leaving_the_type_drops_the_subtype(app_page):
+    app_page.locator("[data-testid='type-filter'][data-type='task']").click()
+    _subtype_chip(app_page, "chore").click()
+    expect(_rows(app_page)).to_have_count(vf.SUBTYPE_COUNTS["task"]["chore"])
+
+    app_page.locator("[data-testid='type-filter'][data-type='document']").click()
+    expect(_rows(app_page)).to_have_count(vf.TYPE_COUNTS["document"])
+    expect(_subtype_chip(app_page, "note")).to_have_attribute("data-active", "false")
+
+
+def test_subtype_does_not_follow_the_node_back_button_to_all(app_page):
+    """Only handleNav cleared the subtype; NodeDetail's back button goes
+    straight to "all", which used to arrive still narrowed to the subtype with
+    no chip on screen to explain it."""
+    app_page.locator("[data-testid='type-filter'][data-type='task']").click()
+    _subtype_chip(app_page, "feature").click()
+    expect(_rows(app_page)).to_have_count(vf.SUBTYPE_COUNTS["task"]["feature"])
+
+    app_page.locator("[data-testid='node-row'][data-uid='aaa00001']").click()
+    expect(app_page.locator("[data-testid='node-detail']")).to_be_visible()
+    app_page.locator("[data-testid='node-back']").click()
+
+    expect(app_page.locator("[data-testid='vault-index']")).to_be_visible()
+    expect(_rows(app_page)).to_have_count(vf.DEFAULT_VISIBLE)
+    expect(app_page.locator(STRIP)).to_have_count(0)
+
+
+def test_recent_rows_show_the_same_subtype_as_all(app_page):
+    """Recent is fed by /api/nodes/recent, a separate payload from the one the
+    All view filters client-side; it used to omit subtype, so the same node
+    read `task` in Recent and `task · feature` in All."""
+    def subtype_by_uid():
+        out = {}
+        for row in _rows(app_page).all():
+            label = row.locator("[data-testid='row-subtype']")
+            out[row.get_attribute("data-uid")] = label.text_content() if label.count() else None
+        return out
+
+    expect(_rows(app_page)).to_have_count(vf.DEFAULT_VISIBLE)
+    in_all = subtype_by_uid()
+
+    app_page.locator("[data-testid='rail-row'][data-rail-id='recent']").click()
+    expect(_rows(app_page)).not_to_have_count(0)
+    in_recent = subtype_by_uid()
+
+    assert any(in_recent.values()), "Recent shows no subtype labels at all"
+    assert in_recent == {uid: in_all[uid] for uid in in_recent}
+
+
+def test_type_chips_include_every_registry_type(app_page):
+    # `log` is canonical but was missing from the bundle's hardcoded list.
+    expect(app_page.locator("[data-testid='type-filter'][data-type='log']")).to_have_count(1)
+
+
+# ---------------------------------------------------------------------------
 # Archived / ghost toggles
 # ---------------------------------------------------------------------------
 

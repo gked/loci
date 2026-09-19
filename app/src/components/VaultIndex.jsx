@@ -4,7 +4,8 @@ import { HeaderStrip } from "./HeaderStrip.jsx";
 import { Meridian } from "./Meridian.jsx";
 import { Corners } from "./Corners.jsx";
 
-const FILTER_TYPES = ["all","project","topic","article","bookmark","conversation","procedure","entity","task","document","asset"];
+// Shown until /api/types answers; after that the registry's order wins.
+const FALLBACK_TYPES = ["project","topic","article","bookmark","conversation","procedure","entity","task","document","asset","log"];
 
 function ToggleSwitch({ active, onToggle, label }) {
   return (
@@ -40,9 +41,11 @@ function ToggleSwitch({ active, onToggle, label }) {
   );
 }
 
-export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeTag, onTagSelect, showArchived, onToggleArchived, showGhost, onToggleGhost }) {
+export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeTag, onTagSelect, types = [], activeSubtype, subtypeCounts = {}, onSubtypeSelect, showArchived, onToggleArchived, showGhost, onToggleGhost }) {
   const [filterQ, setFilterQ] = useState("");
   const activeFilter = section?.startsWith("t:") ? section.slice(2) : "all";
+  const filterTypes = ["all", ...(types.length ? types.map(t => t.name) : FALLBACK_TYPES)];
+  const subtypes = activeFilter === "all" ? [] : (types.find(t => t.name === activeFilter)?.subtypes || []);
   const archivedCount = showArchived ? nodes.filter(n => n.state === "archived").length : 0;
   const ghostCount = showGhost ? nodes.filter(n => !n.path).length : 0;
 
@@ -88,7 +91,7 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeT
       {/* filter strip */}
       <div style={{ padding: "8px 24px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--t-rule-soft)", flexShrink: 0, flexWrap: "wrap" }}>
         <span className="smcaps">type</span>
-        {FILTER_TYPES.map((t) => (
+        {filterTypes.map((t) => (
           <span
             key={t}
             className="t-chip"
@@ -142,6 +145,35 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeT
         <ToggleSwitch active={showArchived} onToggle={onToggleArchived} label="archived"/>
       </div>
 
+      {/* subtype strip — only when a type with subtypes is selected */}
+      {subtypes.length > 0 && (
+        <div
+          data-testid="subtype-strip"
+          style={{ padding: "6px 24px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--t-rule-soft)", flexShrink: 0, flexWrap: "wrap" }}
+        >
+          <span className="smcaps">subtype</span>
+          {subtypes.map((st) => {
+            const count = subtypeCounts[st] || 0;
+            const active = activeSubtype === st;
+            return (
+              <span
+                key={st}
+                className="t-chip"
+                onClick={() => onSubtypeSelect(st)}
+                data-testid="subtype-filter"
+                data-subtype={st}
+                data-active={active ? "true" : "false"}
+                data-count={count}
+                style={{ cursor: "pointer", opacity: active ? 1 : count ? 0.45 : 0.2, display: "flex", alignItems: "center", gap: 4 }}
+              >
+                {st}
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, opacity: 0.7 }}>{count}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       {/* column headers */}
       <div style={{
         display: "grid", gridTemplateColumns: "18px 1fr 90px 110px 80px",
@@ -191,7 +223,14 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeT
                 ? <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--t-fg-faint)" }}>ghost</span>
                 : isArchived
                   ? <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--t-fg-faint)" }}>archived</span>
-                  : n.type}
+                  : <>
+                      {n.type}
+                      {n.subtype && (
+                        <span data-testid="row-subtype" style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.04em", color: "var(--t-fg-faint)" }}>
+                          {n.subtype}
+                        </span>
+                      )}
+                    </>}
             </span>
             <span className="lr-uid">{n.uid}</span>
             <span className="lr-date">{(n.updated_at || "").slice(0, 10)}</span>

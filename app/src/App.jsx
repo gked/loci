@@ -5,12 +5,13 @@ import { VaultIndex } from "./components/VaultIndex.jsx";
 import { NodeDetail } from "./components/NodeDetail.jsx";
 import { GraphView } from "./components/GraphView.jsx";
 import { CommandPalette } from "./components/CommandPalette.jsx";
-import { getNodes, getNode, getNodeNeighbors, getRecentNodes, getGraph } from "./lib/api.js";
+import { getNodes, getNode, getNodeNeighbors, getRecentNodes, getGraph, getTypes } from "./lib/api.js";
 
 export default function App() {
   const [selectedUid, setSelectedUid] = useState(null);
   const [section, setSection] = useState("all");
   const [activeTag, setActiveTag] = useState(null);
+  const [activeSubtype, setActiveSubtype] = useState(null);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [paper, setPaper] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -20,6 +21,13 @@ export default function App() {
   const { data: allNodesRaw = [], isError: nodesError } = useQuery({
     queryKey: ["nodes"],
     queryFn: () => getNodes({ state: "all" }),
+    staleTime: 30_000,
+  });
+
+  // Type vocabulary from the registry — the type chips and, per type, the subtype chips.
+  const { data: types = [] } = useQuery({
+    queryKey: ["types"],
+    queryFn: getTypes,
     staleTime: 30_000,
   });
 
@@ -105,8 +113,14 @@ export default function App() {
 
   const handleNav = (id) => {
     if (id === "cmd") { setCmdOpen(true); return; }
+    // A subtype only means something within its type, so leaving the type drops it.
+    if (id !== section) setActiveSubtype(null);
     setSection(id);
   };
+
+  const handleSubtypeSelect = useCallback((subtype) => {
+    setActiveSubtype(prev => prev === subtype ? null : subtype);
+  }, []);
 
   const handleTagSelect = useCallback((tag) => {
     setActiveTag(prev => prev === tag ? null : tag);
@@ -121,7 +135,15 @@ export default function App() {
     : section.startsWith("t:") ? visibleNodes.filter(n => n.type === section.slice(2))
     : visibleNodes;
   const withTag = activeTag ? baseNodes.filter(n => n.tags?.includes(activeTag)) : baseNodes;
-  const indexNodes = showGhost ? withTag : withTag.filter(n => n.path);
+  // Subtype chips count what the type × tag filters left, then narrow it further.
+  // The subtype only applies inside a type view: every path back to "all"
+  // (node back, Escape, graph, tag click) would otherwise keep narrowing the
+  // index with no chip on screen to show why.
+  const subtypeCounts = {};
+  for (const n of withTag) if (n.subtype) subtypeCounts[n.subtype] = (subtypeCounts[n.subtype] || 0) + 1;
+  const effectiveSubtype = section.startsWith("t:") ? activeSubtype : null;
+  const withSubtype = effectiveSubtype ? withTag.filter(n => n.subtype === effectiveSubtype) : withTag;
+  const indexNodes = showGhost ? withSubtype : withSubtype.filter(n => n.path);
 
   // Active rail id (for VaultIndex sections we highlight the specific type/all/recent)
   const railActive = section;
@@ -163,6 +185,10 @@ export default function App() {
             onNav={handleNav}
             activeTag={activeTag}
             onTagSelect={handleTagSelect}
+            types={types}
+            activeSubtype={activeSubtype}
+            subtypeCounts={subtypeCounts}
+            onSubtypeSelect={handleSubtypeSelect}
             showArchived={showArchived}
             onToggleArchived={() => setShowArchived(v => !v)}
             showGhost={showGhost}

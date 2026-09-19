@@ -576,6 +576,19 @@ def test_recent_includes_nodes_within_window(monkeypatch):
     assert any(r["uid"] == "r001" for r in result)
 
 
+def test_recent_carries_subtype(monkeypatch):
+    # The Recent view renders the same row as find(); it needs subtype too.
+    from datetime import datetime, timezone, timedelta
+    recent_date = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    dg = nx.DiGraph()
+    dg.add_node("r010", **_node_attrs(type="task", subtype="feature", updated_at=recent_date))
+    dg.add_node("r011", **_node_attrs(type="topic", updated_at=recent_date))
+    monkeypatch.setattr(g, "_graph", dg)
+    by_uid = {r["uid"]: r for r in g.recent(days=30)}
+    assert by_uid["r010"]["subtype"] == "feature"
+    assert by_uid["r011"]["subtype"] == ""
+
+
 def test_recent_excludes_nodes_outside_window(monkeypatch):
     from datetime import datetime, timezone, timedelta
     old_date = (datetime.now(timezone.utc) - timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -625,7 +638,7 @@ def test_recent_return_shape(monkeypatch):
     monkeypatch.setattr(g, "_graph", dg)
     result = g.recent(days=30)
     assert len(result) == 1
-    assert set(result[0].keys()) == {"uid", "title", "type", "path", "updated_at", "status"}
+    assert set(result[0].keys()) == {"uid", "title", "type", "subtype", "path", "updated_at", "status"}
     assert result[0]["status"] == "todo"
 
 

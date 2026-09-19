@@ -202,6 +202,66 @@ def test_http_nodes_list_filters_by_subtype(tmp_vault, monkeypatch):
     assert rows[0]["subtype"] == "chore"
 
 
+def test_registry_lists_types_in_ontology_order():
+    names = [t.name for t in get_registry(None).types()]
+    assert names[:3] == ["document", "article", "bookmark"]
+    assert set(names) == get_registry(None).type_names()
+
+
+def test_http_types_endpoint_serves_the_vocabulary_with_subtypes(tmp_vault, monkeypatch):
+    from fastapi.testclient import TestClient
+    from loci import http_server
+
+    monkeypatch.setattr(http_server, "_API_TOKEN", "t")
+    monkeypatch.setattr(http_server, "_allowed_origins", lambda: [])
+    client = TestClient(http_server.app)
+
+    rows = client.get("/api/types", headers={"Authorization": "Bearer t"}).json()
+    by_name = {r["name"]: r["subtypes"] for r in rows}
+
+    assert [r["name"] for r in rows][:2] == ["document", "article"]
+    assert by_name["task"] == ["bug", "feature", "question", "chore"]
+    assert by_name["entity"] == ["person", "organization", "place"]
+    assert by_name["topic"] == []
+    assert "log" in by_name
+
+
+def test_http_types_endpoint_picks_up_a_type_defined_by_another_process(tmp_vault, monkeypatch):
+    """`loci-mcp` writes ontology-user.yaml and resets *its* registry; the `loci`
+    HTTP process has to notice by the file changing on disk."""
+    import os
+    import shutil
+    from fastapi.testclient import TestClient
+    from loci import http_server
+    from loci.tools.type_registry import REFERENCES_DIR
+
+    meta = tmp_vault / "meta"
+    meta.mkdir()
+    shutil.copy(REFERENCES_DIR / "ontology.yaml", meta / "ontology.yaml")
+    user_path = meta / "ontology-user.yaml"
+    shutil.copy(REFERENCES_DIR / "ontology-user.yaml", user_path)
+
+    monkeypatch.setattr(http_server, "_API_TOKEN", "t")
+    monkeypatch.setattr(http_server, "_allowed_origins", lambda: [])
+    client = TestClient(http_server.app)
+    headers = {"Authorization": "Bearer t"}
+
+    before = {r["name"] for r in client.get("/api/types", headers=headers).json()}
+    assert "recipe" not in before
+
+    # Another process appends a type — no reset_registry() in this one.
+    raw = yaml.safe_load(user_path.read_text()) or {}
+    raw["types"] = (raw.get("types") or []) + [
+        {"name": "recipe", "extends": "procedure", "description": "A cooking procedure."}
+    ]
+    user_path.write_text(yaml.safe_dump(raw, sort_keys=False))
+    later = os.stat(user_path).st_mtime + 2
+    os.utime(user_path, (later, later))  # don't depend on filesystem mtime resolution
+
+    after = {r["name"] for r in client.get("/api/types", headers=headers).json()}
+    assert "recipe" in after
+
+
 # ---------------------------------------------------------------------------
 # Migration script
 # ---------------------------------------------------------------------------

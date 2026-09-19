@@ -35,14 +35,14 @@ const TYPE_COLOR = {
   project:"#2f6fc4", task:"#ff8a00", document:"#1fa050",
   entity:"#e63946", conversation:"#2dbfb6", article:"#f4c430",
   bookmark:"#c062b8", procedure:"#ff6b8a", topic:"#a4421f",
-  event:"#7a5cc1", asset:"#5e7a8c", default:"#bab0ac",
+  event:"#7a5cc1", asset:"#5e7a8c", log:"#8a7f5c", default:"#bab0ac",
 };
 
 const T_LATIN = {
   project: "negotium", task: "labor", document: "documentum",
   entity: "persona", conversation: "colloquium", article: "articulus",
   bookmark: "signum", procedure: "ratio", topic: "argumentum",
-  event: "eventus", asset: "res", default: "ignotum",
+  event: "eventus", asset: "res", log: "commentarius", default: "ignotum",
 };
 
 export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology, paper }) {

@@ -341,6 +341,7 @@ button { font-family: inherit; }
 .t-dot[data-type="topic"]        { background: var(--type-topic); }
 .t-dot[data-type="event"]        { background: var(--type-event); }
 .t-dot[data-type="asset"]        { background: var(--type-asset); }
+.t-dot[data-type="log"]          { background: var(--type-log); }
 
 .t-halo {
   position: relative;

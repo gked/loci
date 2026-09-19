@@ -127,7 +127,10 @@ style-driven markup, so text selectors break on every design pass.
 |---|---|---|
 | `vault-index` | `VaultIndex.jsx` | — |
 | `node-row` | `VaultIndex.jsx` | `data-uid`, `data-state` (active/archived/ghost) |
-| `type-filter` | `VaultIndex.jsx` | `data-type`, `data-active` |
+| `type-filter` | `VaultIndex.jsx` | `data-type`, `data-active` — chips come from `/api/types`, so the set is the registry's |
+| `subtype-strip` | `VaultIndex.jsx` | present only while a type with subtypes is selected |
+| `subtype-filter` | `VaultIndex.jsx` | `data-subtype`, `data-active`, `data-count` (count within the current type × tag) |
+| `row-subtype` | `VaultIndex.jsx` | the subtype label under a row's type |
 | `toggle-ghost`, `toggle-archived` | `VaultIndex.jsx` | `data-active` |
 | `index-empty` | `VaultIndex.jsx` | — |
 | `rail-row` | `VaultRail.jsx` | `data-rail-id`, `data-active` |

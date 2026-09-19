@@ -375,7 +375,7 @@ def recent(days: int = 30, limit: int = 20, state: str = "active") -> list[dict]
     """
     Return the most recently updated vault nodes within the last N days.
     Sorted by updated_at descending. Nodes without updated_at are excluded.
-    Returns list of {uid, title, type, path, updated_at, status}.
+    Returns list of {uid, title, type, subtype, path, updated_at, status}.
 
     state defaults to "active" — archived nodes are excluded unless state="archived"
     is passed explicitly. Pass state=None to include all nodes regardless of state.
@@ -395,6 +395,7 @@ def recent(days: int = 30, limit: int = 20, state: str = "active") -> list[dict]
                 "uid": uid,
                 "title": attrs.get("title", ""),
                 "type": attrs.get("type", ""),
+                "subtype": attrs.get("subtype", "") or "",
                 "path": attrs.get("path", ""),
                 "updated_at": updated,
                 "status": attrs.get("status", ""),

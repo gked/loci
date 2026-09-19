@@ -77,6 +77,7 @@
   --type-topic:        #a4421f;
   --type-event:        #7a5cc1;
   --type-asset:        #5e7a8c;
+  --type-log:          #8a7f5c;
   --type-default:      #bab0ac;
 
   /* ----- Type families ------------------------------------ */
@@ -365,3 +366,4 @@
 .type-dot[data-type="topic"]        { background: var(--type-topic); }
 .type-dot[data-type="event"]        { background: var(--type-event); }
 .type-dot[data-type="asset"]        { background: var(--type-asset); }
+.type-dot[data-type="log"]          { background: var(--type-log); }

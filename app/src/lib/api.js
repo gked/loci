@@ -64,6 +64,12 @@ export function getNode(uid) {
   return request(`/nodes/${uid}`);
 }
 
+// The type vocabulary, from the vault's registry: [{name, subtypes: [...]}, …]
+// in ontology order. Drives the index's type and subtype chips.
+export function getTypes() {
+  return request("/types");
+}
+
 export function getNodeNeighbors(uid) {
   return request(`/nodes/${uid}/neighbors`);
 }
