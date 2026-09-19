@@ -1,6 +1,7 @@
 ---
 uid: bbb00003
 type: document
+subtype: spec
 title: Data Pipeline Design
 author: self
 state: active

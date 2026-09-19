@@ -8,7 +8,7 @@ parent_topic: slow budget
 references: []
 relations:
 - type: relates-to
-  uid: 3d061f79
+  uid: 8ea32f2e
 state: active
 status: archived
 summary: The narrow lattice drafts the ambient corridor before the season settles.

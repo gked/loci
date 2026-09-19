@@ -7,11 +7,9 @@ domains:
 references: []
 relations:
 - type: relates-to
-  uid: 44e20d0d
+  uid: 3aaeb5ed
 - type: relates-to
-  uid: 4d21e937
-- type: about
-  uid: 8a6090cf
+  uid: b5cbeaaa
 state: archived
 subtype: presentation
 summary: The slow compass reviews the minimal signal before the threshold settles.

@@ -6,8 +6,8 @@ domains:
 - creativity-design
 references: []
 relations:
-- type: is-part-of
-  uid: a6c40444
+- type: relates-to
+  uid: fd3244f2
 state: active
 status: active
 summary: The practical register sketchs the practical outline before the handle settles.

@@ -300,8 +300,8 @@ def test_write_vault_returns_uid(tmp_vault):
 
 
 def test_write_vault_refuses_duplicates_by_default(tmp_vault):
-    first = write_vault("document", "Written Twice", "body", extra_fields={"status": "draft"})
-    second = write_vault("document", "Written Twice", "body", extra_fields={"status": "draft"})
+    first = write_vault("document", "Written Twice", "body", extra_fields={"status": "draft", "subtype": "note"})
+    second = write_vault("document", "Written Twice", "body", extra_fields={"status": "draft", "subtype": "note"})
     assert second["duplicate"] is True
     assert second["uid"] == first["uid"]
 
@@ -320,7 +320,7 @@ def test_save_asset_passes_allow_duplicate_through(tmp_vault):
 
 def test_patch_vault_accepts_uid_as_path(tmp_vault):
     """No search_vault round-trip needed: the UID resolves on its own."""
-    written = write_vault("document", "Patch By UID", "body", extra_fields={"status": "draft"})
+    written = write_vault("document", "Patch By UID", "body", extra_fields={"status": "draft", "subtype": "note"})
     result = patch_vault(written["uid"], {"status": "done"})
     assert result["uid"] == written["uid"]
     assert "error" not in result
@@ -436,7 +436,7 @@ def test_resolve_mentions_passes_types_through(tmp_vault):
 
 
 def test_query_recent_returns_list(tmp_vault):
-    nodes = [{"uid": "r001", "title": "Fresh", "type": "task", "path": "/p", "updated_at": "2026-04-20T00:00:00Z", "status": "todo"}]
+    nodes = [{"uid": "r001", "title": "Fresh", "type": "task", "path": "/p", "updated_at": "2026-04-20T00:00:00Z", "status": "todo", "subtype": "feature"}]
     with patch("loci.mcp_server.graph.get") as mock_get, \
          patch("loci.mcp_server.graph.recent", return_value=nodes):
         result = query_recent(days=30)

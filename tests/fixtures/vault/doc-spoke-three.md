@@ -1,6 +1,7 @@
 ---
 uid: spoke003
 type: document
+subtype: note
 title: Spoke Document Three
 author: self
 state: active

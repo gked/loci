@@ -15,7 +15,9 @@ location: Cusco
 references: []
 relations:
 - type: relates-to
-  uid: 38e9de81
+  uid: b99e0db7
+- type: relates-to
+  uid: f48bc982
 roles:
 - hidden budget
 - brittle kernel

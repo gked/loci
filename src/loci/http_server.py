@@ -405,12 +405,13 @@ def nodes_recent(
 def nodes_list(
     node_type: str = Query(None, alias="type"),
     tag: str = Query(None),
+    subtype: str = Query(None),
     state: str = Query("active"),
 ):
     vr = _vault_root()
     g = graph.get(vr)
     state_filter = None if state == "all" else state
-    results = graph.find(node_type=node_type, tag=tag, state=state_filter)
+    results = graph.find(node_type=node_type, tag=tag, subtype=subtype, state=state_filter)
     augmented = []
     for item in results:
         uid = item["uid"]

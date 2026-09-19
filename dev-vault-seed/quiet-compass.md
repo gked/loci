@@ -7,10 +7,8 @@ domains:
 parent_topic: stable lattice
 references: []
 relations:
-- type: relates-to
-  uid: 33d14172
 - type: is-part-of
-  uid: 38e9de81
+  uid: a6cecc1b
 state: active
 status: archived
 summary: The stable handle documents the narrow lattice before the loop settles. The

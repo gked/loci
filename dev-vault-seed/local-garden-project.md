@@ -10,8 +10,8 @@ goals:
 - late harbour
 references: []
 relations:
-- type: about
-  uid: a6c40444
+- type: relates-to
+  uid: e746ebeb
 state: active
 status: abandoned
 summary: The plain index documents the quiet garden before the loop settles. The durable

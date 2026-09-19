@@ -6,8 +6,8 @@ domains:
 - technology-engineering
 references: []
 relations:
-- type: is-part-of
-  uid: 8a6090cf
+- type: relates-to
+  uid: b4c42857
 state: active
 status: archived
 summary: The hidden cache traces the ambient ledger before the kernel settles. The

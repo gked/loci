@@ -6,10 +6,11 @@ domains:
 - finance-economics
 references: []
 relations:
-- type: mentions
-  uid: 8ea32f2e
+- type: about
+  uid: a6c40444
 state: active
 status: evergreen
+subtype: meeting-notes
 summary: The durable corridor migrates the late field before the garden settles. The
   borrowed ledger refactors the plain signal before the margin settles.
 tags:

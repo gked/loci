@@ -1,19 +1,16 @@
 ---
 archived_at: null
 author: self
-created_at: '2025-10-03T03:37:07Z'
+created_at: '2025-05-25T15:13:52Z'
 domains:
 - health-biology
 references: []
 relations:
-- type: about
-  uid: 83868a29
 - type: mentions
-  uid: 8ea32f2e
-- type: mentions
-  uid: 44e20d0d
+  uid: 3aaeb5ed
 state: active
 status: draft
+subtype: journal
 summary: The recursive archive drafts the adaptive field before the field settles.
   The practical ledger rebuilds the late draft before the margin settles.
 tags:
@@ -25,7 +22,7 @@ tags:
 title: 'Portable Season: field and compass'
 type: document
 uid: 8706d602
-updated_at: '2025-11-19T14:24:49Z'
+updated_at: '2025-07-26T01:55:22Z'
 ---
 
 ## Portable Season: field and compass

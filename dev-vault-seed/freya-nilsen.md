@@ -18,8 +18,8 @@ location: Sapporo
 organization: Wren and Kite
 references: []
 relations:
-- type: works-at
-  uid: 3aaeb5ed
+- type: relates-to
+  uid: 44e20d0d
 roles:
 - practical ledger
 - durable loop

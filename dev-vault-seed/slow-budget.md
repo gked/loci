@@ -9,7 +9,7 @@ parent_topic: practical register
 references: []
 relations:
 - type: relates-to
-  uid: 4d21e937
+  uid: e746ebeb
 state: active
 status: active
 summary: The slow workshop reviews the narrow loop before the lattice settles. The

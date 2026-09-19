@@ -1,6 +1,7 @@
 ---
 uid: e2e00001
 type: document
+subtype: note
 title: Archived E2E Note
 author: self
 state: archived

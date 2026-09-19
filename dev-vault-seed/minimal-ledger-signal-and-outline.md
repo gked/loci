@@ -1,7 +1,7 @@
 ---
 archived_at: null
 author: self
-created_at: '2026-06-16T06:31:26Z'
+created_at: '2025-10-06T10:33:35Z'
 domains:
 - personal-development
 references:
@@ -10,7 +10,9 @@ references:
   url: https://notes.example.com/harbour/7087
 relations:
 - type: relates-to
-  uid: 4d21e937
+  uid: 7e21b8aa
+- type: relates-to
+  uid: b99e0db7
 site_name: journal.example.co
 source_url: https://notes.example.com/harbour/7087
 state: active
@@ -25,7 +27,7 @@ tags:
 title: 'Minimal Ledger: signal and outline'
 type: bookmark
 uid: a9c2d7da
-updated_at: '2026-07-13T05:17:58Z'
+updated_at: '2025-11-02T09:20:06Z'
 ---
 
 ## Minimal Ledger: signal and outline

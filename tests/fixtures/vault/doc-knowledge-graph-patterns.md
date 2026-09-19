@@ -1,6 +1,7 @@
 ---
 uid: dup00002
 type: document
+subtype: note
 title: Knowledge Graph Design Patterns
 author: self
 state: active

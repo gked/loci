@@ -11,8 +11,8 @@ goals:
 - brittle kernel
 references: []
 relations:
-- type: about
-  uid: 38e9de81
+- type: relates-to
+  uid: 33d14172
 state: active
 status: completed
 summary: The plain kernel prunes the restless register before the cache settles. The

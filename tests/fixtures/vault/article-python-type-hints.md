@@ -1,6 +1,7 @@
 ---
 uid: ccc00001
 type: article
+subtype: article
 title: Python Type Hints Deep Dive
 author: self
 state: active

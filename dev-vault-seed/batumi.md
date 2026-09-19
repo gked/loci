@@ -12,7 +12,7 @@ location: Naoshima
 references: []
 relations:
 - type: relates-to
-  uid: 83868a29
+  uid: fd3244f2
 roles:
 - stable workshop
 - late protocol

@@ -1,6 +1,7 @@
 ---
 uid: ccc00002
 type: article
+subtype: article
 title: Machine Learning Fundamentals
 author: self
 state: active

@@ -28,7 +28,7 @@ def _write_raw(vault: Path, name: str, fm: dict, body: str = "") -> Path:
 # ---------------------------------------------------------------------------
 
 def test_save_creates_file(tmp_vault):
-    result = api.save(type="document", title="Test Doc", body="Hello.", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="Test Doc", body="Hello.", extra_fields={"status": "draft", "subtype": "note"})
     p = Path(result["path"])
     assert p.exists()
     assert result["type"] == "document"
@@ -43,7 +43,7 @@ def test_save_frontmatter_written(tmp_vault):
         body="Do it.",
         tags=["python"],
         summary="A task.",
-        extra_fields={"status": "todo"},
+        extra_fields={"status": "todo", "subtype": "feature"},
     )
     raw = Path(result["path"]).read_text(encoding="utf-8")
     fm = yaml.safe_load(raw.split("---", 2)[1])
@@ -66,8 +66,8 @@ def test_save_missing_required_field_returns_errors(tmp_vault):
 
 
 def test_save_refuses_a_duplicate_title(tmp_vault):
-    first = api.save(type="document", title="Duplicate Me", body="", extra_fields={"status": "draft"})
-    result = api.save(type="document", title="duplicate me", body="", extra_fields={"status": "draft"})
+    first = api.save(type="document", title="Duplicate Me", body="", extra_fields={"status": "draft", "subtype": "note"})
+    result = api.save(type="document", title="duplicate me", body="", extra_fields={"status": "draft", "subtype": "note"})
     assert result["duplicate"] is True
     assert result["uid"] == first["uid"]
     assert result["path"] == first["path"]
@@ -85,9 +85,9 @@ def test_save_refuses_a_duplicate_source_url(tmp_vault):
 
 
 def test_save_allow_duplicate_writes_a_second_node(tmp_vault):
-    first = api.save(type="document", title="Duplicate Me", body="first body", extra_fields={"status": "draft"})
+    first = api.save(type="document", title="Duplicate Me", body="first body", extra_fields={"status": "draft", "subtype": "note"})
     second = api.save(
-        type="document", title="Duplicate Me", body="second body", extra_fields={"status": "draft"},
+        type="document", title="Duplicate Me", body="second body", extra_fields={"status": "draft", "subtype": "note"},
         allow_duplicate=True,
     )
     assert "duplicate" not in second
@@ -115,10 +115,10 @@ def test_save_does_not_refuse_a_url_prefix(tmp_vault):
 
 def test_save_duplicate_check_sees_a_patched_title(tmp_vault):
     # The check answers from the graph, so a rename must reach it.
-    node = api.save(type="document", title="Before Rename", body="", extra_fields={"status": "draft"})
+    node = api.save(type="document", title="Before Rename", body="", extra_fields={"status": "draft", "subtype": "note"})
     api.patch(node["uid"], {"title": "After Rename"})
-    assert "duplicate" not in api.save(type="document", title="Before Rename", body="", extra_fields={"status": "draft"})
-    result = api.save(type="document", title="After Rename", body="", extra_fields={"status": "draft"})
+    assert "duplicate" not in api.save(type="document", title="Before Rename", body="", extra_fields={"status": "draft", "subtype": "note"})
+    result = api.save(type="document", title="After Rename", body="", extra_fields={"status": "draft", "subtype": "note"})
     assert result["duplicate"] is True
     assert result["uid"] == node["uid"]
 
@@ -138,7 +138,7 @@ def test_save_does_not_treat_a_cited_url_as_a_duplicate(tmp_vault):
     api.save(type="bookmark", title="The Bookmark", body="", extra_fields={"source_url": url})
     result = api.save(
         type="task", title="Follow up on the cited page", body="",
-        extra_fields={"status": "todo"},
+        extra_fields={"status": "todo", "subtype": "feature"},
         references=[{"url": url, "title": "The page", "source_type": "web"}],
     )
     assert "duplicate" not in result
@@ -149,15 +149,15 @@ def test_save_does_not_refuse_titles_that_share_a_slug(tmp_vault):
     # Slugs truncate at 60 chars; a date past the cut-off must not make the
     # second note a duplicate of the first. Both land on distinct filenames.
     stem = "Meeting notes: Q3 planning session with the platform team"
-    first = api.save(type="document", title=f"{stem} — 2026-09-01", body="", extra_fields={"status": "draft"})
-    second = api.save(type="document", title=f"{stem} — 2026-09-08", body="", extra_fields={"status": "draft"})
+    first = api.save(type="document", title=f"{stem} — 2026-09-01", body="", extra_fields={"status": "draft", "subtype": "note"})
+    second = api.save(type="document", title=f"{stem} — 2026-09-08", body="", extra_fields={"status": "draft", "subtype": "note"})
     assert "duplicate" not in second
     assert second["path"] != first["path"]
 
 
 def test_save_keeps_non_latin_titles_apart(tmp_vault):
-    first = api.save(type="document", title="Отчёт 2024", body="", extra_fields={"status": "draft"})
-    second = api.save(type="document", title="План 2024", body="", extra_fields={"status": "draft"})
+    first = api.save(type="document", title="Отчёт 2024", body="", extra_fields={"status": "draft", "subtype": "note"})
+    second = api.save(type="document", title="План 2024", body="", extra_fields={"status": "draft", "subtype": "note"})
     assert "duplicate" not in second
     assert Path(first["path"]).name == "отчёт-2024.md"
     assert Path(second["path"]).name == "план-2024.md"
@@ -189,7 +189,7 @@ def test_save_reports_a_bad_type_before_a_duplicate(tmp_vault):
 # ---------------------------------------------------------------------------
 
 def test_delete_removes_file(tmp_vault):
-    result = api.save(type="document", title="To Delete", body="", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="To Delete", body="", extra_fields={"status": "draft", "subtype": "note"})
     path = result["path"]
     assert Path(path).exists()
     api.delete(path)
@@ -197,14 +197,14 @@ def test_delete_removes_file(tmp_vault):
 
 
 def test_delete_returns_metadata(tmp_vault):
-    result = api.save(type="document", title="Del Meta", body="", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="Del Meta", body="", extra_fields={"status": "draft", "subtype": "note"})
     deleted = api.delete(result["path"])
     assert deleted["deleted"] is True
     assert deleted["path"] == result["path"]
 
 
 def test_delete_relative_path_resolves(tmp_vault):
-    result = api.save(type="document", title="Rel Delete", body="", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="Rel Delete", body="", extra_fields={"status": "draft", "subtype": "note"})
     fname = Path(result["path"]).name
     api.delete(fname)  # relative path
     assert not Path(result["path"]).exists()
@@ -216,7 +216,7 @@ def test_delete_missing_file_raises(tmp_vault):
 
 
 def test_delete_by_uid(tmp_vault):
-    result = api.save(type="document", title="UID Delete", body="", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="UID Delete", body="", extra_fields={"status": "draft", "subtype": "note"})
     api.delete(result["uid"])
     assert not Path(result["path"]).exists()
 
@@ -241,8 +241,8 @@ def test_delete_empty_path_does_not_touch_vault_root(tmp_vault):
 
 def test_delete_by_uid_stale_graph_path_raises(tmp_vault):
     """A stale graph path pointing at another node's file must not be deleted."""
-    victim = api.save(type="document", title="Victim", body="", extra_fields={"status": "draft"})
-    stale = api.save(type="document", title="Stale", body="", extra_fields={"status": "draft"})
+    victim = api.save(type="document", title="Victim", body="", extra_fields={"status": "draft", "subtype": "note"})
+    stale = api.save(type="document", title="Stale", body="", extra_fields={"status": "draft", "subtype": "note"})
     # Simulate the stale cache: the file moved away and stale's cached path now
     # points at victim's file. Inject after the rebuild the unlink triggers.
     Path(stale["path"]).unlink()
@@ -259,7 +259,7 @@ def test_delete_by_uid_stale_graph_path_raises(tmp_vault):
 # ---------------------------------------------------------------------------
 
 def test_patch_merges_frontmatter(tmp_vault):
-    result = api.save(type="document", title="Patch Me", body="Original.", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="Patch Me", body="Original.", extra_fields={"status": "draft", "subtype": "note"})
     api.patch(result["path"], {"tags": ["updated"], "status": "done"})
     raw = Path(result["path"]).read_text(encoding="utf-8")
     fm = yaml.safe_load(raw.split("---", 2)[1])
@@ -269,7 +269,7 @@ def test_patch_merges_frontmatter(tmp_vault):
 
 
 def test_patch_replaces_body(tmp_vault):
-    result = api.save(type="document", title="Body Patch", body="Old body.", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="Body Patch", body="Old body.", extra_fields={"status": "draft", "subtype": "note"})
     api.patch(result["path"], {}, body="New body.")
     raw = Path(result["path"]).read_text(encoding="utf-8")
     assert "New body." in raw
@@ -277,14 +277,14 @@ def test_patch_replaces_body(tmp_vault):
 
 
 def test_patch_relative_path_resolves(tmp_vault):
-    result = api.save(type="document", title="Rel Patch", body="", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="Rel Patch", body="", extra_fields={"status": "draft", "subtype": "note"})
     fname = Path(result["path"]).name
     patched = api.patch(fname, {"title": "Renamed"})
     assert patched["title"] == "Renamed"
 
 
 def test_patch_by_uid(tmp_vault):
-    result = api.save(type="document", title="UID Patch", body="", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="UID Patch", body="", extra_fields={"status": "draft", "subtype": "note"})
     patched = api.patch(result["uid"], {"tags": ["by-uid"], "status": "done"})
     assert patched["uid"] == result["uid"]
     fm = yaml.safe_load(Path(result["path"]).read_text(encoding="utf-8").split("---", 2)[1])
@@ -293,7 +293,7 @@ def test_patch_by_uid(tmp_vault):
 
 
 def test_patch_by_uid_replaces_body(tmp_vault):
-    result = api.save(type="document", title="UID Body Patch", body="Old body.", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="UID Body Patch", body="Old body.", extra_fields={"status": "draft", "subtype": "note"})
     api.patch(result["uid"], {}, body="New body.")
     raw = Path(result["path"]).read_text(encoding="utf-8")
     assert "New body." in raw
@@ -313,8 +313,8 @@ def test_patch_directory_raises_not_a_file(tmp_vault):
 
 def test_patch_by_uid_stale_graph_path_raises(tmp_vault):
     """A stale graph path must not let a patch write into another node's file."""
-    victim = api.save(type="document", title="Patch Victim", body="Untouched.", extra_fields={"status": "draft"})
-    stale = api.save(type="document", title="Patch Stale", body="", extra_fields={"status": "draft"})
+    victim = api.save(type="document", title="Patch Victim", body="Untouched.", extra_fields={"status": "draft", "subtype": "note"})
+    stale = api.save(type="document", title="Patch Stale", body="", extra_fields={"status": "draft", "subtype": "note"})
     Path(stale["path"]).unlink()
     g = api.graph.get(tmp_vault)
     g.add_node(stale["uid"], path=victim["path"])
@@ -327,7 +327,7 @@ def test_patch_by_uid_stale_graph_path_raises(tmp_vault):
 
 
 def test_patch_returns_metadata(tmp_vault):
-    result = api.save(type="document", title="Patch Return", body="", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="Patch Return", body="", extra_fields={"status": "draft", "subtype": "note"})
     patched = api.patch(result["path"], {"tags": ["x"]})
     assert patched["uid"] == result["uid"]
     assert patched["type"] == "document"
@@ -348,7 +348,7 @@ def test_check_duplicate_no_match(tmp_vault):
 
 
 def test_check_duplicate_finds_match(tmp_vault):
-    api.save(type="document", title="Duplicate Me", body="", extra_fields={"status": "draft"})
+    api.save(type="document", title="Duplicate Me", body="", extra_fields={"status": "draft", "subtype": "note"})
     result = api.check_duplicate(type="document", title="Duplicate Me")
     assert result["duplicate"] is True
     assert "duplicate-me" in result["name"]
@@ -359,14 +359,14 @@ def test_check_duplicate_finds_match(tmp_vault):
 # ---------------------------------------------------------------------------
 
 def test_get_reads_file(tmp_vault):
-    result = api.save(type="document", title="Readable", body="Read this.", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="Readable", body="Read this.", extra_fields={"status": "draft", "subtype": "note"})
     text = api.get(result["path"])
     assert "Read this." in text
     assert "Readable" in text
 
 
 def test_get_relative_path_resolves(tmp_vault):
-    result = api.save(type="document", title="Rel Get", body="content", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="Rel Get", body="content", extra_fields={"status": "draft", "subtype": "note"})
     fname = Path(result["path"]).name
     text = api.get(fname)
     assert "content" in text
@@ -378,7 +378,7 @@ def test_get_missing_file_raises(tmp_vault):
 
 
 def test_get_by_uid(tmp_vault):
-    result = api.save(type="document", title="UID Lookup", body="found by uid", extra_fields={"status": "draft"})
+    result = api.save(type="document", title="UID Lookup", body="found by uid", extra_fields={"status": "draft", "subtype": "note"})
     uid = result["uid"]
     text = api.get(uid)
     assert "found by uid" in text
@@ -436,16 +436,16 @@ def test_get_inlines_small_text_asset(tmp_vault):
 # ---------------------------------------------------------------------------
 
 def test_list_items_returns_all_types(tmp_vault):
-    api.save(type="document", title="Doc One", body="", extra_fields={"status": "draft"})
-    api.save(type="task", title="Task One", body="", extra_fields={"status": "todo"})
+    api.save(type="document", title="Doc One", body="", extra_fields={"status": "draft", "subtype": "note"})
+    api.save(type="task", title="Task One", body="", extra_fields={"status": "todo", "subtype": "feature"})
     result = api.list_items()
     assert "document" in result
     assert "task" in result
 
 
 def test_list_items_filtered_by_type(tmp_vault):
-    api.save(type="document", title="Doc A", body="", extra_fields={"status": "draft"})
-    api.save(type="task", title="Task A", body="", extra_fields={"status": "todo"})
+    api.save(type="document", title="Doc A", body="", extra_fields={"status": "draft", "subtype": "note"})
+    api.save(type="task", title="Task A", body="", extra_fields={"status": "todo", "subtype": "feature"})
     result = api.list_items(type="task")
     assert "task" in result
     assert "document" not in result
@@ -638,7 +638,7 @@ def test_resolve_asset(tmp_vault):
     has_asset = [{"format": "html", "primary": True, "locations": [{"scheme": "local", "path": f"assets/{uid}.html"}]}]
     _write_raw(
         tmp_vault, f"{uid}-doc.md",
-        {"uid": uid, "type": "document", "title": "Asset Doc", "has_asset": has_asset, "status": "draft"},
+        {"uid": uid, "type": "document", "title": "Asset Doc", "has_asset": has_asset, "status": "draft", "subtype": "note"},
     )
 
     result = api.resolve_asset(uid)

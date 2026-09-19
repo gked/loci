@@ -8,10 +8,10 @@ duration_minutes: '45'
 expected_outcome: adaptive margin
 references: []
 relations:
+- type: used-in
+  uid: e746ebeb
 - type: relates-to
-  uid: 9c293cd0
-- type: relates-to
-  uid: 3d061f79
+  uid: 0d6439b4
 state: active
 steps:
 - The narrow budget compares the recursive threshold before the pattern settles.

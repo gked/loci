@@ -1,6 +1,7 @@
 ---
 uid: dup00001
 type: document
+subtype: spec
 title: Knowledge Graph Design
 author: self
 state: active

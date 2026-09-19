@@ -1,6 +1,7 @@
 ---
 uid: due00001
 type: task
+subtype: chore
 title: Review pull requests
 author: self
 state: active

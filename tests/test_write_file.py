@@ -47,7 +47,7 @@ def test_write_item_creates_file(tmp_vault):
         type="document",
         title="Hello World",
         body="Some body text.",
-        extra_fields={"status": "draft"},
+        extra_fields={"status": "draft", "subtype": "note"},
         skip_duplicate_check=True,
     )
     assert result["type"] == "document"
@@ -67,7 +67,7 @@ def test_write_item_frontmatter_fields(tmp_vault):
         tags=["python", "testing"],
         domains=["engineering"],
         summary="A test task.",
-        extra_fields={"status": "todo"},
+        extra_fields={"status": "todo", "subtype": "feature"},
         skip_duplicate_check=True,
     )
     raw = Path(result["path"]).read_text(encoding="utf-8")
@@ -84,7 +84,7 @@ def test_write_item_body_follows_frontmatter(tmp_vault):
         type="document",
         title="Body Test",
         body="This is the body.",
-        extra_fields={"status": "draft"},
+        extra_fields={"status": "draft", "subtype": "note"},
         skip_duplicate_check=True,
     )
     raw = Path(result["path"]).read_text(encoding="utf-8")
@@ -97,7 +97,7 @@ def test_write_item_extra_fields_merged(tmp_vault):
         type="document",
         title="Asset Doc",
         body="",
-        extra_fields={"status": "draft", "has_asset": True, "uid": "fixed001"},
+        extra_fields={"status": "draft", "subtype": "note", "has_asset": True, "uid": "fixed001"},
         skip_duplicate_check=True,
     )
     raw = Path(result["path"]).read_text(encoding="utf-8")
@@ -116,7 +116,7 @@ def test_write_item_sets_state_active(tmp_vault):
         type="document",
         title="State Test",
         body="",
-        extra_fields={"status": "draft"},
+        extra_fields={"status": "draft", "subtype": "note"},
         skip_duplicate_check=True,
     )
     raw = Path(result["path"]).read_text(encoding="utf-8")
@@ -245,7 +245,7 @@ def test_check_duplicate_does_not_compare_slugs(tmp_vault):
     # cut-off share one. That is a filename collision for free_filename to
     # handle, not a duplicate item — api.save refuses on a hit.
     stem = "Meeting notes: Q3 planning session with the platform team"
-    write_item(type="document", title=f"{stem} — 2026-09-01", body="", extra_fields={"status": "draft"}, skip_duplicate_check=True)
+    write_item(type="document", title=f"{stem} — 2026-09-01", body="", extra_fields={"status": "draft", "subtype": "note"}, skip_duplicate_check=True)
     assert check_duplicate(tmp_vault, f"{stem} — 2026-09-08") is None
 
 
@@ -367,7 +367,7 @@ def test_write_item_references_url_is_not_a_duplicate(tmp_vault, monkeypatch):
         type="document",
         title="Notes citing the bookmark",
         body="",
-        extra_fields={"status": "draft"},
+        extra_fields={"status": "draft", "subtype": "note"},
         references=[{"url": "https://example.com/ref-test", "title": "Example", "source_type": "web"}],
     )
     assert "uid" in result
@@ -375,25 +375,25 @@ def test_write_item_references_url_is_not_a_duplicate(tmp_vault, monkeypatch):
 
 def test_write_item_duplicate_check_aborted(tmp_vault, monkeypatch):
     # Create a file that will be detected as a duplicate
-    write_item(type="document", title="Duplicate Title", body="", extra_fields={"status": "draft"}, skip_duplicate_check=True)
+    write_item(type="document", title="Duplicate Title", body="", extra_fields={"status": "draft", "subtype": "note"}, skip_duplicate_check=True)
     monkeypatch.setattr("builtins.input", lambda: "n")
-    result = write_item(type="document", title="Duplicate Title", body="", extra_fields={"status": "draft"})
+    result = write_item(type="document", title="Duplicate Title", body="", extra_fields={"status": "draft", "subtype": "note"})
     assert result == {}
 
 
 def test_write_item_duplicate_check_confirmed(tmp_vault, monkeypatch):
-    write_item(type="document", title="Dup Confirmed", body="", extra_fields={"status": "draft"}, skip_duplicate_check=True)
+    write_item(type="document", title="Dup Confirmed", body="", extra_fields={"status": "draft", "subtype": "note"}, skip_duplicate_check=True)
     monkeypatch.setattr("builtins.input", lambda: "y")
-    result = write_item(type="document", title="Dup Confirmed", body="", extra_fields={"status": "draft"})
+    result = write_item(type="document", title="Dup Confirmed", body="", extra_fields={"status": "draft", "subtype": "note"})
     assert result.get("uid") is not None
 
 
 def test_write_item_same_title_twice_keeps_both_files(tmp_vault):
     # The filename comes from the title, so a second node with the same title
     # used to land on the first node's path and replace it.
-    first = write_item(type="document", title="Meeting Notes", body="one", extra_fields={"status": "draft"}, skip_duplicate_check=True)
-    second = write_item(type="document", title="Meeting Notes", body="two", extra_fields={"status": "draft"}, skip_duplicate_check=True)
-    third = write_item(type="document", title="Meeting Notes", body="three", extra_fields={"status": "draft"}, skip_duplicate_check=True)
+    first = write_item(type="document", title="Meeting Notes", body="one", extra_fields={"status": "draft", "subtype": "note"}, skip_duplicate_check=True)
+    second = write_item(type="document", title="Meeting Notes", body="two", extra_fields={"status": "draft", "subtype": "note"}, skip_duplicate_check=True)
+    third = write_item(type="document", title="Meeting Notes", body="three", extra_fields={"status": "draft", "subtype": "note"}, skip_duplicate_check=True)
     assert Path(first["path"]).name == "meeting-notes.md"
     assert Path(second["path"]).name == "meeting-notes-2.md"
     assert Path(third["path"]).name == "meeting-notes-3.md"
@@ -420,7 +420,7 @@ def registry():
 
 def test_validate_required_fields_valid_task(registry):
     type_def = registry.get("task")
-    errors = validate_required_fields(type_def, {"status": "todo"})
+    errors = validate_required_fields(type_def, {"status": "todo", "subtype": "feature"})
     assert errors == []
 
 
@@ -445,20 +445,20 @@ def test_validate_required_fields_invalid_enum(registry):
 
 def test_validate_required_fields_valid_enum_duplicate(registry):
     type_def = registry.get("task")
-    errors = validate_required_fields(type_def, {"status": "duplicate"})
+    errors = validate_required_fields(type_def, {"status": "duplicate", "subtype": "feature"})
     assert errors == []
 
 
 def test_validate_required_fields_invalid_optional_enum(registry):
     type_def = registry.get("task")
-    errors = validate_required_fields(type_def, {"status": "todo", "priority": "critical"})
+    errors = validate_required_fields(type_def, {"status": "todo", "subtype": "feature", "priority": "critical"})
     assert any("priority" in e for e in errors)
     assert any("critical" in e for e in errors)
 
 
 def test_validate_required_fields_valid_optional_enum(registry):
     type_def = registry.get("task")
-    errors = validate_required_fields(type_def, {"status": "todo", "priority": "high"})
+    errors = validate_required_fields(type_def, {"status": "todo", "subtype": "feature", "priority": "high"})
     assert errors == []
 
 
@@ -549,7 +549,7 @@ def test_write_item_succeeds_with_valid_required_fields(tmp_vault):
         type="task",
         title="Valid Task",
         body="",
-        extra_fields={"status": "todo"},
+        extra_fields={"status": "todo", "subtype": "feature"},
         skip_duplicate_check=True,
     )
     assert "errors" not in result
@@ -577,7 +577,7 @@ def test_write_item_blocked_by_unknown_relation_type(tmp_vault):
         type="document",
         title="Doc with Bad Relation",
         body="",
-        extra_fields={"status": "draft"},
+        extra_fields={"status": "draft", "subtype": "note"},
         relations=[{"uid": "deadbeef", "type": "invented-type"}],
         skip_duplicate_check=True,
     )
@@ -591,7 +591,7 @@ def test_write_item_no_file_written_on_bad_relation_type(tmp_vault):
         type="document",
         title="Bad Relation Doc",
         body="",
-        extra_fields={"status": "draft"},
+        extra_fields={"status": "draft", "subtype": "note"},
         relations=[{"uid": "deadbeef", "type": "invented-type"}],
         skip_duplicate_check=True,
     )
@@ -604,7 +604,7 @@ def test_write_item_succeeds_with_valid_relation_type(tmp_vault):
         type="document",
         title="Doc with Valid Relation",
         body="",
-        extra_fields={"status": "draft"},
+        extra_fields={"status": "draft", "subtype": "note"},
         relations=[{"uid": "deadbeef", "type": "belongs-to"}],
         skip_duplicate_check=True,
     )
@@ -762,7 +762,7 @@ def test_write_item_reroutes_body_from_extra_fields(tmp_vault):
         type="document",
         title="Rerouted Body",
         body="",
-        extra_fields={"status": "draft", "body": "Body from extra_fields."},
+        extra_fields={"status": "draft", "subtype": "note", "body": "Body from extra_fields."},
         skip_duplicate_check=True,
     )
 
@@ -777,7 +777,7 @@ def test_write_item_body_argument_wins_over_extra_fields_copy(tmp_vault):
         type="document",
         title="Argument Wins",
         body="Real body.",
-        extra_fields={"status": "draft", "body": "Body from extra_fields."},
+        extra_fields={"status": "draft", "subtype": "note", "body": "Body from extra_fields."},
         skip_duplicate_check=True,
     )
 
@@ -793,7 +793,7 @@ def test_write_item_body_in_extra_fields_never_reaches_the_frontmatter(tmp_vault
         type="document",
         title="Rule In Body",
         body="",
-        extra_fields={"status": "draft", "body": "Intro.\n\n---\n\nAfter the rule."},
+        extra_fields={"status": "draft", "subtype": "note", "body": "Intro.\n\n---\n\nAfter the rule."},
         skip_duplicate_check=True,
     )
 
@@ -810,14 +810,14 @@ def test_write_item_without_body_in_extra_fields_emits_no_body_warnings(tmp_vaul
         type="document",
         title="Clean Save",
         body="Just a body.",
-        extra_fields={"status": "draft"},
+        extra_fields={"status": "draft", "subtype": "note"},
         skip_duplicate_check=True,
     )
     assert "body_warnings" not in result
 
 
 def test_write_item_does_not_mutate_the_callers_extra_fields_dict(tmp_vault):
-    extra = {"status": "draft", "body": "Body from extra_fields."}
+    extra = {"status": "draft", "subtype": "note", "body": "Body from extra_fields."}
     write_item(
         type="document",
         title="No Mutation",
@@ -825,4 +825,4 @@ def test_write_item_does_not_mutate_the_callers_extra_fields_dict(tmp_vault):
         extra_fields=extra,
         skip_duplicate_check=True,
     )
-    assert extra == {"status": "draft", "body": "Body from extra_fields."}
+    assert extra == {"status": "draft", "subtype": "note", "body": "Body from extra_fields."}

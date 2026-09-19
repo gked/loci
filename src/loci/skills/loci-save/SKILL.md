@@ -54,11 +54,22 @@ immediately and use the result for title, site_name, and summary — ask only if
 **The URL goes in `extra_fields.source_url` (required) — that is the field the duplicate check
 reads, so a URL passed anywhere else is not checked.**
 
-**Subtype tags to apply automatically:**
-- `article` → format tag: #book, #blog-post, #whitepaper, #research-paper, #news, #magazine, #video, #podcast, or #article
-- `entity` → set `subtype` to person | organization | place — do NOT add as a tag
-- `procedure` → domain tag: #recipe, #workout, #protocol, #playbook, #tutorial
-- `document` → format tag if applicable: #essay, #spec, #design-doc, #meeting-notes, #journal, #note
+**Set the `subtype` field (required where the type has one; never duplicate it as a tag):**
+- `task` → `bug` (something is broken) | `feature` (something to build — default) |
+  `question` ("Decide…", "Investigate…", "Think through…", open questions) | `chore` (admin)
+- `document` → `meeting-notes` | `report` (findings, snapshots, readouts) | `spec` | `plan`
+  (incl. playbooks) | `transcript` | `essay` (for a reader, has a thesis) | `journal` |
+  `note` (for yourself, open-ended — default)
+- `article` → the medium: `article` | `blog-post` | `news` | `book` | `paper` | `scholarly` |
+  `technical` | `video`
+- `entity` → `person` | `organization` | `place`
+- `asset` → `book` | `video` | `music` | `podcast` | `presentation` | `visual` | `physical`
+- `procedure` → no subtype yet; tag the category: #recipe, #workout, #protocol, #playbook, #tutorial
+
+A subtype never encodes who it was with or which sphere it belongs to — that is an
+`involves` / `belongs-to` relation and `domains`. Before adding any tag, ask: does it name
+another node (→ relation)? Is it the subtype? Only then is it a tag. Call
+`loci__read_meta(file="type-decision")` when the subtype is not obvious.
 
 **Binary file / media (video, audio, image, PDF, ebook):** use `loci__save_asset`, not
 `loci__write_vault`. It writes the file to `loci/assets/` and creates the proxy node in one
@@ -73,13 +84,15 @@ crash-safe sequence. Pick the path by where the bytes are:
    directly from the conversation. Please drop it into your `loci-stage/` folder, then ask me to
    run the inbox scan." Then the inbox skill takes over.
 
-**Never** base64-encode a file yourself. Set `node_type="asset"` and the right `subtype`
-(`film`, `album`, `book`, `image`, …). `save_asset` returns `{uid, asset_path, vault_path}` —
+**Never** base64-encode a file yourself. Set `node_type` (`asset` for media the user owns,
+`document` for a PDF or file that is written content) and the `subtype` from the lists in
+Step 1 — `video`, `music`, `book`, `visual`, … for an asset; `report`, `transcript`, … for a
+document (`note` when omitted). `save_asset` returns `{uid, asset_path, vault_path}` —
 confirm all three to the user. It checks for duplicates the same way `write_vault` does (Step 4):
 on `duplicate: true` nothing was written; ask, and retry with `allow_duplicate=true` for "new".
 
 **Books:**
-- An ebook or book the user owns → `asset`, `subtype: book`, tag `#book`. Call
+- An ebook or book the user owns → `asset`, `subtype: book` (no `#book` tag — the subtype is the query key). Call
   `loci__read_meta(file="field-dictionary")` for the body template, summary convention, and genre
   list. `genre` is required — exactly one canonical slug; if ambiguous, pick the closest and note
   it in the body. Body sections: `## Bibliographic`, `## About`, `## Notes`.

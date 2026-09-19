@@ -7,9 +7,7 @@ domains:
 references: []
 relations:
 - type: relates-to
-  uid: 3aaeb5ed
-- type: relates-to
-  uid: e746ebeb
+  uid: b99e0db7
 site_name: example.org
 source_url: https://example.org/ledger/8181
 state: active

@@ -1,6 +1,7 @@
 ---
 uid: srch0001
 type: article
+subtype: article
 title: Distributed Systems Overview
 author: self
 state: active

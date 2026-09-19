@@ -1,6 +1,7 @@
 ---
 uid: aaa00002
 type: task
+subtype: feature
 title: Write documentation
 author: self
 state: active

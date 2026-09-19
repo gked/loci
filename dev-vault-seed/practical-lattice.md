@@ -6,8 +6,8 @@ domains:
 - finance-economics
 references: []
 relations:
-- type: relates-to
-  uid: f48bc982
+- type: is-part-of
+  uid: e38a59aa
 state: active
 status: archived
 summary: The portable signal documents the adaptive season before the field settles.

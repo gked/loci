@@ -10,8 +10,8 @@ milestones:
 - layered compass
 references: []
 relations:
-- type: about
-  uid: 359da954
+- type: relates-to
+  uid: 1c72ba61
 state: active
 status: abandoned
 summary: The adaptive season prunes the ambient corridor before the orbit settles.

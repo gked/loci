@@ -8,7 +8,7 @@ location: Ghent
 references: []
 relations:
 - type: relates-to
-  uid: f48bc982
+  uid: a6c40444
 state: active
 subtype: place
 summary: The brittle garden audits the practical corridor before the threshold settles.

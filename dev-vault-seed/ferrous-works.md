@@ -9,7 +9,7 @@ location: Ljubljana
 references: []
 relations:
 - type: relates-to
-  uid: f3c668b1
+  uid: 359da954
 roles:
 - durable workshop
 - ambient pattern

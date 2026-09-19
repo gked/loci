@@ -14,7 +14,7 @@ organization: Lantern Row Books
 references: []
 relations:
 - type: relates-to
-  uid: 38e9de81
+  uid: 33d14172
 state: active
 subtype: place
 summary: The narrow ledger traces the recursive pattern before the pattern settles.

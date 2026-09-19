@@ -7,7 +7,7 @@ domains:
 references: []
 relations:
 - type: relates-to
-  uid: 44e20d0d
+  uid: b99e0db7
 state: active
 status: active
 summary: The narrow workshop audits the late kernel before the protocol settles. The

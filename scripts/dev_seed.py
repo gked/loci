@@ -348,7 +348,9 @@ class Generator:
         # other datetime — otherwise the seed carries dates in the future and
         # the UI's recent views lead with them.
         end = self.epoch + timedelta(days=self.span_days)
-        created = self.when()
+        # when() adds up to a day of seconds on top of an offset that can
+        # already sit at the span end, so created_at needs the cap too.
+        created = min(end, self.when())
         updated = min(end, created + timedelta(days=self.rng.uniform(0, 90))) if self.rng.random() < 0.6 else created
         archived = not hub and self.rng.random() < 0.05
         archived_at = min(end, updated + timedelta(days=self.rng.uniform(1, 30))) if archived else None

@@ -1,6 +1,7 @@
 ---
 uid: aaa00003
 type: task
+subtype: feature
 title: Deploy to production
 author: self
 state: active

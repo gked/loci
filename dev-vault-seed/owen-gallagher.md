@@ -13,7 +13,7 @@ organization: Orchard Street Studio
 references: []
 relations:
 - type: relates-to
-  uid: 909ff497
+  uid: ceb52fc3
 roles:
 - stable compass
 - brittle season

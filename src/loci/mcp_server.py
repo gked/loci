@@ -97,23 +97,32 @@ def _run_first_ready_work() -> None:
     _startup_notice = "\n".join(filter(None, notices)) or None
 
 
-def _write_vault_proxy(vault_root, uid, vault_node):  # pragma: no cover
+def _write_vault_proxy(vault_root, uid, vault_node):
+    """
+    Finish an interrupted save_asset: write the proxy node its intent describes.
+
+    The intent carries the node's `type` and the exact `extra_fields` the live
+    path would have written. An intent from before those were recorded is a
+    document with the fields that were recoverable then, `note` for subtype.
+    """
     from loci.tools.write_file import write_item as _write_item
 
+    extra_fields = vault_node.get("extra_fields") or {
+        "uid": uid,
+        "has_asset": vault_node.get("has_asset", []),
+        "status": "evergreen",
+        "subtype": vault_node.get("subtype") or "note",
+    }
     with _contextlib.redirect_stdout(_io.StringIO()):
         result = _write_item(
-            type="document",
+            type=vault_node.get("type") or "document",
             title=vault_node.get("title", uid),
             body=f"# {vault_node.get('title', uid)}\n",
             tags=vault_node.get("tags"),
             domains=vault_node.get("domains"),
             summary=vault_node.get("summary"),
             relations=vault_node.get("relations"),
-            extra_fields={
-                "uid": uid,
-                "has_asset": vault_node.get("has_asset", []),
-                "status": "evergreen",
-            },
+            extra_fields=extra_fields,
             skip_duplicate_check=True,
         )
     return result.get("path", "")
@@ -654,6 +663,7 @@ def find_nodes(
     type: str = None,
     tag: str = None,
     status: str = None,
+    subtype: str = None,
     state: str | None = "active",
     due_before: str = None,
     due_after: str = None,
@@ -666,12 +676,16 @@ def find_nodes(
 ) -> list[dict]:
     """
     Find vault nodes matching any combination of filters. At least one should be provided.
-    Each entry: {uid, title, type, path, state, status, due_date, language}.
+    Each entry: {uid, title, type, subtype, path, state, status, due_date, language}.
 
     Args:
-        type: Node type (task, book, project, note, …)
+        type: Node type (task, document, project, article, asset, …)
         tag: Tag value — node must include this tag
-        status: Exact status match (open, done, archived, …)
+        status: Exact status match (todo, done, active, …)
+        subtype: Exact subtype match — task: bug|feature|question|chore;
+                 document: meeting-notes|report|spec|plan|transcript|essay|journal|note;
+                 article: the medium (book, paper, …); entity: person|organization|place;
+                 asset: book|video|music|podcast|presentation|visual|physical
         state: Lifecycle state filter — "active" (default) excludes archived nodes;
                pass "archived" to see only archived nodes, or None to see all.
         due_before: ISO date (YYYY-MM-DD) — nodes whose due_date <= this value
@@ -689,6 +703,7 @@ def find_nodes(
         node_type=type,
         tag=tag,
         status=status,
+        subtype=subtype,
         state=state,
         due_before=due_before,
         due_after=due_after,
@@ -860,7 +875,10 @@ def save_asset(
         domains:     One or more domain taxonomy values.
         relations:   List of {uid, type} dicts linking to other vault nodes.
         node_type:   Vault node type: 'document' or 'asset'.
-        subtype:     For asset nodes — subtype field (e.g. 'book', 'film').
+        subtype:     asset → 'book', 'video', 'music', 'podcast', 'presentation',
+                     'visual', 'physical'. document → 'report', 'transcript',
+                     'spec', 'plan', 'meeting-notes', 'essay', 'journal', or
+                     'note' (the default when omitted).
         author:      Author or creator name.
         published_at: Publication or release date string.
         language:    ISO 639-1 language code.

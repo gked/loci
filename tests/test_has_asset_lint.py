@@ -63,7 +63,7 @@ def _base_doc(uid: str = "aabb1122") -> dict:
         "summary": "A test document.",
         "relations": [{"uid": "deadbeef", "type": "belongs-to"}],
         "references": [],
-        "status": "draft",
+        "status": "draft", "subtype": "note",
     }
 
 
@@ -293,7 +293,7 @@ def test_find_nodes_has_asset_filter(tmp_vault):
         "summary": "has asset",
         "relations": [],
         "references": [],
-        "status": "draft",
+        "status": "draft", "subtype": "note",
         "has_asset": [
             {"format": "pdf", "locations": [{"scheme": "local", "path": "assets/aa000001.pdf"}]}
         ],
@@ -312,7 +312,7 @@ def test_find_nodes_has_asset_filter(tmp_vault):
         "summary": "no asset",
         "relations": [],
         "references": [],
-        "status": "draft",
+        "status": "draft", "subtype": "note",
     }
 
     for fm in (doc_with, doc_without):

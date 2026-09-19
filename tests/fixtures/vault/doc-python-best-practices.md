@@ -1,6 +1,7 @@
 ---
 uid: bbb00001
 type: document
+subtype: note
 title: Python Best Practices
 author: self
 state: active

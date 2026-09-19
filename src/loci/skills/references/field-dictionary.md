@@ -168,6 +168,12 @@ values: draft | evergreen | archived
 required: yes
 description: maturity of the document
 
+field: subtype
+type: enum
+values: meeting-notes | report | spec | plan | transcript | essay | journal | note
+required: yes
+description: what kind of document this is. essay = written for a reader other than you, has a thesis; note = for yourself, open-ended (default). Never encodes who it was with (relations) or which sphere (domains).
+
 ---
 
 ### article
@@ -186,11 +192,11 @@ type: datetime
 required: no
 description: ISO 8601 publication date
 
-field: format
+field: subtype
 type: enum
 values: article | blog-post | news | book | paper | scholarly | technical | video
 required: yes
-description: medium of the content
+description: medium of the content (was `format` before ontology_version 2)
 
 field: highlights
 type: array
@@ -253,6 +259,12 @@ type: enum
 values: todo | in-progress | done | cancelled | duplicate
 required: yes
 description: current state of the task
+
+field: subtype
+type: enum
+values: bug | feature | question | chore
+required: yes
+description: kind of work. bug = something is broken; feature = something to build (default); question = something to decide or find out; chore = admin with no product outcome
 
 field: due_date
 type: datetime
@@ -417,7 +429,7 @@ values: book | video | music | podcast | presentation | visual | physical
 required: yes
 description: >
   What kind of asset this is.
-  book — ebook file (epub, pdf) or physical book on a shelf; distinct from article format: book which is a book you read and took notes on.
+  book — ebook file (epub, pdf) or physical book on a shelf; distinct from article subtype: book which is a book you read and took notes on.
   video — video file you own (mp4, mkv, etc.).
   music — music album or track (flac, mp3, etc.).
   podcast — downloaded podcast episode or series.

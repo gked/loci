@@ -12,7 +12,7 @@ location: Sapporo
 references: []
 relations:
 - type: relates-to
-  uid: 7e465b19
+  uid: 33d14172
 roles:
 - practical signal
 - borrowed meridian

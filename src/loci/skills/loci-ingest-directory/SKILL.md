@@ -84,6 +84,8 @@ domains: <domains>
 body:    "# <title>\n"
 extra_fields:
   uid: <uid from generate_uid>
+  status: evergreen
+  subtype: <subtype>
   has_asset:
     - format: <format>
       primary: true
@@ -92,9 +94,11 @@ extra_fields:
           path: <absolute path from scan result>
 ```
 
-For `asset` type nodes, also include in `extra_fields`:
+`status` and `subtype` are required on both types, and `write_vault` refuses the node without
+them. For `document`, `subtype` is `note` unless the file plainly is one of `report`,
+`transcript`, `spec`, `plan`, `meeting-notes`, `essay`, or `journal`. For `asset` type nodes,
+`subtype` is `book` and `extra_fields` also carries:
 ```
-  subtype: book
   storage: digital
 ```
 

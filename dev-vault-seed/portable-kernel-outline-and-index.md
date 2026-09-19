@@ -10,11 +10,7 @@ references:
   url: https://docs.example.io/budget/5291
 relations:
 - type: relates-to
-  uid: 8ea32f2e
-- type: relates-to
-  uid: 1c72ba61
-- type: relates-to
-  uid: 7b309c5c
+  uid: 2dac8dd5
 source_url: https://docs.example.io/budget/5291
 state: active
 summary: The adaptive cache migrates the borrowed kernel before the loop settles.

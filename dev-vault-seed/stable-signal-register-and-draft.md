@@ -10,7 +10,9 @@ references:
   url: https://blog.example.net/archive/3038
 relations:
 - type: relates-to
-  uid: bff3b440
+  uid: 3aaeb5ed
+- type: relates-to
+  uid: 7e465b19
 site_name: docs.example.io
 source_url: https://blog.example.net/archive/3038
 state: active

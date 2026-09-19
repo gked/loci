@@ -1,6 +1,7 @@
 ---
 uid: chain003
 type: document
+subtype: note
 title: Chain Node Gamma
 author: self
 state: active

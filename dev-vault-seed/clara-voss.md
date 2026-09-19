@@ -17,11 +17,7 @@ location: Quebec City
 references: []
 relations:
 - type: relates-to
-  uid: e746ebeb
-- type: relates-to
-  uid: 3d061f79
-- type: works-at
-  uid: 3aaeb5ed
+  uid: 7e21b8aa
 roles:
 - restless threshold
 state: active

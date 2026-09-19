@@ -6,10 +6,10 @@ domains:
 - philosophy-ethics
 references: []
 relations:
+- type: is-part-of
+  uid: ceb52fc3
 - type: relates-to
-  uid: b99e0db7
-- type: relates-to
-  uid: 33d14172
+  uid: 3aaeb5ed
 state: active
 status: active
 summary: The restless field migrates the local corridor before the register settles.

@@ -55,9 +55,14 @@ If no results found via search, tell the user clearly — do not invent content.
 Use when the user wants a list filtered by one or more attributes.
 
 `loci__find_nodes` supports any combination of:
-- `type` — node type (task, book, note, project, …)
+- `type` — node type (task, document, project, article, asset, …)
+- `subtype` — exact match within the type: task `bug | feature | question | chore`;
+  document `meeting-notes | report | spec | plan | transcript | essay | journal | note`;
+  article (the medium: `book`, `paper`, …); entity `person | organization | place`;
+  asset `book | video | music | …`. Prefer this over a tag whenever the user names a
+  kind of thing — "my essays", "open bugs", "meeting notes with X" are subtype queries.
 - `tag` — node must include this tag
-- `status` — exact match (open, done, archived, …)
+- `status` — exact match (todo, done, active, …)
 - `state` — lifecycle visibility; defaults to `"active"` (archived nodes are excluded
   automatically). Pass `state="archived"` to show only archived nodes. Pass `state=None`
   to include all nodes regardless of state.
@@ -73,10 +78,11 @@ Use when the user wants a list filtered by one or more attributes.
 If the request is ambiguous (e.g. no type or tag inferable), ask before calling.
 
 **Library queries:**
-- All books: `find_nodes(type="asset", tag="book")`
-- All reading logs: `find_nodes(type="reading-log")`
-- Reading logs for a specific book: `query_neighbors(uid=<book_uid>)` — look for `reading-log` neighbors via `is-based-on` relation
-- In-progress reads: `find_nodes(type="reading-log")` then read each node to check `read_status` — `find_nodes` does not filter on custom fields like `read_status`
+- All books you own: `find_nodes(type="asset", subtype="book")`
+- Books you read (captured content, not owned copies): `find_nodes(type="article", subtype="book")`
+- All reading logs: `find_nodes(type="log", tag="reading")`
+- Reading logs for a specific book: `query_neighbors(uid=<book_uid>)` — look for `log` neighbors via the `about` relation
+- In-progress reads: `find_nodes(type="log", tag="reading")` then read each node to check `log_status` — `find_nodes` does not filter on custom fields like `log_status`
 
 ---
 

@@ -12,10 +12,8 @@ milestones:
 - hidden harbour
 references: []
 relations:
-- type: about
-  uid: ceb52fc3
 - type: relates-to
-  uid: 4d21e937
+  uid: b99e0db7
 state: active
 status: abandoned
 summary: The local lattice traces the late field before the signal settles. The narrow

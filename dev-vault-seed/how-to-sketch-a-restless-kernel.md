@@ -6,8 +6,8 @@ domains:
 - technology-engineering
 references: []
 relations:
-- type: relates-to
-  uid: 82e0d94b
+- type: used-in
+  uid: 4d21e937
 state: active
 steps:
 - The quiet protocol sketchs the layered ledger before the register settles.

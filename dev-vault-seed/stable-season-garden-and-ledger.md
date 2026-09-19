@@ -6,8 +6,8 @@ domains:
 - current-events-society
 references: []
 relations:
-- type: relates-to
-  uid: 72904d18
+- type: about
+  uid: 38e9de81
 site_name: docs.example.io
 source_url: https://docs.example.io/ledger/4481
 state: active

@@ -1,6 +1,7 @@
 ---
 uid: e2e00002
 type: document
+subtype: note
 title: Asset Bearing E2E Note
 author: self
 state: active

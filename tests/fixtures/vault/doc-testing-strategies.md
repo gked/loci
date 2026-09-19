@@ -1,6 +1,7 @@
 ---
 uid: bbb00002
 type: document
+subtype: note
 title: Testing Strategies
 author: self
 state: active

@@ -76,13 +76,21 @@ Every note has exactly one `type`. There are twelve:
 | `log` | A record of engaging with something over time — a reading, a course |
 
 **The rule for adding a type:** a new type is justified only when it needs
-*different required fields*. Format, category, genre, style — those are tags.
-A recipe and a workout are both `procedure` with different tags, because both
-need the same thing: a list of steps. But a `task` and an `event` are genuinely
-different types, because one needs a status and the other needs a start time.
+*different required fields*. A `task` and an `event` are genuinely different
+types, because one needs a status and the other needs a start time. A bug and
+a feature are not — both need exactly what a task needs — so they are
+*subtypes* of `task`, not types.
 
-This is the single most useful idea in the whole system. Types stay few and
-meaningful; tags absorb the endless variety.
+**Subtypes** are a closed list on a type: every task is exactly one of `bug`,
+`feature`, `question`, `chore`; every document is exactly one of
+`meeting-notes`, `report`, `spec`, `plan`, `transcript`, `essay`, `journal`,
+`note`. The list is enforced, so "show me my essays" is trustworthy. A subtype
+never says who something was with or which part of your life it belongs to —
+relations and domains do that.
+
+Everything looser is a **tag**: open, overlapping, cheap, expected to be a bit
+messy. Types stay few and meaningful, subtypes partition them, tags absorb the
+rest.
 
 ### 2. Relations — how notes connect
 
@@ -162,10 +170,11 @@ Regardless of type:
 Optionally: `language` (only when the body isn't English), `aliases`
 (translations, transliterations, abbreviations), `has_asset`.
 
-Then each type adds its own. A `task` requires `status`; an `article` requires
-`source_url` and `format`; an `entity` requires `subtype`. Some fields are
-**enums** — a fixed set of allowed values. A task's status can only be `todo`,
-`in-progress`, `done`, `cancelled`, or `duplicate`. Anything else is rejected.
+Then each type adds its own. A `task` requires `status` and `subtype`; an
+`article` requires `source_url` and `subtype`; an `entity` requires `subtype`.
+Some fields are **enums** — a fixed set of allowed values. A task's status can
+only be `todo`, `in-progress`, `done`, `cancelled`, or `duplicate`. Anything
+else is rejected.
 
 ### `state` vs `status` — a distinction worth learning
 
@@ -183,17 +192,23 @@ it's no longer relevant to look at, not merely because it's complete.
 
 ## Tags vs. types vs. topics
 
-Three ways to categorise, easy to confuse:
+Four ways to categorise, easy to confuse:
 
 - **Type** — what the thing fundamentally *is*. One per note. Changes which
   fields you must fill in.
-- **Tag** — a label for filtering. Many per note. Costs nothing. Use freely, but
-  prefer an existing tag over inventing a synonym.
+- **Subtype** — which kind, within the type. One per note, from a fixed list.
+  Enforced, so you can rely on it.
 - **Topic** — a note in its own right, representing a subject. Use one when you
   want to navigate *to* the subject and see everything linked to it.
+- **Tag** — a label for filtering. Many per note. Costs nothing. Use freely, but
+  prefer an existing tag over inventing a synonym.
 
-Rule of thumb: if you'd only ever use it as a filter, it's a tag. If you'd want
-to open it and read what's there, it's a topic.
+Before adding a tag, ask in order: does the label name another note (a project,
+a person, a subject)? Then it's a **relation**, not a tag. Is it one of a fixed,
+exclusive set within the type? Then it's the **subtype**. Only if neither is it
+a tag. Most tag sprawl comes from skipping the first question — a project's
+name as a tag on fifty notes is fifty strings the graph can't see, where one
+`belongs-to` edge each would do.
 
 ---
 

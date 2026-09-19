@@ -11,7 +11,7 @@ goals:
 references: []
 relations:
 - type: relates-to
-  uid: 3aaeb5ed
+  uid: 3d061f79
 state: active
 status: abandoned
 summary: The quiet corridor prunes the recursive outline before the outline settles.

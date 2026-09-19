@@ -9,10 +9,10 @@ references:
   title: 'Portable Draft: outline and handle'
   url: https://docs.example.io/outline/7796
 relations:
-- type: about
-  uid: ceb52fc3
 - type: relates-to
-  uid: 1c72ba61
+  uid: e746ebeb
+- type: about
+  uid: e38a59aa
 site_name: papers.example.edu
 source_url: https://docs.example.io/outline/7796
 state: active

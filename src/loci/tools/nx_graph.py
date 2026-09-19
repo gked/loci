@@ -109,6 +109,7 @@ def _build(vault_root: Path) -> nx.DiGraph:
             path=str(md_file),
             state=fm.get("state", "active"),
             status=fm.get("status", ""),
+            subtype=fm.get("subtype", "") or "",
             due_date=_date_str(fm.get("due_date")),
             created_at=_date_str(fm.get("created_at")),
             updated_at=_date_str(fm.get("updated_at")),
@@ -279,6 +280,7 @@ def find(
     node_type: str = None,
     tag: str = None,
     status: str = None,
+    subtype: str = None,
     state: str = "active",
     due_before: str = None,
     due_after: str = None,
@@ -292,8 +294,9 @@ def find(
     """
     Filter nodes by any combination of supported attributes.
     All parameters are optional; at least one should be provided.
-    Returns list of {uid, title, type, path, state, status, due_date, language}.
+    Returns list of {uid, title, type, subtype, path, state, status, due_date, language}.
 
+    subtype: exact match on the node's subtype field (bug, essay, book, person, …).
     state defaults to "active" — archived nodes are excluded unless state="archived"
     is passed explicitly. Pass state=None to include all nodes regardless of state.
     Date parameters accept ISO date strings (YYYY-MM-DD).
@@ -320,6 +323,8 @@ def find(
         if tag and tag not in (attrs.get("tags") or []):
             continue
         if status and attrs.get("status") != status:
+            continue
+        if subtype and attrs.get("subtype") != subtype:
             continue
         if state is not None and attrs.get("state", "active") != state:
             continue
@@ -356,6 +361,7 @@ def find(
             "uid": uid,
             "title": attrs.get("title", ""),
             "type": attrs.get("type", ""),
+            "subtype": attrs.get("subtype", ""),
             "path": attrs.get("path", ""),
             "state": attrs.get("state", "active"),
             "status": attrs.get("status", ""),

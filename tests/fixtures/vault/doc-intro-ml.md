@@ -1,6 +1,7 @@
 ---
 uid: srch0002
 type: document
+subtype: note
 title: Introduction to Machine Learning
 author: self
 state: active

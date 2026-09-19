@@ -1,5 +1,5 @@
 # Loci Ontology
-# ontology_version: 1
+# ontology_version: 2
 #
 # Machine-readable type system. Loaded into TypeRegistry at server startup.
 # This file is reseeded on META_VERSION bumps — do not edit in your vault.
@@ -35,24 +35,29 @@ types:
     extends: null
     description: >
       Written content without external provenance. No source URL required.
-      Use tags for format variation: essay, spec, meeting-notes, journal.
+      subtype says what kind of document it is; who it was with and which
+      sphere it belongs to are carried by relations and domains, never by
+      the subtype.
     fields:
       required:
         - name: status
           type: enum
           values: [draft, evergreen, archived]
+        - name: subtype
+          type: enum
+          values: [meeting-notes, report, spec, plan, transcript, essay, journal, note]
       optional: []
 
   - name: article
     extends: null
     description: >
       External content with provenance: blog posts, books, papers, news.
-      Use tags for format: book, blog-post, whitepaper, research-paper.
+      subtype is the medium of the content.
     fields:
       required:
         - name: source_url
           type: string
-        - name: format
+        - name: subtype
           type: enum
           values: [article, blog-post, news, book, paper, scholarly, technical, video]
       optional:
@@ -108,12 +113,19 @@ types:
 
   - name: task
     extends: null
-    description: Discrete actionable item with due date and status.
+    description: >
+      Discrete actionable item with due date and status. subtype says what
+      kind of work it is: something broken (bug), something to build
+      (feature), something to decide or find out (question), or admin
+      (chore).
     fields:
       required:
         - name: status
           type: enum
           values: [todo, in-progress, done, cancelled, duplicate]
+        - name: subtype
+          type: enum
+          values: [bug, feature, question, chore]
       optional:
         - name: due_date
           type: datetime
@@ -142,7 +154,7 @@ types:
     extends: null
     description: >
       Real-world actor: person, organization, or place.
-      Only canonical type with a structural subtype that changes which fields apply.
+      subtype changes which optional fields make sense.
     fields:
       required:
         - name: subtype

@@ -1,6 +1,7 @@
 ---
 uid: lang0001
 type: document
+subtype: note
 title: Introducción a Python
 author: self
 state: active

@@ -1,6 +1,6 @@
 # Type Classification Guide
 # Read by the save skill at Step 1.
-# Answers: what type is this content, and what format tags apply.
+# Answers: what type is this content, and what subtype applies.
 #
 # STRUCTURAL AUTHORITY: ontology.yaml
 # The canonical list of valid types, their required fields, and enum values
@@ -10,7 +10,7 @@
 ## Core rule
 
 A separate type is justified only when variants have different required fields.
-Descriptive differences — format, category, style, domain — belong in tags, not types.
+Distinctions within a type are a subtype when they form a closed, exclusive list, and a tag otherwise. Neither justifies a new type.
 
 ---
 
@@ -23,7 +23,7 @@ Work through these questions in order. Stop at the first match.
 
 **2. Is the content a file stored in the asset vault, or a physical object the user owns?**
 → `asset` — set `subtype` (book | video | music | podcast | presentation | visual | physical) and `storage` (digital | physical | both)
-Note: a book you are reading or have read is `article format: book`, not `asset`. An ebook file you own, or a physical book on your shelf, is `asset subtype: book`.
+Note: a book you are reading or have read is `article subtype: book`, not `asset`. An ebook file you own, or a physical book on your shelf, is `asset subtype: book`.
 
 **3. Does the content have a citable source?**
 A citable source means: a URL where it was published, an identifiable author, or a publication date.
@@ -56,15 +56,34 @@ Deciding between topic and tag: if you'd want to navigate *to* this subject and 
 
 ---
 
-## Format tags by type
+## Subtype by type
 
-After determining the type, assign one format tag where it applies:
+After determining the type, set the `subtype` field where the type has one.
+A subtype is a closed, mutually exclusive partition of the type: every node of
+that type picks exactly one, and the linter rejects anything outside the list.
 
-| Type | Format tags (pick one) |
+| Type | `subtype` (pick one) |
 |---|---|
-| `article` | #book, #blog-post, #whitepaper, #research-paper, #news, #magazine, #video, #podcast, #article |
-| `document` | #essay, #spec, #design-doc, #meeting-notes, #journal, #note (omit if none fits) |
-| `procedure` | #recipe, #workout, #protocol, #playbook, #tutorial |
-| `bookmark` | none |
-| `entity` | none — use `subtype` field instead |
-| all others | none unless a format distinction is meaningful |
+| `task` | `bug` — something is broken · `feature` — something to build (default) · `question` — something to decide or find out ("Decide…", "Investigate…", "Think through…", open questions) · `chore` — admin with no product outcome |
+| `document` | `meeting-notes` · `report` (findings, snapshots, readouts) · `spec` (design, requirements, architecture) · `plan` (project/dev plans, playbooks) · `transcript` (lesson or recording transcripts) · `essay` · `journal` (personal, dated) · `note` (default) |
+| `article` | `article` · `blog-post` · `news` · `book` · `paper` · `scholarly` · `technical` · `video` — the medium of the content |
+| `entity` | `person` · `organization` · `place` |
+| `asset` | `book` · `video` · `music` · `podcast` · `presentation` · `visual` · `physical` |
+| `procedure` | none yet — use a tag for the category: #recipe, #workout, #protocol, #playbook, #tutorial |
+| all others | none |
+
+**essay vs note** — the one fuzzy pair. An *essay* is written for a reader
+other than you, has a thesis, and is complete or meant to be. A *note* is for
+yourself, open-ended, no thesis required. A note later finished into an essay
+changes its subtype on the same node — that is an edit, not a new node.
+
+**A subtype never encodes what a relation or `domains` already says.** There is
+no `customer-meeting-notes`: it is `subtype: meeting-notes` plus an `involves`
+edge to the customer entity plus `domains: [business-strategy]`. Wanting such a
+subtype is the signal that the edge is missing.
+
+**Before reaching for a tag, ask in order:**
+1. Does the label name another node (a project, a person, a company, a subject)?
+   → a **relation** (`belongs-to`, `involves`, `about`).
+2. Is it a closed, exclusive, stable partition of the type? → a **subtype**.
+3. Otherwise → a **tag**. Tags are open and overlapping; prefer an existing one.

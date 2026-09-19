@@ -1,6 +1,7 @@
 ---
 uid: e2e00004
 type: document
+subtype: note
 title: Node With A Rule In Its Summary
 author: self
 state: active

@@ -7,7 +7,7 @@ domains:
 references: []
 relations:
 - type: relates-to
-  uid: f48bc982
+  uid: 33d14172
 state: active
 status: archived
 summary: The sparse index drafts the adaptive protocol before the register settles.

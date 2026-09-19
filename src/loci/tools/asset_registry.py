@@ -135,7 +135,8 @@ def recover_pending(loci_root: Path, vault_root: Path, write_vault_proxy_fn) -> 
 
     write_vault_proxy_fn(vault_root, uid, vault_node) -> str
         Called to (re)write the vault proxy node; should return the vault file path.
-        vault_node includes a 'has_asset' list for use in extra_fields.
+        vault_node carries the node's 'type' and the 'extra_fields' the live save
+        would have written; older intents have only a 'has_asset' list.
 
     Returns list of UIDs that were recovered.
     """

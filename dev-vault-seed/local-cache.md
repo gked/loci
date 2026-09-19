@@ -7,10 +7,10 @@ domains:
 - health-biology
 references: []
 relations:
+- type: is-part-of
+  uid: 909ff497
 - type: relates-to
-  uid: 0446b3b9
-- type: relates-to
-  uid: 4d21e937
+  uid: 44e20d0d
 state: active
 status: archived
 summary: The narrow corridor traces the slow ledger before the harbour settles. The

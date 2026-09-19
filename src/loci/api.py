@@ -205,6 +205,7 @@ def save(
             summary=summary or "",
             state="active",
             source_url=str((extra_fields or {}).get("source_url") or ""),
+            subtype=str((extra_fields or {}).get("subtype") or ""),
             path=result["path"],
         )
         graph.index_edges(result["uid"], relations or [])
@@ -250,6 +251,7 @@ def patch(path: str, updates: dict, body: str = None) -> dict:
             summary=result.get("summary", ""),
             state=result.get("state", "active"),
             source_url=result.get("source_url", ""),
+            subtype=result.get("subtype", ""),
             aliases=result.get("aliases", []),
             language=result.get("language", ""),
             path=str(p),
@@ -509,13 +511,35 @@ def save_asset(
         }
     ]
 
+    # A document without a stated subtype is a note. Decide once, so the file,
+    # the graph index, and the recovery intent all say the same thing.
+    effective_subtype = subtype or ("note" if node_type == "document" else "")
+
+    # The proxy node's frontmatter is fixed here, before the intent is written,
+    # so that crash recovery (mcp_server._write_vault_proxy) can write the very
+    # same node rather than reconstruct it from a subset of the arguments.
+    extra_fields: dict = {"uid": uid, "has_asset": has_asset_list, "status": "evergreen"}
+    if effective_subtype:
+        extra_fields["subtype"] = effective_subtype
+    if node_type == "asset":
+        extra_fields["storage"] = "digital"
+    if author:
+        extra_fields["author"] = author
+    if published_at:
+        extra_fields["published_at"] = published_at
+    if language:
+        extra_fields["language"] = language
+
     vault_node = {
+        "type": node_type,
         "title": title,
         "summary": summary,
         "tags": tags or [],
         "domains": domains or [],
         "relations": relations or [],
         "has_asset": has_asset_list,
+        "subtype": effective_subtype,
+        "extra_fields": extra_fields,
     }
 
     ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
@@ -532,25 +556,6 @@ def save_asset(
     asset_tmp.rename(asset_final)
 
     # Step 6: Write vault proxy node
-    extra_fields: dict = {"uid": uid, "has_asset": has_asset_list, "status": "evergreen"}
-    if node_type == "asset":
-        if subtype:
-            extra_fields["subtype"] = subtype
-        extra_fields["storage"] = "digital"
-        if author:
-            extra_fields["author"] = author
-        if published_at:
-            extra_fields["published_at"] = published_at
-        if language:
-            extra_fields["language"] = language
-    else:
-        if author:
-            extra_fields["author"] = author
-        if language:
-            extra_fields["language"] = language
-        if published_at:
-            extra_fields["published_at"] = published_at
-
     with contextlib.redirect_stdout(io.StringIO()):
         result = _write_item(
             type=node_type,
@@ -573,6 +578,7 @@ def save_asset(
         domains=domains or [],
         summary=summary or "",
         state="active",
+        subtype=effective_subtype,
         path=result["path"],
     )
     graph.index_edges(uid, relations or [])

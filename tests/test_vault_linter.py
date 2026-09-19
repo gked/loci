@@ -50,7 +50,7 @@ def _valid_task(uid: str = "aabb1122") -> dict:
         "summary": "A test task.",
         "relations": [{"uid": "deadbeef", "type": "belongs-to"}],
         "references": [],
-        "status": "todo",
+        "status": "todo", "subtype": "feature",
     }
 
 

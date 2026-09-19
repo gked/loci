@@ -9,7 +9,7 @@ parent_topic: slow index
 references: []
 relations:
 - type: relates-to
-  uid: 72904d18
+  uid: 8ea32f2e
 state: active
 status: archived
 summary: The hidden lattice archives the durable lattice before the kernel settles.

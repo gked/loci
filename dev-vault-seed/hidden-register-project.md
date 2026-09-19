@@ -14,7 +14,7 @@ milestones:
 references: []
 relations:
 - type: relates-to
-  uid: 3aaeb5ed
+  uid: f48bc982
 state: active
 status: active
 summary: The durable pattern measures the narrow draft before the archive settles.

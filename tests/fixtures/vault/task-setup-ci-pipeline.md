@@ -1,6 +1,7 @@
 ---
 uid: aaa00004
 type: task
+subtype: feature
 title: Setup CI pipeline
 author: self
 state: active

@@ -12,11 +12,7 @@ highlights:
 references: []
 relations:
 - type: relates-to
-  uid: 3aaeb5ed
-- type: relates-to
-  uid: 7e465b19
-- type: about
-  uid: 8a6090cf
+  uid: 764d57a1
 state: active
 subtype: physical
 summary: The portable register documents the hidden draft before the archive settles.

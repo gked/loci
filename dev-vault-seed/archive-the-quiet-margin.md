@@ -2,18 +2,17 @@
 archived_at: null
 assignee: Priya Raman
 author: self
-created_at: '2026-01-01T05:51:27Z'
+created_at: '2025-10-28T04:42:43Z'
 domains:
 - creativity-design
-due_date: '2026-01-25T07:26:50Z'
+due_date: '2025-11-21T07:26:50Z'
 references: []
 relations:
 - type: relates-to
-  uid: a6c40444
-- type: relates-to
-  uid: 1ab89d95
+  uid: a6cecc1b
 state: active
 status: done
+subtype: chore
 summary: The quiet index compares the local register before the signal settles. The
   stable ledger compares the plain corridor before the compass settles.
 tags:
@@ -24,7 +23,7 @@ tags:
 title: Archive the quiet margin
 type: task
 uid: c862ad2d
-updated_at: '2026-01-01T05:51:27Z'
+updated_at: '2025-11-13T08:07:04Z'
 ---
 
 ## Archive the quiet margin

@@ -1,6 +1,7 @@
 ---
 uid: chain002
 type: document
+subtype: note
 title: Chain Node Beta
 author: self
 state: active

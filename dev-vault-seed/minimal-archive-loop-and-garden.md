@@ -9,8 +9,10 @@ references: []
 relations:
 - type: about
   uid: ceb52fc3
+- type: relates-to
+  uid: 7e21b8aa
 - type: about
-  uid: 909ff497
+  uid: a6cecc1b
 source_url: https://notes.example.com/compass/5052
 state: active
 summary: The recursive archive prunes the local threshold before the budget settles.

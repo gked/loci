@@ -5,8 +5,10 @@
 # Add new tags here when a concept recurs and deserves a stable label.
 #
 # Format: one tag per line, lowercase, hyphenated.
-# Note: entity subtype (person, organization, place) is a frontmatter field, not a tag — do not add as a tag.
-# Process category tags (#recipe, #workout, #protocol, etc.) and article format tags (#book, #paper, etc.) belong here.
+# Note: subtypes (task bug/feature/…, document essay/spec/…, article book/paper/…, entity person/…,
+# asset book/…) are the `subtype` frontmatter field, not tags — never add one as a tag.
+# Names of projects, people, companies, and subjects are relations to those nodes, not tags.
+# Process category tags (#recipe, #workout, #protocol, etc.) still belong here.
 # schema_version: 1
 
 ## Tags

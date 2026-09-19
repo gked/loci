@@ -30,8 +30,8 @@ Save this article, and note that it argues against the piece I saved last week o
 ```
 
 → `article` node with `source_url`, `author`, `published_at`, a summary, and a
-format tag (`#blog-post`, `#research-paper`, …). The second form adds a
-`contradicts` edge to the earlier node.
+`subtype` (`blog-post`, `paper`, …). The second form adds a `contradicts` edge
+to the earlier node.
 
 ### A document — your own text, no citable source
 
@@ -40,8 +40,8 @@ Save this as a document: <paste, or "the file I have open">
 Save my notes from today's design review as meeting notes
 ```
 
-→ `document` node with `status` and a format tag (`#meeting-notes`, `#essay`,
-`#spec`, …). If it reads as a sequence of steps, Claude will suggest
+→ `document` node with `status` and a `subtype` (`meeting-notes`, `essay`,
+`spec`, …). If it reads as a sequence of steps, Claude will suggest
 `procedure` instead.
 
 ### A reference to a file you keep elsewhere
@@ -66,7 +66,7 @@ Add this ebook to my library: ~/Books/name-of-the-rose.epub
 
 → `asset` node with `subtype: book` and `storage: physical | digital | both`;
 the ebook form also gets a `has_asset` location. A book you *read* but don't
-own is an `article` with `format: book` instead — Claude will ask if it can't
+own is an `article` with `subtype: book` instead — Claude will ask if it can't
 tell.
 
 ### Reading notes on a book

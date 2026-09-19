@@ -9,8 +9,8 @@ goals:
 - brittle meridian
 references: []
 relations:
-- type: about
-  uid: 359da954
+- type: relates-to
+  uid: 72904d18
 state: active
 status: abandoned
 summary: The plain lattice prunes the minimal index before the signal settles. The

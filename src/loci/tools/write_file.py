@@ -403,6 +403,7 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
         "domains": fm.get("domains") or [],
         "summary": fm.get("summary", ""),
         "source_url": fm.get("source_url") or "",
+        "subtype": fm.get("subtype") or "",
         "aliases": fm.get("aliases") or [],
         "language": fm.get("language") or "",
     }

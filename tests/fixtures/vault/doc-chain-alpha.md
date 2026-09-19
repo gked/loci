@@ -1,6 +1,7 @@
 ---
 uid: chain001
 type: document
+subtype: note
 title: Chain Node Alpha
 author: self
 state: active

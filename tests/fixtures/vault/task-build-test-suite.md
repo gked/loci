@@ -1,6 +1,7 @@
 ---
 uid: aaa00001
 type: task
+subtype: feature
 title: Build test suite
 author: self
 state: active

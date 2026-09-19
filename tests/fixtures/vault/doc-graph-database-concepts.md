@@ -1,6 +1,7 @@
 ---
 uid: srch0003
 type: document
+subtype: note
 title: Graph Database Concepts
 author: self
 state: active

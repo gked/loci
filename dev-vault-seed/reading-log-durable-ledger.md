@@ -14,11 +14,15 @@ rating: '4'
 references: []
 relations:
 - type: relates-to
-  uid: 4d21e937
+  uid: 909ff497
+- type: relates-to
+  uid: ceb52fc3
+- type: relates-to
+  uid: 7e21b8aa
 - type: about
-  uid: c934812c
+  uid: '46037899'
 state: active
-subject_uid: c934812c
+subject_uid: '46037899'
 summary: The portable archive prototypes the practical register before the register
   settles. The local pattern sketchs the restless orbit before the garden settles.
 tags:

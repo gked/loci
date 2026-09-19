@@ -11,10 +11,10 @@ inputs:
 - stable draft
 references: []
 relations:
-- type: relates-to
-  uid: b99e0db7
-- type: relates-to
-  uid: 8ea32f2e
+- type: used-in
+  uid: 4d21e937
+- type: used-in
+  uid: f3c668b1
 state: active
 steps:
 - The minimal cache archives the slow handle before the margin settles.

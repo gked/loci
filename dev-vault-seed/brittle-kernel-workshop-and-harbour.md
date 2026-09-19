@@ -6,10 +6,10 @@ domains:
 - philosophy-ethics
 references: []
 relations:
-- type: about
-  uid: e38a59aa
 - type: relates-to
-  uid: e746ebeb
+  uid: 44e20d0d
+- type: relates-to
+  uid: 4fe39d18
 site_name: blog.example.net
 source_url: https://docs.example.io/garden/2491
 state: active
