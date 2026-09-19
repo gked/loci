@@ -115,13 +115,16 @@ def test_save_asset_intent_carries_the_document_subtype_for_recovery(tmp_vault, 
         return real_write_intent(*args, **kwargs)
 
     monkeypatch.setattr(ar, "write_intent", spy)
-    api.save_asset(
+    live = api.save_asset(
         content=b"%PDF-1", format="pdf", mime_type="application/pdf",
         title="Lesson Three", node_type="document", subtype="transcript",
     )
     assert captured["vault_node"]["subtype"] == "transcript"
 
-    # Replay recovery from that intent and read back what it wrote.
+    # Replay recovery from that intent and read back what it wrote. Recovery
+    # only runs when the proxy node is missing, and write_item refuses a uid
+    # already on disk — so put the vault in the crashed-before-step-6 state.
+    Path(live["vault_path"]).unlink()
     uid = api.generate_uid()
     path = mcp_server._write_vault_proxy(tmp_vault, uid, captured["vault_node"])
     fm = yaml.safe_load(split_frontmatter(Path(path).read_text(encoding="utf-8"))[0])
@@ -155,6 +158,8 @@ def test_recovery_of_an_asset_save_writes_an_asset_node_not_a_document(tmp_vault
         author="A. Writer", published_at="2001", language="en",
     )
     live_fm = yaml.safe_load(split_frontmatter(Path(live["vault_path"]).read_text(encoding="utf-8"))[0])
+    # The crashed-before-step-6 state recovery actually runs in (see above).
+    Path(live["vault_path"]).unlink()
 
     node = dict(captured["vault_node"], title="Some Novel (recovered)")
     path = mcp_server._write_vault_proxy(tmp_vault, api.generate_uid(), node)
@@ -174,6 +179,17 @@ def test_patch_that_finishes_a_note_into_an_essay_moves_it_in_the_graph(tmp_vaul
 
     assert node["uid"] not in {n["uid"] for n in graph.find(subtype="note")}
     assert [n["uid"] for n in graph.find(subtype="essay")] == [node["uid"]]
+
+
+def test_save_with_a_given_uid_indexes_the_graph_under_that_uid(tmp_vault):
+    graph.get(tmp_vault)
+    result = api.save(
+        type="document", title="Given UID", body="…",
+        extra_fields={"status": "draft", "subtype": "note", "uid": "feed0002"},
+    )
+    assert result["uid"] == "feed0002"
+    assert graph._graph.has_node("feed0002")
+    assert [n["uid"] for n in graph.find(subtype="note", related_to=None) if n["title"] == "Given UID"] == ["feed0002"]
 
 
 # ---------------------------------------------------------------------------
@@ -378,3 +394,18 @@ def test_migration_apply_leaves_a_vault_the_linter_accepts(tmp_vault):
 
 def test_migration_cli_refuses_a_missing_directory(tmp_path, capsys):
     assert migrate_subtypes.main([str(tmp_path / "nope")]) == 2
+
+
+def test_save_with_a_taken_uid_leaves_the_existing_node_alone(tmp_vault):
+    graph.get(tmp_vault)
+    existing = graph.find(subtype="note", related_to=None)[0]
+    before = dict(graph._graph.nodes[existing["uid"]])
+    out_edges_before = set(graph._graph.out_edges(existing["uid"]))
+    result = api.save(
+        type="document", title="Clobber", body="…",
+        extra_fields={"status": "draft", "subtype": "note", "uid": existing["uid"]},
+    )
+    assert "errors" in result and existing["uid"] in result["errors"][0]
+    assert dict(graph._graph.nodes[existing["uid"]]) == before
+    assert set(graph._graph.out_edges(existing["uid"])) == out_edges_before
+    assert not (tmp_vault / "clobber.md").exists()

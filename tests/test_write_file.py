@@ -97,13 +97,13 @@ def test_write_item_extra_fields_merged(tmp_vault):
         type="document",
         title="Asset Doc",
         body="",
-        extra_fields={"status": "draft", "subtype": "note", "has_asset": True, "uid": "fixed001"},
+        extra_fields={"status": "draft", "subtype": "note", "has_asset": True, "uid": "f1aed001"},
         skip_duplicate_check=True,
     )
     raw = Path(result["path"]).read_text(encoding="utf-8")
     fm = yaml.safe_load(raw.split("---", 2)[1])
     assert fm["has_asset"] is True
-    assert fm["uid"] == "fixed001"
+    assert fm["uid"] == "f1aed001"
 
 
 def test_write_item_invalid_type_raises(tmp_vault):
@@ -826,3 +826,94 @@ def test_write_item_does_not_mutate_the_callers_extra_fields_dict(tmp_vault):
         skip_duplicate_check=True,
     )
     assert extra == {"status": "draft", "subtype": "note", "body": "Body from extra_fields."}
+
+
+def test_write_item_reports_the_uid_it_was_given(tmp_vault):
+    """A uid passed in extra_fields lands in the file, and the result names the
+    same uid — not a second one generated and then overwritten."""
+    result = write_item(
+        type="document", title="Given UID", body="",
+        extra_fields={"status": "draft", "subtype": "note", "uid": "feed0001"},
+        skip_duplicate_check=True,
+    )
+    assert result["uid"] == "feed0001"
+    fm_text, _ = split_frontmatter(Path(result["path"]).read_text(encoding="utf-8"))
+    assert yaml.safe_load(fm_text)["uid"] == "feed0001"
+
+
+@pytest.mark.parametrize("given", [None, ""])
+def test_write_item_generates_a_uid_when_extra_fields_carries_an_empty_one(tmp_vault, given):
+    """A client that always sends the uid key, nulled when it has none, must
+    not end up with `uid: null` in the file and a generated uid in the result."""
+    result = write_item(
+        type="document", title="Empty UID", body="",
+        extra_fields={"status": "draft", "subtype": "note", "uid": given},
+        skip_duplicate_check=True,
+    )
+    assert result["uid"]
+    fm_text, _ = split_frontmatter(Path(result["path"]).read_text(encoding="utf-8"))
+    assert yaml.safe_load(fm_text)["uid"] == result["uid"]
+
+
+def test_write_item_refuses_a_uid_another_node_already_holds(tmp_vault):
+    """api.save indexes the graph under the given uid, and index_node on an
+    existing uid rewrites that node in place — so a collision is an error."""
+    first = write_item(
+        type="document", title="First Holder", body="",
+        extra_fields={"status": "draft", "subtype": "note", "uid": "feed0003"},
+        skip_duplicate_check=True,
+    )
+    result = write_item(
+        type="document", title="Second Holder", body="",
+        extra_fields={"status": "draft", "subtype": "note", "uid": "feed0003"},
+        skip_duplicate_check=True,
+    )
+    assert "errors" in result
+    assert "feed0003" in result["errors"][0]
+    assert Path(first["path"]).name in result["errors"][0]
+    assert not (tmp_vault / "second-holder.md").exists()
+
+
+@pytest.mark.parametrize("given", [
+    "FEED0001",                          # uppercase
+    "feed0001x",                         # too long
+    "feed000",                           # too short
+    " feed0001",                         # stray whitespace
+    "FEED-0001-xyz",                     # not hex at all
+    "0123456789abcdef0123456789abcdef",  # a full uuid4().hex
+])
+def test_write_item_refuses_a_given_uid_that_is_not_in_the_vaults_form(tmp_vault, given):
+    """api.get and the linter recognise only 8 lowercase hex characters; a
+    uid in any other form would be honoured, reported back, and then be
+    unreachable through it."""
+    result = write_item(
+        type="document", title="Bad UID", body="",
+        extra_fields={"status": "draft", "subtype": "note", "uid": given},
+        skip_duplicate_check=True,
+    )
+    assert "errors" in result
+    assert "not a valid uid" in result["errors"][0]
+    assert not (tmp_vault / "bad-uid.md").exists()
+
+
+def test_write_item_scans_the_vault_for_a_taken_uid_only_when_one_was_given(tmp_vault, monkeypatch):
+    """The taken-uid check reads every file in the vault. A generated uid is
+    fresh by construction, so the scan is reserved for the given-uid path."""
+    import loci.tools.write_file as wf
+    calls = []
+    real = wf.find_uid
+    monkeypatch.setattr(wf, "find_uid", lambda root, uid: calls.append(uid) or real(root, uid))
+
+    write_item(
+        type="document", title="Generated UID", body="",
+        extra_fields={"status": "draft", "subtype": "note"},
+        skip_duplicate_check=True,
+    )
+    assert calls == []
+
+    write_item(
+        type="document", title="Given UID Scan", body="",
+        extra_fields={"status": "draft", "subtype": "note", "uid": "feed0004"},
+        skip_duplicate_check=True,
+    )
+    assert calls == ["feed0004"]

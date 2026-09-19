@@ -281,7 +281,10 @@ def write_vault(
         extra_fields: Type-specific frontmatter fields. Do NOT put the body here —
                       'body' is not a frontmatter field. A 'body' key in
                       extra_fields is rerouted to the body argument and a
-                      warning is returned.
+                      warning is returned. A 'uid' key (from generate_uid)
+                      is honoured and reported back; one another node already
+                      holds is refused with {errors: [...]}. Omit it to have
+                      one generated.
         allow_duplicate: Write even though a similar node exists. Only after
                       the user has chosen "save as new".
     """

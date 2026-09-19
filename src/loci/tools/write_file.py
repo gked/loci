@@ -16,6 +16,7 @@ two clients can produce a torn write. If you need stricter consistency,
 add your own file locking (e.g. fcntl.flock) around the write path.
 """
 
+import re
 import sys
 import yaml
 from datetime import datetime, timezone
@@ -92,6 +93,28 @@ def check_duplicate(vault_root: Path, title: str, url: str = None) -> Optional[P
         if wanted_url and _normalize_url(fm.get("source_url") or "") == wanted_url:
             return md_file
 
+    return None
+
+
+UID_RE = re.compile(r"[0-9a-f]{8}")
+
+
+def find_uid(vault_root: Path, uid: str) -> Optional[Path]:
+    """
+    Return the path of the node whose frontmatter carries `uid`, or None.
+
+    Read from disk for the same reason check_duplicate does: the graph index
+    can lag an in-place edit, and a save is not a hot path.
+    """
+    for md_file in vault_root.rglob("*.md"):
+        if md_file.parent.name == "meta":
+            continue
+        try:
+            fm, _ = load_frontmatter(md_file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if fm and str(fm.get("uid") or "") == uid:
+            return md_file
     return None
 
 
@@ -232,6 +255,33 @@ def write_item(
 
     vault_root.mkdir(parents=True, exist_ok=True)
 
+    # A caller that already holds a uid (save_asset, which wrote an intent
+    # file under it; a skill that called generate_uid first) passes it in
+    # extra_fields. The file always honoured that; the return value and the
+    # graph index must too, or the caller is told a uid that exists nowhere.
+    # A uid that is already on disk is refused rather than reused: api.save
+    # indexes the graph under it, and index_node on an existing uid rewrites
+    # that node's attributes and drops its edges.
+    # It must also be a uid in the vault's own form — the lookup in api.get
+    # and the linter both recognise nothing else, so any other value would be
+    # reported back and then be unreachable by it.
+    given_uid = (extra_fields or {}).get("uid")
+    if given_uid:
+        uid = str(given_uid)
+        if not UID_RE.fullmatch(uid):
+            return {"errors": [
+                f"uid '{uid}' is not a valid uid (8 lowercase hex characters). "
+                "Omit uid to have one generated, or call generate_uid for a fresh one."
+            ]}
+        taken = find_uid(vault_root, uid)
+        if taken is not None:
+            return {"errors": [
+                f"uid '{uid}' already belongs to {taken.name}. "
+                "Omit uid to have one generated, or call generate_uid for a fresh one."
+            ]}
+    else:
+        uid = generate_uid()
+
     # Duplicate check
     if not skip_duplicate_check:
         url = (extra_fields or {}).get("source_url")
@@ -244,8 +294,6 @@ def write_item(
                 print("Aborted.")
                 return {}
 
-    # Generate UID and filename
-    uid = generate_uid()
     fname = free_filename(vault_root, title)
     file_path = vault_root / fname
 
@@ -267,9 +315,11 @@ def write_item(
         "references": references or [],
     }
 
-    # Merge type-specific fields
+    # Merge type-specific fields. The uid was resolved above; a None or empty
+    # uid in extra_fields must not land in the file over the generated one.
     if extra_fields:
         frontmatter.update(extra_fields)
+        frontmatter["uid"] = uid
 
     # Write file
     content = serialize_frontmatter(frontmatter) + "\n" + body
