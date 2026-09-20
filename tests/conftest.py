@@ -50,6 +50,23 @@ def isolated_config(tmp_path_factory, monkeypatch):
     yield config
 
 
+@pytest.fixture(autouse=True)
+def no_inherited_git_env(monkeypatch):
+    """
+    Keep every git a test runs inside the test's own directory.
+
+    git exports GIT_DIR to a hook fired from a linked worktree, and the
+    pre-push hook runs this suite. A test that shells out to git — to build a
+    throwaway repo in tmp_path, or through release_notes — inherits it, and
+    every one of its commands then acts on the real repository: that once
+    marked the checkout bare and committed fixture files onto the branch
+    being pushed. Dropping the whole GIT_* family here means no test has to
+    remember to.
+    """
+    for name in [k for k in os.environ if k.startswith("GIT_")]:
+        monkeypatch.delenv(name)
+
+
 @pytest.fixture
 def tmp_vault(tmp_path):
     """
