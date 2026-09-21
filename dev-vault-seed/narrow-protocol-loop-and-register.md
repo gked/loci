@@ -19,7 +19,7 @@ summary: The plain garden compares the practical pattern before the ledger settl
   The ambient loop refactors the hidden compass before the lattice settles.
 tags:
 - loci
-- podcast
+- audio
 - graph
 - economics
 - python

@@ -16,7 +16,7 @@ state: active
 summary: The practical cache rebuilds the quiet orbit before the harbour settles.
   The adaptive archive audits the minimal index before the loop settles.
 tags:
-- notes
+- jottings
 - reference
 - loci
 title: 'Brittle Kernel: workshop and harbour'

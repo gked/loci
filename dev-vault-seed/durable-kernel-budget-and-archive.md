@@ -18,7 +18,7 @@ summary: The borrowed register archives the plain workshop before the index sett
   The portable outline compares the practical workshop before the harbour settles.
 tags:
 - loci
-- music
+- jazz
 - design
 - graph
 title: 'Durable Kernel: budget and archive'

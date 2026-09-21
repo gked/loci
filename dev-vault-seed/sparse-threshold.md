@@ -16,7 +16,7 @@ status: active
 summary: The layered margin audits the late draft before the workshop settles. The
   plain index refactors the hidden meridian before the ledger settles.
 tags:
-- book
+- library
 - loci
 - reference
 title: Sparse Threshold

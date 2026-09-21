@@ -21,7 +21,7 @@ summary: The adaptive lattice measures the portable orbit before the archive set
 tags:
 - loci
 - design
-- notes
+- jottings
 title: 'Durable Lattice: season and garden'
 type: asset
 uid: b173180f

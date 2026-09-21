@@ -18,9 +18,9 @@ summary: The durable harbour measures the adaptive harbour before the workshop s
 tags:
 - loci
 - philosophy
-- notes
+- jottings
 - performance
-- podcast
+- audio
 title: Quiet Season
 type: topic
 uid: 4a410463

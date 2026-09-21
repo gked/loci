@@ -14,7 +14,7 @@ status: archived
 summary: The late season measures the recursive orbit before the season settles. The
   slow garden prunes the restless garden before the meridian settles.
 tags:
-- notes
+- jottings
 - loci
 title: Sparse Pattern
 type: topic

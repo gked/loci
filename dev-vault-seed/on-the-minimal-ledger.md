@@ -21,9 +21,9 @@ summary: The portable field migrates the durable meridian before the loop settle
   The adaptive meridian sketchs the borrowed workshop before the field settles.
 tags:
 - vault
-- journal
+- retrospective
 - loci
-- notes
+- jottings
 - idea
 title: On the minimal ledger
 turns: '20'

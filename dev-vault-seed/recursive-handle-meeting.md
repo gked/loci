@@ -22,7 +22,7 @@ tags:
 - talk
 - design
 - climbing
-- notes
+- jottings
 title: Recursive Handle meeting
 type: event
 uid: 7a344a7a

@@ -24,7 +24,7 @@ subtype: organization
 summary: The narrow ledger compares the practical cache before the outline settles.
   The slow orbit rebuilds the restless compass before the field settles.
 tags:
-- notes
+- jottings
 - writing
 - react
 - design

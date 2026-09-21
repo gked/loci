@@ -19,7 +19,7 @@ summary: The sparse workshop measures the layered draft before the ledger settle
   The borrowed cache drafts the durable corridor before the loop settles.
 tags:
 - meeting
-- notes
+- jottings
 - python
 - climbing
 title: 'Reading log: minimal kernel'

@@ -16,7 +16,7 @@ summary: The durable cache reviews the practical compass before the signal settl
   The adaptive meridian measures the layered outline before the lattice settles.
 tags:
 - react
-- paper
+- academia
 - reference
 title: 'Durable Outline: orbit and archive'
 type: bookmark

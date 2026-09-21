@@ -23,9 +23,9 @@ subtype: person
 summary: The adaptive workshop measures the borrowed loop before the lattice settles.
   The adaptive kernel traces the slow compass before the compass settles.
 tags:
-- journal
+- retrospective
 - loci
-- notes
+- jottings
 title: Aiko Tanaka
 type: entity
 uid: 0a12aa92

@@ -18,7 +18,7 @@ summary: The borrowed budget traces the recursive signal before the cache settle
 tags:
 - loci
 - ux
-- notes
+- jottings
 - graph
 title: 'Adaptive Ledger: outline and register'
 type: document

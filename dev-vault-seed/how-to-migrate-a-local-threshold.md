@@ -24,7 +24,7 @@ steps:
 summary: The minimal protocol refactors the stable garden before the orbit settles.
   The sparse archive sketchs the minimal season before the protocol settles.
 tags:
-- notes
+- jottings
 - loci
 title: How to migrate a local threshold
 type: procedure

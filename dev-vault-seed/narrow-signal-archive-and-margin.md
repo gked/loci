@@ -18,8 +18,8 @@ subtype: meeting-notes
 summary: The quiet register prototypes the restless corridor before the orbit settles.
   The late lattice archives the slow workshop before the threshold settles.
 tags:
-- notes
-- book
+- jottings
+- library
 - writing
 - design
 - python

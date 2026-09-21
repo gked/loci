@@ -15,7 +15,7 @@ summary: The practical meridian migrates the stable pattern before the protocol 
   The recursive index migrates the local corridor before the outline settles.
 tags:
 - ontology
-- notes
+- jottings
 - data
 - talk
 - graph

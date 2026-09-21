@@ -19,7 +19,7 @@ summary: The ambient garden prunes the plain margin before the meridian settles.
   narrow season documents the adaptive outline before the lattice settles.
 tags:
 - loci
-- notes
+- jottings
 - tooling
 - research
 title: 'Narrow Margin: season and index'

@@ -20,7 +20,7 @@ summary: The recursive corridor prototypes the portable orbit before the margin 
   The slow register archives the minimal draft before the orbit settles.
 tags:
 - reference
-- journal
+- retrospective
 - history
 title: Minimal Index meeting
 type: event

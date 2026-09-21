@@ -21,7 +21,7 @@ tags:
 - loci
 - review
 - finance
-- notes
+- jottings
 title: On the stable compass
 turns: '15'
 type: conversation

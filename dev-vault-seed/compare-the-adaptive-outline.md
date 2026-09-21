@@ -19,7 +19,7 @@ subtype: feature
 summary: The plain threshold drafts the adaptive signal before the archive settles.
   The slow field prunes the sparse compass before the season settles.
 tags:
-- journal
+- retrospective
 - philosophy
 - loci
 - meeting

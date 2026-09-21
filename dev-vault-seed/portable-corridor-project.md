@@ -17,7 +17,7 @@ status: paused
 summary: The durable pattern reviews the quiet index before the protocol settles.
   The borrowed kernel reviews the late kernel before the orbit settles.
 tags:
-- notes
+- jottings
 - cli
 - tooling
 - statistics

@@ -48,9 +48,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import re
 import sys
-import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -61,60 +59,12 @@ import yaml
 from loci.tools.frontmatter import split_frontmatter
 from loci.tools.write_file import serialize_frontmatter
 
-RELATION_FOR = {"project": "belongs-to", "entity": "involves", "topic": "about"}
+from loci.tools.tag_hygiene import (  # noqa: E402
+    RELATION_FOR, Target, build_name_index, list_field, normalise, singular_key,
+)
 
 # Tags below this many uses are not worth reporting as "no node found".
 UNMATCHED_REPORT_MIN = 3
-
-
-# Punctuation that is part of a name rather than a separator: without it
-# C, C++ and C# — or R and R&D — would all collapse onto one key.
-NAME_SYMBOLS = "+#&"
-
-
-def normalise(name: str) -> str:
-    """Fold case, accents, punctuation and separators so that names which a
-    person would read as the same compare equal. Empty when nothing is left."""
-    text = unicodedata.normalize("NFKD", str(name)).casefold()
-    return "".join(ch for ch in text if ch.isalnum() or ch in NAME_SYMBOLS)
-
-
-# A parenthetical that is an abbreviation: capitals and digits only, with at
-# least one letter, so "(GLX)" and "(2FA)" qualify but "(Acme Corp)",
-# "(French startup)" and "(2024)" are glosses and do not.
-ABBREVIATION = re.compile(r"^(?=.*[A-Z])[A-Z0-9&.-]+$")
-
-
-def candidate_names(fm: dict) -> list[str]:
-    title = str(fm.get("title") or "")
-    names = [title]
-    m = re.match(r"^(.*?)\s*\(([^()]*)\)\s*$", title)
-    if m:
-        names.append(m.group(1))
-        # "(GLX)" is a name; "(company)" is a gloss. Only an abbreviation
-        # is worth answering to.
-        if ABBREVIATION.match(m.group(2).strip()):
-            names.append(m.group(2).strip())
-    # A bare string here would be read letter by letter; see list_field.
-    names += [str(a) for a in (list_field(fm, "aliases") or [])]
-    return [n for n in names if n.strip()]
-
-
-def list_field(fm: dict, key: str) -> list | None:
-    """The list under `key`, `[]` when absent or null, `None` when it is
-    something else — a bare string iterates as characters, and a dict as
-    keys, and neither is what the author meant."""
-    val = fm.get(key)
-    if val is None:
-        return []
-    return val if isinstance(val, list) else None
-
-
-@dataclass
-class Target:
-    uid: str
-    node_type: str
-    title: str
 
 
 @dataclass
@@ -174,18 +124,7 @@ def load_vault(vault_root: Path) -> tuple[dict[Path, dict], list[str]]:
 
 
 def index_targets(nodes: dict[Path, dict]) -> dict[str, list[Target]]:
-    index: dict[str, list[Target]] = defaultdict(list)
-    for fm in nodes.values():
-        if fm.get("type") not in RELATION_FOR or fm.get("state") == "archived":
-            continue
-        target = Target(str(fm["uid"]), str(fm["type"]), str(fm.get("title") or ""))
-        seen: set[str] = set()
-        for name in candidate_names(fm):
-            key = normalise(name)
-            if key and key not in seen:
-                seen.add(key)
-                index[key].append(target)
-    return index
+    return build_name_index(nodes.values())
 
 
 def plan_vault(vault_root: Path) -> Plan:
@@ -200,11 +139,13 @@ def plan_vault(vault_root: Path) -> Plan:
             plan.problems.append(f"{path.name}: tags is not a list — skipped")
             continue
         linked = {str(r.get("uid")) for r in (fm.get("relations") or []) if isinstance(r, dict)}
-        own = {normalise(fm.get("type") or ""), normalise(fm.get("subtype") or "")} - {""}
+        # singular_key, as the linter's check_tags: `books` on a book is the
+        # subtype too, and a tag the migration leaves is one the linter flags.
+        own = {singular_key(fm.get("type") or ""), singular_key(fm.get("subtype") or "")} - {""}
         for tag in tags:
             tag = str(tag)
             key = normalise(tag)
-            if key in own:
+            if singular_key(tag) in own:
                 plan.edges.append(Edge(path, uid, str(fm.get("title") or ""), tag, None, "", already_linked=True))
                 continue
             candidates = targets.get(key) if key else None

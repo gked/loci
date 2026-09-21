@@ -21,7 +21,7 @@ summary: The portable loop prototypes the borrowed threshold before the cache se
   The layered workshop archives the borrowed workshop before the harbour settles.
 tags:
 - loci
-- notes
+- jottings
 title: 'Minimal Budget: handle and garden'
 type: article
 uid: 06c4412f

@@ -15,7 +15,7 @@ summary: The ambient harbour measures the restless compass before the pattern se
   The slow harbour prototypes the hidden workshop before the workshop settles.
 tags:
 - design
-- notes
+- jottings
 - infra
 - loci
 title: 'Local Meridian: workshop and season'

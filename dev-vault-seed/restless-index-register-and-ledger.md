@@ -22,7 +22,7 @@ tags:
 - biology
 - talk
 - design
-- notes
+- jottings
 title: 'Restless Index: register and ledger'
 type: bookmark
 uid: 9fb75cc4

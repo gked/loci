@@ -30,6 +30,7 @@ from loci.tools.vault_init import NOT_CONFIGURED_MESSAGE, load_config
 from loci.tools.type_registry import get_registry
 from loci.tools.relation_registry import get_relation_registry
 from loci.tools.frontmatter import load_frontmatter, split_frontmatter
+from loci.tools.tag_hygiene import as_tag_list
 
 
 def serialize_frontmatter(fields: dict) -> str:
@@ -308,7 +309,7 @@ def write_item(
         "created_at": now,
         "updated_at": now,
         "archived_at": None,
-        "tags": tags or [],
+        "tags": as_tag_list(tags),
         "domains": domains or [],
         "summary": summary,
         "relations": relations or [],
@@ -431,6 +432,11 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
     # Merge updates
     fm.update(updates)
     fm["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # A scalar `tags: rust` — hand-edited, or passed as a string — is one tag.
+    # Persist it as the list every reader expects, so the file is repaired
+    # by the next patch rather than read letter by letter forever.
+    if "tags" in fm:
+        fm["tags"] = as_tag_list(fm["tags"])
 
     # yaml.safe_load converts datetime strings to Python datetime objects; convert
     # them back to strings so yaml.dump preserves the canonical YYYY-MM-DDTHH:MM:SSZ format.
@@ -449,7 +455,7 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
         "title": fm.get("title"),
         "state": fm.get("state", "active"),
         "relations": fm.get("relations") or [],
-        "tags": fm.get("tags") or [],
+        "tags": as_tag_list(fm.get("tags")),
         "domains": fm.get("domains") or [],
         "summary": fm.get("summary", ""),
         "source_url": fm.get("source_url") or "",

@@ -22,7 +22,7 @@ summary: The sparse compass prototypes the portable ledger before the register s
 tags:
 - loci
 - idea
-- notes
+- jottings
 title: Ljubljana
 type: entity
 uid: 7f1b59c8

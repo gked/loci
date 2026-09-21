@@ -19,7 +19,7 @@ state: active
 summary: The late field documents the hidden lattice before the budget settles. The
   slow compass sketchs the stable corridor before the signal settles.
 tags:
-- notes
+- jottings
 - graph
 - climbing
 title: Adaptive Draft meeting

@@ -20,9 +20,9 @@ summary: The hidden protocol refactors the durable margin before the lattice set
 tags:
 - loci
 - docker
-- notes
+- jottings
 - react
-- journal
+- retrospective
 title: 'Plain Season: field and handle'
 type: bookmark
 uid: 0d6439b4

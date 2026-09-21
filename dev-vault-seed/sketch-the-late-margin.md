@@ -18,7 +18,7 @@ summary: The adaptive kernel documents the hidden kernel before the index settle
   The quiet ledger documents the hidden workshop before the ledger settles.
 tags:
 - loci
-- notes
+- jottings
 - data
 - python
 title: Sketch the late margin

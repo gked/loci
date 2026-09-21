@@ -24,7 +24,7 @@ summary: The portable harbour migrates the local ledger before the pattern settl
 tags:
 - idea
 - statistics
-- book
+- library
 - design
 title: Prune the borrowed corridor
 type: task

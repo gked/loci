@@ -16,7 +16,7 @@ summary: The local compass reviews the restless ledger before the garden settles
   The minimal kernel traces the hidden compass before the archive settles.
 tags:
 - loci
-- journal
+- retrospective
 - reference
 - economics
 - testing

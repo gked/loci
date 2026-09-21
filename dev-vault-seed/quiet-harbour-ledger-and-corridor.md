@@ -22,7 +22,7 @@ summary: The stable orbit refactors the ambient meridian before the lattice sett
   The slow signal sketchs the local workshop before the workshop settles.
 tags:
 - learning
-- notes
+- jottings
 - python
 - tooling
 title: 'Quiet Harbour: ledger and corridor'

@@ -18,7 +18,7 @@ subtype: paper
 summary: The layered ledger measures the portable kernel before the field settles.
   The portable loop reviews the brittle ledger before the handle settles.
 tags:
-- notes
+- jottings
 - design
 - loci
 - cli

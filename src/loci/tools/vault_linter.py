@@ -16,6 +16,10 @@ Checks performed:
     - dangling relations (uid not found in vault)
     - orphaned nodes (no relations)
     - empty summary
+    - a tag that names a project/entity/topic node (should be a relation)
+    - a tag that repeats the node's own type or subtype
+    - vault-wide: near-duplicate tag spellings (tags used once are reported in
+      stats.tags, not as warnings — the long tail is information, not a defect)
 
 Usage:
     python tools/vault_linter.py [vault_root]
@@ -27,6 +31,7 @@ will be replaced by an ontology loader once that file lands.
 import re
 import sys
 import yaml
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
@@ -35,6 +40,7 @@ from loci.tools.frontmatter import split_frontmatter
 from loci.tools.type_registry import TypeRegistry, get_registry, REFERENCES_DIR
 from loci.tools.relation_registry import RelationRegistry, get_relation_registry
 from loci.tools.scheme_registry import SchemeRegistry, get_scheme_registry
+from loci.tools import tag_hygiene
 
 BASE_REQUIRED = [
     "uid", "type", "title", "author",
@@ -242,8 +248,11 @@ def lint_vault(vault_root: Path) -> dict:
     scheme_reg = get_scheme_registry(vault_root)
     md_files = sorted(f for f in vault_root.glob("*.md"))
 
-    # Pass 1: collect all uids and detect duplicates
+    # Pass 1: collect all uids and detect duplicates; keep the parsed
+    # frontmatter for the tag checks, which need every node's tags and the
+    # names of every project/entity/topic before any one file can be judged.
     uid_map: dict[str, list[str]] = {}
+    parsed: list[tuple[str, dict]] = []
     for path in md_files:
         raw = path.read_text(encoding="utf-8")
         fm_text, _ = split_frontmatter(raw)
@@ -255,6 +264,7 @@ def lint_vault(vault_root: Path) -> dict:
             continue
         if not isinstance(fm, dict):
             continue
+        parsed.append((path.name, fm))
         uid = fm.get("uid")
         if uid:
             uid_map.setdefault(str(uid), []).append(path.name)
@@ -273,6 +283,18 @@ def lint_vault(vault_root: Path) -> dict:
     for path in md_files:
         all_issues.extend(lint_file(path, all_uids, registry, relation_registry, scheme_reg))
 
+    # Pass 3: tags. Per node, a tag that names another node or repeats its
+    # own type/subtype. Vault-wide, spellings that collapse into one. Tags
+    # used once go into stats only — a small vault is mostly singletons and
+    # a warning per tag would drown everything else.
+    all_issues.extend(_lint_tags(parsed))
+    tag_counts = Counter(t for _, fm in parsed for t in tag_hygiene.as_tag_list(fm.get("tags")))
+    near_dupes = tag_hygiene.near_duplicate_groups(tag_counts)
+    once = tag_hygiene.singletons(tag_counts)
+    for group in near_dupes:
+        all_issues.append(LintIssue("(vault)", "warning", "tag-near-duplicate",
+            f"tags {group} look like spellings of one tag — if so, keep '{group[0]}' and rename the rest"))
+
     errors = [i for i in all_issues if i.severity == "error"]
     warnings = [i for i in all_issues if i.severity == "warning"]
 
@@ -283,8 +305,26 @@ def lint_vault(vault_root: Path) -> dict:
             "files_checked": len(md_files),
             "error_count": len(errors),
             "warning_count": len(warnings),
+            "tags": {
+                "distinct": len(tag_counts),
+                "uses": sum(tag_counts.values()),
+                "singletons": once,
+                "near_duplicates": near_dupes,
+            },
         },
     }
+
+
+def _lint_tags(parsed: list[tuple[str, dict]]) -> list[LintIssue]:
+    index = tag_hygiene.build_name_index(fm for _, fm in parsed)
+    issues: list[LintIssue] = []
+    for name, fm in parsed:
+        for w in tag_hygiene.check_tags(
+            fm.get("tags"), fm.get("type"), fm.get("subtype"), index,
+            self_uid=str(fm.get("uid") or ""), relations=tag_hygiene.list_field(fm, "relations") or [],
+        ):
+            issues.append(LintIssue(name, "warning", w.code, w.message))
+    return issues
 
 
 # ---------------------------------------------------------------------------

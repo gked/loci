@@ -18,7 +18,7 @@ summary: The local workshop refactors the adaptive threshold before the kernel s
 tags:
 - design
 - performance
-- notes
+- jottings
 - howto
 - vault
 - loci

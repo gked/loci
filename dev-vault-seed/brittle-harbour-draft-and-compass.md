@@ -17,7 +17,7 @@ summary: The durable draft documents the hidden handle before the cache settles.
 tags:
 - loci
 - history
-- notes
+- jottings
 - design
 title: 'Brittle Harbour: draft and compass'
 type: document

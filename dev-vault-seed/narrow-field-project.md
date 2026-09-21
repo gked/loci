@@ -19,7 +19,7 @@ summary: The hidden corridor reviews the borrowed budget before the register set
   The adaptive harbour compares the brittle garden before the ledger settles.
 tags:
 - loci
-- notes
+- jottings
 - ux
 - meeting
 - design

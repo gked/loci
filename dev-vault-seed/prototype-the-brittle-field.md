@@ -19,7 +19,7 @@ tags:
 - productivity
 - python
 - loci
-- notes
+- jottings
 - idea
 - performance
 title: Prototype the brittle field

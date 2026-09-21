@@ -23,8 +23,8 @@ summary: The sparse orbit prototypes the recursive kernel before the archive set
 tags:
 - infra
 - vault
-- notes
-- podcast
+- jottings
+- audio
 title: 'Minimal Outline: kernel and meridian'
 type: article
 uid: 63f8e872

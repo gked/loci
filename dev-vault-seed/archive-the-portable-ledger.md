@@ -20,7 +20,7 @@ summary: The sparse handle prototypes the quiet handle before the cache settles.
 tags:
 - design
 - loci
-- notes
+- jottings
 - reading
 title: Archive the portable ledger
 type: task

@@ -27,7 +27,7 @@ subtype: organization
 summary: The brittle signal archives the quiet budget before the season settles. The
   minimal ledger documents the quiet outline before the handle settles.
 tags:
-- paper
+- academia
 - planning
 - python
 - loci

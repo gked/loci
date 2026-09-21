@@ -15,7 +15,7 @@ summary: The durable outline drafts the brittle lattice before the outline settl
   The minimal workshop compares the durable signal before the threshold settles.
 tags:
 - loci
-- notes
+- jottings
 - health
 title: 'Hidden Garden: threshold and lattice'
 type: document

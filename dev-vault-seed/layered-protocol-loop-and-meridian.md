@@ -17,7 +17,7 @@ subtype: report
 summary: The stable harbour drafts the narrow cache before the garden settles. The
   sparse protocol archives the plain handle before the handle settles.
 tags:
-- notes
+- jottings
 - writing
 - python
 - react

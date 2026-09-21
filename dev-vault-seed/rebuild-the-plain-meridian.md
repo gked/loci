@@ -18,9 +18,9 @@ summary: The hidden outline compares the portable orbit before the cache settles
   The hidden workshop refactors the portable kernel before the outline settles.
 tags:
 - meeting
-- podcast
-- music
-- notes
+- audio
+- jazz
+- jottings
 title: Rebuild the plain meridian
 type: task
 uid: c24c5b8b

@@ -18,7 +18,7 @@ status: active
 summary: The recursive field documents the minimal kernel before the lattice settles.
   The practical signal measures the minimal field before the handle settles.
 tags:
-- notes
+- jottings
 - cli
 - loci
 - research

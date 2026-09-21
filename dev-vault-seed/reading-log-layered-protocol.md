@@ -22,9 +22,9 @@ subject_uid: d27536b7
 summary: The sparse archive measures the sparse kernel before the cache settles. The
   durable archive reviews the quiet compass before the corridor settles.
 tags:
-- podcast
+- audio
 - loci
-- journal
+- retrospective
 title: 'Reading log: layered protocol'
 type: log
 uid: d4629981

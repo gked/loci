@@ -20,7 +20,7 @@ tags:
 - release
 - reading
 - design
-- podcast
+- audio
 title: 'Portable Archive: budget and corridor'
 type: document
 uid: 7e38b8ac

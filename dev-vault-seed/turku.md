@@ -18,7 +18,7 @@ summary: The hidden garden audits the stable register before the outline settles
 tags:
 - planning
 - reading
-- notes
+- jottings
 - design
 - research
 title: Turku

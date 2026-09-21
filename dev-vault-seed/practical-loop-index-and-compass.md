@@ -21,7 +21,7 @@ tags:
 - design
 - loci
 - react
-- notes
+- jottings
 title: 'Practical Loop: index and compass'
 type: document
 uid: d0760fb2

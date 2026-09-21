@@ -19,7 +19,7 @@ summary: The narrow index drafts the recursive ledger before the margin settles.
 tags:
 - design
 - loci
-- notes
+- jottings
 - graph
 title: 'Late Archive: loop and corridor'
 type: document

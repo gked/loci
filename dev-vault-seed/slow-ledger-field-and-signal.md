@@ -19,7 +19,7 @@ tags:
 - loci
 - gardening
 - design
-- notes
+- jottings
 title: 'Slow Ledger: field and signal'
 type: document
 uid: 766b8ba3

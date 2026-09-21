@@ -21,7 +21,7 @@ tags:
 - email
 - idea
 - python
-- notes
+- jottings
 title: 'Adaptive Kernel: garden and threshold'
 type: document
 uid: 0f7999c9

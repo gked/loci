@@ -16,7 +16,7 @@ subtype: question
 summary: The quiet meridian audits the borrowed season before the budget settles.
   The minimal handle audits the portable ledger before the protocol settles.
 tags:
-- book
+- library
 - climbing
 - release
 - react

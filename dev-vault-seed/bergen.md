@@ -25,7 +25,7 @@ tags:
 - travel
 - migration
 - loci
-- book
+- library
 title: Bergen
 type: entity
 uid: 627cf846

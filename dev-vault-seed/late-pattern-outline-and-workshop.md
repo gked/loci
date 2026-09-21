@@ -19,7 +19,7 @@ summary: The portable meridian audits the brittle field before the draft settles
   The hidden corridor prototypes the practical budget before the draft settles.
 tags:
 - design
-- notes
+- jottings
 - planning
 - reading
 title: 'Late Pattern: outline and workshop'

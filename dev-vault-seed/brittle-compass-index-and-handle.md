@@ -19,7 +19,7 @@ tags:
 - economics
 - loci
 - release
-- notes
+- jottings
 - react
 title: 'Brittle Compass: index and handle'
 type: document

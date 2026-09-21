@@ -25,7 +25,7 @@ subtype: person
 summary: The layered draft prototypes the minimal handle before the threshold settles.
   The adaptive loop prunes the adaptive kernel before the compass settles.
 tags:
-- notes
+- jottings
 - reading
 - design
 title: Clara Voss

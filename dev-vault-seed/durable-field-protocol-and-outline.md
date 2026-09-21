@@ -20,7 +20,7 @@ summary: The adaptive harbour drafts the plain orbit before the corridor settles
 tags:
 - gardening
 - meeting
-- notes
+- jottings
 - design
 title: 'Durable Field: protocol and outline'
 type: article

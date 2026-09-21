@@ -154,6 +154,19 @@ def test_patch_item_merges_updates(tmp_vault):
     assert result["uid"] == "test0001"
 
 
+def test_patch_item_drops_a_blank_tag_item_instead_of_writing_none(tmp_vault):
+    # `tags:\n  - rust\n  -` by hand loads as ["rust", None]; an unrelated
+    # patch must not persist a literal tag "None".
+    p = _make_vault_file(tmp_vault)
+    raw = p.read_text(encoding="utf-8")
+    raw = raw.replace("tags:\n- old-tag\n", "tags:\n- rust\n-\n")
+    assert "- rust\n-\n" in raw
+    p.write_text(raw, encoding="utf-8")
+    patch_item(str(p), {"status": "done"})
+    fm = yaml.safe_load(p.read_text(encoding="utf-8").split("---", 2)[1])
+    assert fm["tags"] == ["rust"]
+
+
 def test_patch_item_bumps_updated_at(tmp_vault):
     p = _make_vault_file(tmp_vault)
     # Truncate to seconds to match strftime("%Y-%m-%dT%H:%M:%SZ") precision

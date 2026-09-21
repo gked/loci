@@ -21,7 +21,7 @@ summary: The borrowed outline refactors the adaptive workshop before the corrido
 tags:
 - hardware
 - tooling
-- notes
+- jottings
 - howto
 title: On the narrow outline
 turns: '32'

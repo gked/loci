@@ -18,7 +18,7 @@ tags:
 - design
 - security
 - meeting
-- notes
+- jottings
 title: 'Late Register: loop and protocol'
 type: document
 uid: 13b85566

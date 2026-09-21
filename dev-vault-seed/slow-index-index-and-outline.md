@@ -17,7 +17,7 @@ summary: The layered index rebuilds the layered signal before the orbit settles.
   borrowed harbour sketchs the stable orbit before the pattern settles.
 tags:
 - loci
-- notes
+- jottings
 - design
 - howto
 - idea

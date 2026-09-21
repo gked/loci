@@ -21,7 +21,7 @@ summary: The sparse register drafts the borrowed corridor before the cache settl
   The late compass prototypes the durable field before the harbour settles.
 tags:
 - design
-- notes
+- jottings
 - loci
 title: Valparaiso
 type: entity

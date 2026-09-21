@@ -21,7 +21,7 @@ summary: The plain garden rebuilds the hidden compass before the corridor settle
   The practical compass refactors the minimal margin before the draft settles.
 tags:
 - planning
-- journal
+- retrospective
 - idea
 - loci
 - networking

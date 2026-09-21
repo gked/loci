@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from loci.tools import tag_hygiene
 from loci.tools.relation_registry import get_relation_registry
 from loci.tools.type_registry import get_registry
 from loci.tools.vault_linter import lint_vault
@@ -57,6 +58,18 @@ def test_generated_vocabulary_comes_from_the_registries(tmp_path):
     assert set(dev_seed.TYPE_WEIGHTS) <= types.type_names()
     assert all(relations.is_valid(r) for r in dev_seed.RELATION_BY_PAIR.values())
     assert all(relations.is_valid(r) for r in dev_seed.RELATION_BY_SUBTYPE_PAIR.values())
+
+
+def test_no_tag_in_the_pool_is_a_type_or_subtype():
+    # The linter warns on a tag that repeats the node's own type or subtype —
+    # plural included, so `notes` is out along with `note` — and the seed must
+    # lint clean whatever size or seed it is drawn with.
+    types = get_registry()
+    reserved = set(types.type_names())
+    for tdef in types.types():
+        reserved |= tdef.enum_constraints().get("subtype", set())
+    reserved = {tag_hygiene.singular_key(r) for r in reserved}
+    assert not reserved & {tag_hygiene.singular_key(t) for t in dev_seed.TAG_POOL}
 
 
 def _built(n: int, seed: int) -> dict[str, dict]:

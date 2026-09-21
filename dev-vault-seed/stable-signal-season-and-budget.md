@@ -16,7 +16,7 @@ state: active
 summary: The quiet workshop prototypes the recursive cache before the kernel settles.
   The brittle season reviews the recursive signal before the workshop settles.
 tags:
-- music
+- jazz
 - research
 - loci
 - reference

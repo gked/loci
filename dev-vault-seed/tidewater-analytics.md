@@ -25,7 +25,7 @@ summary: The stable archive prototypes the recursive loop before the draft settl
   The minimal budget drafts the layered kernel before the garden settles.
 tags:
 - loci
-- podcast
+- audio
 - design
 title: Tidewater Analytics
 type: entity

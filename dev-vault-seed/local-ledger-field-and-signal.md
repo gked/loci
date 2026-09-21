@@ -18,7 +18,7 @@ summary: The restless threshold reviews the sparse harbour before the meridian s
   The layered threshold migrates the recursive compass before the garden settles.
 tags:
 - loci
-- notes
+- jottings
 - infra
 - graph
 title: 'Local Ledger: field and signal'

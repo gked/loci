@@ -14,8 +14,8 @@ summary: The plain meridian sketchs the plain garden before the meridian settles
   The narrow pattern reviews the stable cache before the outline settles.
 tags:
 - loci
-- notes
-- podcast
+- jottings
+- audio
 title: 'Portable Workshop: signal and budget'
 type: bookmark
 uid: 3fd79926

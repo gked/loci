@@ -20,7 +20,7 @@ summary: The restless compass audits the stable handle before the orbit settles.
 tags:
 - design
 - research
-- notes
+- jottings
 title: Stable Ledger project
 type: project
 uid: a86f00e2

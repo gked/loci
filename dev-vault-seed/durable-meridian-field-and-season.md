@@ -17,7 +17,7 @@ summary: The quiet workshop refactors the narrow index before the outline settle
   The plain budget documents the slow threshold before the draft settles.
 tags:
 - review
-- notes
+- jottings
 - infra
 title: 'Durable Meridian: field and season'
 type: document

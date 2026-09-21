@@ -22,7 +22,7 @@ summary: The layered garden prunes the durable signal before the ledger settles.
   late compass rebuilds the brittle threshold before the index settles.
 tags:
 - loci
-- notes
+- jottings
 - design
 - testing
 - review

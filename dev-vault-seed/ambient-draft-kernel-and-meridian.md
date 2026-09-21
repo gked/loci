@@ -18,7 +18,7 @@ summary: The slow margin reviews the practical kernel before the loop settles. T
 tags:
 - cli
 - talk
-- journal
+- retrospective
 - python
 title: 'Ambient Draft: kernel and meridian'
 type: bookmark

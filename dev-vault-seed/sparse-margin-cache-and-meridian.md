@@ -19,7 +19,7 @@ summary: The ambient loop reviews the local threshold before the corridor settle
   The restless field traces the adaptive pattern before the ledger settles.
 tags:
 - ontology
-- notes
+- jottings
 - philosophy
 - finance
 - security

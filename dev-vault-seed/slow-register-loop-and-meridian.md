@@ -16,7 +16,7 @@ summary: The layered workshop sketchs the restless threshold before the kernel s
   The adaptive budget drafts the durable meridian before the archive settles.
 tags:
 - reading
-- notes
+- jottings
 - meeting
 - python
 - loci

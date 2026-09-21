@@ -19,7 +19,7 @@ subtype: plan
 summary: The durable corridor drafts the slow pattern before the archive settles.
   The durable field reviews the layered kernel before the loop settles.
 tags:
-- notes
+- jottings
 - reading
 - loci
 - review

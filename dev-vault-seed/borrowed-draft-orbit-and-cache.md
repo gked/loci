@@ -17,7 +17,7 @@ summary: The durable protocol prunes the borrowed signal before the draft settle
 tags:
 - loci
 - security
-- notes
+- jottings
 - design
 title: 'Borrowed Draft: orbit and cache'
 type: article

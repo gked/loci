@@ -18,7 +18,7 @@ summary: The stable draft compares the plain lattice before the archive settles.
   durable budget rebuilds the brittle threshold before the harbour settles.
 tags:
 - cli
-- paper
+- academia
 - design
 - tooling
 title: 'Adaptive Index: workshop and protocol'

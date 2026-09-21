@@ -21,7 +21,7 @@ tags:
 - howto
 - planning
 - design
-- notes
+- jottings
 title: 'Ambient Ledger: threshold and compass'
 type: article
 uid: 8f61ad2b

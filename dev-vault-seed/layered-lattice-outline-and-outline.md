@@ -19,7 +19,7 @@ tags:
 - tooling
 - mcp
 - loci
-- music
+- jazz
 - reading
 title: 'Layered Lattice: outline and outline'
 type: article

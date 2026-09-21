@@ -16,7 +16,7 @@ summary: The restless outline refactors the durable index before the threshold s
 tags:
 - reading
 - howto
-- notes
+- jottings
 - loci
 title: 'Layered Budget: threshold and archive'
 type: article

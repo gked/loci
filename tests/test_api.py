@@ -941,6 +941,24 @@ def test_inbox_file_batch_parks_a_title_that_already_exists(tmp_vault):
     assert read_plan(stage_root)["status"] == "done"
 
 
+def test_inbox_file_batch_does_not_tag_an_asset_with_its_own_subtype(tmp_vault):
+    # The subtype already says "book"; a `book` tag on top is what
+    # tag-repeats-type warns about, and the ingest path must not create it.
+    from loci.tools.frontmatter import split_frontmatter
+    import yaml
+    _stage_same_ebook(tmp_vault)
+
+    result = api.execute_inbox_file_batch()
+
+    assert [p["title"] for p in result["processed"]] == ["Same Ebook"]
+    assert "tag_warnings" not in result["processed"][0]
+    from loci.tools.inbox_plan import read_plan
+    vault_path = read_plan(tmp_vault.parent / "loci-stage")["items"][0]["result"]["vault_path"]
+    fm = yaml.safe_load(split_frontmatter((tmp_vault / vault_path).read_text())[0])
+    assert fm["subtype"] == "book" and not fm.get("tags")
+    assert not any(w["code"] == "tag-repeats-type" for w in api.lint_vault()["warnings"])
+
+
 def test_inbox_file_batch_saves_a_re_queued_duplicate(tmp_vault):
     # The user said "save anyway": update_inbox_item flips the item back to
     # pending with allow_duplicate, and the next batch writes the second copy.

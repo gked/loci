@@ -113,7 +113,11 @@ Every session ends here, whether the user stopped after one batch or the plan re
    existing node each matched), remaining, and the estimated runs left.
 2. Surface anything the tools returned that the user should know — write warnings, a `_notice`
    from Step 0 — in one line each.
-3. Offer the one follow-on that fits: the next batch of the same kind, switching to the other
+3. `tag_warnings` from `loci__write_vault` are collected across the session, not reported per
+   item. List each distinct warning once with the nodes it applies to, and offer the fix —
+   replace the tag with the named relation, or drop a tag that repeats the type or subtype — in
+   one line. Apply it only on a yes, via `loci__patch_vault` per node.
+4. Offer the one follow-on that fits: the next batch of the same kind, switching to the other
    pass, or — when the plan is done — a `loci__lint_vault` run over what was ingested.
 
 ---

@@ -24,7 +24,7 @@ subtype: place
 summary: The brittle corridor refactors the restless garden before the loop settles.
   The narrow budget traces the late ledger before the signal settles.
 tags:
-- notes
+- jottings
 - howto
 - vault
 - python

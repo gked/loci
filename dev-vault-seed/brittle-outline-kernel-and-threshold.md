@@ -17,7 +17,7 @@ summary: The stable harbour prototypes the durable draft before the budget settl
   The slow outline compares the recursive field before the corridor settles.
 tags:
 - loci
-- notes
+- jottings
 title: 'Brittle Outline: kernel and threshold'
 type: document
 uid: 1dc991a2

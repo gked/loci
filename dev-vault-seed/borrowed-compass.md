@@ -19,7 +19,7 @@ tags:
 - ux
 - design
 - cli
-- music
+- jazz
 title: Borrowed Compass
 type: topic
 uid: '53191723'

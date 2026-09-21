@@ -19,8 +19,8 @@ subtype: blog-post
 summary: The layered garden audits the slow meridian before the ledger settles. The
   ambient orbit prototypes the portable loop before the orbit settles.
 tags:
-- notes
-- book
+- jottings
+- library
 title: 'Layered Meridian: signal and harbour'
 type: article
 uid: d6e470c3

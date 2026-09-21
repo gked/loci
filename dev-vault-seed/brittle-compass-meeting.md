@@ -19,7 +19,7 @@ summary: The late pattern sketchs the plain kernel before the outline settles. T
 tags:
 - reading
 - loci
-- notes
+- jottings
 - idea
 title: Brittle Compass meeting
 type: event

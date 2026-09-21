@@ -16,8 +16,8 @@ summary: The hidden budget migrates the portable draft before the signal settles
 tags:
 - loci
 - research
-- paper
-- music
+- academia
+- jazz
 title: 'Late Orbit: kernel and pattern'
 type: document
 uid: da1d91c5

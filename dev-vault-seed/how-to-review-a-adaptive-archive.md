@@ -25,8 +25,8 @@ steps:
 summary: The sparse register audits the ambient harbour before the protocol settles.
   The adaptive cache prunes the layered lattice before the budget settles.
 tags:
-- journal
-- notes
+- retrospective
+- jottings
 - design
 - performance
 - language

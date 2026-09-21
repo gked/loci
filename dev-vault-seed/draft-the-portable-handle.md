@@ -19,7 +19,7 @@ summary: The durable protocol archives the durable lattice before the protocol s
 tags:
 - design
 - migration
-- notes
+- jottings
 - typography
 - loci
 title: Draft the portable handle

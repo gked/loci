@@ -20,7 +20,7 @@ summary: The durable ledger traces the adaptive ledger before the budget settles
   The restless draft reviews the stable draft before the workshop settles.
 tags:
 - python
-- notes
+- jottings
 - reading
 title: 'Recursive Pattern: orbit and season'
 type: article

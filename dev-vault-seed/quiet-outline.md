@@ -15,7 +15,7 @@ summary: The late compass audits the hidden garden before the corridor settles. 
   quiet workshop refactors the restless handle before the kernel settles.
 tags:
 - reading
-- book
+- library
 - loci
 - tooling
 - climbing

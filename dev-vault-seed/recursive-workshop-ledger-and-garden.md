@@ -20,7 +20,7 @@ tags:
 - design
 - cli
 - loci
-- notes
+- jottings
 title: 'Recursive Workshop: ledger and garden'
 type: document
 uid: 0be1d909

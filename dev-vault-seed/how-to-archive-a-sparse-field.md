@@ -26,7 +26,7 @@ summary: The sparse loop archives the plain corridor before the kernel settles. 
   recursive harbour compares the adaptive ledger before the harbour settles.
 tags:
 - reading
-- notes
+- jottings
 - ux
 - typography
 - react

@@ -15,7 +15,7 @@ summary: The recursive corridor prototypes the recursive margin before the harbo
   settles. The local draft reviews the brittle archive before the corridor settles.
 tags:
 - research
-- notes
+- jottings
 - design
 - react
 - biology

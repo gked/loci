@@ -16,7 +16,7 @@ summary: The local index compares the local corridor before the margin settles. 
   brittle outline drafts the hidden margin before the budget settles.
 tags:
 - loci
-- notes
+- jottings
 title: 'Restless Archive: kernel and outline'
 type: article
 uid: 64194fa5

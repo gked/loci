@@ -116,7 +116,12 @@ After processing all files:
 1. Show a summary: N nodes created (titles and UIDs), M files skipped (filenames and reasons).
 2. Surface anything the tools returned that the user should know — write warnings, a `_notice`
    from the reachability check — in one line each.
-3. Offer the one follow-on that fits: scanning a sibling directory, or a `loci__lint_vault` run
+3. `tag_warnings` are collected across the run, not reported per file: a directory of ebooks
+   tagged `book` produces the same warning N times. List each distinct warning once with the
+   nodes it applies to, and offer the fix — replace the tag with the named relation, or drop a
+   tag that repeats the subtype — in one line. Apply it only on a yes, via `loci__patch_vault`
+   per node.
+4. Offer the one follow-on that fits: scanning a sibling directory, or a `loci__lint_vault` run
    over the new nodes.
 
 ---

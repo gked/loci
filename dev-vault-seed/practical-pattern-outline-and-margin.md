@@ -17,11 +17,11 @@ subtype: video
 summary: The brittle meridian refactors the portable ledger before the ledger settles.
   The restless cache sketchs the durable orbit before the lattice settles.
 tags:
-- notes
+- jottings
 - design
-- paper
+- academia
 - reading
-- podcast
+- audio
 title: 'Practical Pattern: outline and margin'
 type: article
 uid: 1a2b9f9a

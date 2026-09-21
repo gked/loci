@@ -16,7 +16,7 @@ summary: The minimal archive measures the practical cache before the ledger sett
   The slow index drafts the stable orbit before the orbit settles.
 tags:
 - design
-- notes
+- jottings
 - search
 - reading
 - graph

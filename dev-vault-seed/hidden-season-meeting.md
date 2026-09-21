@@ -19,7 +19,7 @@ tags:
 - migration
 - react
 - habits
-- notes
+- jottings
 - tooling
 - release
 title: Hidden Season meeting

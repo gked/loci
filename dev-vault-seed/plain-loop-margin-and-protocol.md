@@ -22,7 +22,7 @@ tags:
 - finance
 - research
 - design
-- notes
+- jottings
 title: 'Plain Loop: margin and protocol'
 type: article
 uid: a7a140bd

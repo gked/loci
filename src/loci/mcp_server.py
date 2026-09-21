@@ -258,7 +258,10 @@ def write_vault(
     allow_duplicate: bool = False,
 ) -> dict:
     """
-    Write a new item to the Loci vault. Returns {uid, path, type, title}.
+    Write a new item to the Loci vault. Returns {uid, path, type, title}, plus
+    tag_warnings when a tag names a project/entity/topic (belongs as a relation)
+    or repeats the node's own type or subtype. The write has already happened;
+    surface the warning and offer the fix.
 
     Checks for duplicates itself: if a node with the same title or the same
     extra_fields.source_url already exists, nothing is written and the result is
@@ -346,6 +349,10 @@ def patch_vault(path: str, updates: dict, body: str = None) -> dict:
                  stripped on every patch.
         body: If provided, replaces the full body text. Always pass new body
               text here, never inside updates. Pass "" to clear it.
+
+    Returns {uid, path, type, title, ...}, plus tag_warnings when a tag names a
+    project/entity/topic (belongs as a relation) or repeats the node's own type
+    or subtype. The patch has already happened; surface the warning and offer the fix.
     """
     try:
         return vault.patch(path, updates, body)
@@ -601,7 +608,11 @@ def lint_vault() -> dict:
     """
     Lint all vault files against the Loci schema.
     Returns errors (schema violations, unknown types, bad uids, duplicate uids)
-    and warnings (dangling relations, orphaned nodes, empty summaries).
+    and warnings (dangling relations, orphaned nodes, empty summaries; a tag
+    that names a project/entity/topic node and should be a relation; a tag
+    that repeats the node's own type or subtype; vault-wide near-duplicate
+    tag spellings). stats.tags carries the tag census: distinct count, uses,
+    the tags used only once, and the near-duplicate groups.
     Run this after manual vault edits or when debugging unexpected behavior.
     """
     return vault.lint_vault()
@@ -847,7 +858,9 @@ def save_asset(
 ) -> dict:
     """
     Save a new binary/rich-file asset with its vault proxy node.
-    Executes the full crash-safe write sequence. Returns {uid, asset_path, vault_path}.
+    Executes the full crash-safe write sequence. Returns {uid, asset_path, vault_path},
+    plus tag_warnings when a tag names a project/entity/topic or repeats the
+    node's own type or subtype — the same warning write_vault returns.
 
     Checks for duplicates itself, like write_vault: if a node with the same
     title already exists it writes nothing and returns
@@ -990,7 +1003,7 @@ def execute_inbox_file_batch() -> dict:
     it, or status="pending" with allow_duplicate=True to save a second copy
     on the next batch.
 
-    Returns {processed: [{path, uid, title}], failed: [{path, error}],
+    Returns {processed: [{path, uid, title, tag_warnings?}], failed: [{path, error}],
              duplicates: [{path, title, existing_uid, existing_path, existing_name}],
              remaining: int}.
     Plan must be approved before calling.

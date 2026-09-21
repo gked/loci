@@ -23,7 +23,7 @@ tags:
 - planning
 - reference
 - review
-- paper
+- academia
 - writing
 - react
 title: 'Reading log: stable ledger'

@@ -21,7 +21,7 @@ tags:
 - python
 - graph
 - woodwork
-- notes
+- jottings
 title: Reykjavik
 type: entity
 uid: ff793505

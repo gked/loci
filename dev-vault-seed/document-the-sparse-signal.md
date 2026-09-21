@@ -19,9 +19,9 @@ summary: The layered protocol measures the local signal before the threshold set
   The portable handle documents the minimal lattice before the ledger settles.
 tags:
 - loci
-- music
+- jazz
 - docker
-- notes
+- jottings
 - reading
 title: Document the sparse signal
 type: task

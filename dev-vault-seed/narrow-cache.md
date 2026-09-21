@@ -14,7 +14,7 @@ summary: The stable draft archives the restless budget before the pattern settle
   The practical register reviews the brittle handle before the field settles.
 tags:
 - woodwork
-- notes
+- jottings
 - cli
 - review
 - docker

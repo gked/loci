@@ -19,7 +19,7 @@ steps:
 summary: The portable outline prunes the late ledger before the signal settles. The
   sparse handle migrates the recursive margin before the ledger settles.
 tags:
-- notes
+- jottings
 - loci
 title: How to sketch a restless kernel
 type: procedure

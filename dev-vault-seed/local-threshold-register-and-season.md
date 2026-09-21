@@ -18,7 +18,7 @@ subtype: note
 summary: The brittle protocol prunes the narrow ledger before the register settles.
   The brittle margin audits the restless season before the cache settles.
 tags:
-- notes
+- jottings
 - tooling
 - loci
 - cli

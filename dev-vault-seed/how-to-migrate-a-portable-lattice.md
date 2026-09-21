@@ -23,7 +23,7 @@ tags:
 - research
 - docker
 - loci
-- notes
+- jottings
 - health
 - finance
 title: How to migrate a portable lattice

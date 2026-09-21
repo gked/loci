@@ -21,7 +21,7 @@ tags:
 - loci
 - python
 - tooling
-- journal
+- retrospective
 title: 'Plain Meridian: kernel and handle'
 type: bookmark
 uid: fc61872d

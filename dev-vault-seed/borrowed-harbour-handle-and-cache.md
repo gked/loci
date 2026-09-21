@@ -19,7 +19,7 @@ summary: The plain kernel audits the late garden before the season settles. The 
   ledger migrates the adaptive season before the signal settles.
 tags:
 - loci
-- notes
+- jottings
 - review
 - writing
 title: 'Borrowed Harbour: handle and cache'

@@ -17,10 +17,10 @@ subject_uid: e4ef0147
 summary: The recursive signal migrates the minimal meridian before the compass settles.
   The hidden kernel sketchs the minimal field before the register settles.
 tags:
-- journal
+- retrospective
 - tooling
 - backup
-- notes
+- jottings
 title: 'Reading log: adaptive protocol'
 type: log
 uid: c871bd1d

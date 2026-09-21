@@ -18,7 +18,7 @@ summary: The restless garden reviews the brittle handle before the orbit settles
   The brittle workshop measures the restless garden before the pattern settles.
 tags:
 - loci
-- music
+- jazz
 - docker
 - reference
 title: 'Sparse Corridor: kernel and ledger'

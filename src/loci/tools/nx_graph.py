@@ -21,6 +21,7 @@ from typing import Optional
 
 import networkx as nx
 
+from loci.tools import tag_hygiene
 from loci.tools.frontmatter import load_frontmatter
 
 _graph: Optional[nx.DiGraph] = None
@@ -100,7 +101,7 @@ def _build(vault_root: Path) -> nx.DiGraph:
             uid,
             type=fm.get("type", ""),
             title=fm.get("title", ""),
-            tags=fm.get("tags") or [],
+            tags=tag_hygiene.as_tag_list(fm.get("tags")),
             domains=fm.get("domains") or [],
             summary=fm.get("summary", ""),
             language=fm.get("language", ""),
@@ -150,6 +151,15 @@ def get(vault_root: Path) -> nx.DiGraph:
     return _graph
 
 
+def name_index(vault_root: Path) -> dict:
+    """tag_hygiene's name index over the graph — every active
+    project/entity/topic and the names it answers to. Builds or refreshes the
+    graph first: a save is often the first call a process makes, and a warning
+    that depends on whether someone searched earlier is no warning at all."""
+    g = get(vault_root)
+    return tag_hygiene.build_name_index({"uid": uid, **attrs} for uid, attrs in g.nodes(data=True))
+
+
 def index_node(uid: str, **attrs) -> None:
     """Add or update a node's attributes. Creates the node if it doesn't exist."""
     g = _graph
@@ -159,6 +169,21 @@ def index_node(uid: str, **attrs) -> None:
         g.nodes[uid].update(attrs)
     else:
         g.add_node(uid, **attrs)
+
+
+def mark_fresh(vault_root: Path) -> None:
+    """Record that the graph already reflects every write made so far.
+
+    A write made by this process bumps the vault directory's mtime, and
+    get() reads that as "files changed behind my back" — so the next call
+    after a save re-parsed the whole vault, even though index_node had just
+    applied that very write. Callers that write a file and then index it
+    call this last; the graph stays incremental across a batch ingest.
+    Another process writing within the same mtime tick goes unnoticed, as
+    it already did between one get() and the next."""
+    global _built_at
+    if _graph is not None and _vault_root == vault_root:
+        _built_at = max(_built_at, _vault_dir_mtime(vault_root))
 
 
 def index_edges(uid: str, relations: list) -> None:

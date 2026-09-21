@@ -15,7 +15,7 @@ status: active
 summary: The restless field migrates the local corridor before the register settles.
   The sparse cache documents the borrowed corridor before the draft settles.
 tags:
-- journal
+- retrospective
 - design
 title: Borrowed Workshop
 type: topic

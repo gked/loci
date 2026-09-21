@@ -18,7 +18,7 @@ summary: The portable threshold migrates the layered draft before the harbour se
 tags:
 - planning
 - ux
-- journal
+- retrospective
 - python
 title: Migrate the stable workshop
 type: task

@@ -16,7 +16,7 @@ summary: The borrowed budget audits the quiet workshop before the budget settles
   The plain ledger measures the practical lattice before the garden settles.
 tags:
 - philosophy
-- notes
+- jottings
 - loci
 - python
 - graph

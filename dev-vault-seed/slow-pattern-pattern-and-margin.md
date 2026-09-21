@@ -21,7 +21,7 @@ tags:
 - data
 - talk
 - design
-- book
+- library
 title: 'Slow Pattern: pattern and margin'
 type: asset
 uid: d27536b7

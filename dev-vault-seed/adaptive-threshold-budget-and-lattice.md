@@ -18,7 +18,7 @@ summary: The stable index archives the stable cache before the index settles. Th
   sparse protocol compares the late handle before the pattern settles.
 tags:
 - meeting
-- notes
+- jottings
 - design
 title: 'Adaptive Threshold: budget and lattice'
 type: article

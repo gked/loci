@@ -34,7 +34,7 @@ tags:
 - design
 - howto
 - reading
-- notes
+- jottings
 title: Henrik Dahl
 type: entity
 uid: 8873df8a

@@ -25,8 +25,8 @@ summary: The sparse ledger refactors the sparse field before the loop settles. T
 tags:
 - reading
 - gardening
-- notes
-- journal
+- jottings
+- retrospective
 title: 'Hidden Index: threshold and orbit'
 type: article
 uid: 4b10462e

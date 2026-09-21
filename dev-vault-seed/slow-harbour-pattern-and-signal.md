@@ -15,7 +15,7 @@ summary: The durable compass traces the late harbour before the outline settles.
   stable protocol compares the durable ledger before the orbit settles.
 tags:
 - loci
-- notes
+- jottings
 title: 'Slow Harbour: pattern and signal'
 type: document
 uid: 85c865d3

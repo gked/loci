@@ -18,7 +18,7 @@ summary: The plain harbour reviews the narrow meridian before the outline settle
 tags:
 - howto
 - reading
-- notes
+- jottings
 - economics
 - loci
 title: 'Stable Pattern: harbour and signal'

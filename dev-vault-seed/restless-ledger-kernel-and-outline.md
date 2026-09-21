@@ -19,7 +19,7 @@ summary: The minimal outline drafts the narrow index before the loop settles. Th
 tags:
 - reference
 - loci
-- notes
+- jottings
 title: 'Restless Ledger: kernel and outline'
 type: bookmark
 uid: 35e05b63

@@ -23,8 +23,8 @@ summary: The portable lattice prototypes the brittle season before the register 
   The brittle budget audits the durable ledger before the lattice settles.
 tags:
 - loci
-- podcast
-- notes
+- audio
+- jottings
 - ontology
 title: 'Borrowed Protocol: lattice and workshop'
 type: article

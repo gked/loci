@@ -18,7 +18,7 @@ summary: The stable draft traces the restless archive before the protocol settle
 tags:
 - react
 - tooling
-- notes
+- jottings
 - loci
 - design
 title: 'Plain Field: threshold and pattern'

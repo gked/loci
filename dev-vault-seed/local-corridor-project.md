@@ -19,11 +19,11 @@ summary: The plain kernel prunes the restless register before the cache settles.
   portable kernel rebuilds the narrow garden before the season settles.
 tags:
 - design
-- notes
+- jottings
 - gardening
 - loci
-- music
-- paper
+- jazz
+- academia
 title: Local Corridor project
 type: project
 uid: 4d21e937

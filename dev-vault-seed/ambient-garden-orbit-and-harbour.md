@@ -25,7 +25,7 @@ tags:
 - idea
 - research
 - ontology
-- notes
+- jottings
 - history
 title: 'Ambient Garden: orbit and harbour'
 type: article

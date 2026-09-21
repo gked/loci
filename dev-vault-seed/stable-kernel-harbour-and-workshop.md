@@ -20,7 +20,7 @@ summary: The layered index audits the portable loop before the ledger settles. T
   sparse ledger traces the practical threshold before the margin settles.
 tags:
 - loci
-- notes
+- jottings
 - graph
 title: 'Stable Kernel: harbour and workshop'
 type: article

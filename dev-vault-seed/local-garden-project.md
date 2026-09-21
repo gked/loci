@@ -17,7 +17,7 @@ status: abandoned
 summary: The plain index documents the quiet garden before the loop settles. The durable
   meridian audits the brittle lattice before the draft settles.
 tags:
-- notes
+- jottings
 - design
 - graph
 - loci

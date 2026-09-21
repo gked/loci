@@ -17,10 +17,10 @@ summary: The quiet handle migrates the adaptive margin before the harbour settle
   The brittle index compares the durable field before the corridor settles.
 tags:
 - mcp
-- notes
+- jottings
 - loci
 - reference
-- paper
+- academia
 title: Practical Meridian project
 type: project
 uid: c86f2e96

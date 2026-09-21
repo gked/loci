@@ -26,7 +26,7 @@ tags:
 - meeting
 - loci
 - design
-- notes
+- jottings
 title: How to draft a stable archive
 type: procedure
 uid: 98ed7f4e

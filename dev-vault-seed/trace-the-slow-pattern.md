@@ -17,7 +17,7 @@ subtype: feature
 summary: The slow meridian measures the sparse field before the signal settles. The
   late protocol migrates the borrowed ledger before the season settles.
 tags:
-- notes
+- jottings
 - design
 - loci
 - gardening

@@ -19,7 +19,7 @@ tags:
 - python
 - graph
 - philosophy
-- notes
+- jottings
 - design
 title: Draft the minimal threshold
 type: task

@@ -25,7 +25,7 @@ tags:
 - meeting
 - howto
 - networking
-- notes
+- jottings
 title: 'Borrowed Ledger: kernel and meridian'
 type: article
 uid: c035645f

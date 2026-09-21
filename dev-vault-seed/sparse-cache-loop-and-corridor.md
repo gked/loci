@@ -17,7 +17,7 @@ summary: The slow archive measures the local index before the cache settles. The
 tags:
 - design
 - writing
-- notes
+- jottings
 title: 'Sparse Cache: loop and corridor'
 type: article
 uid: dac78b80

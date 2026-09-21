@@ -19,7 +19,7 @@ summary: The borrowed protocol rebuilds the recursive draft before the margin se
 tags:
 - loci
 - design
-- notes
+- jottings
 title: 'Adaptive Loop: kernel and pattern'
 type: bookmark
 uid: 4e609d05

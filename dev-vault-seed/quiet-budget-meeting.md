@@ -19,7 +19,7 @@ summary: The borrowed pattern audits the local draft before the field settles. T
 tags:
 - performance
 - infra
-- notes
+- jottings
 - loci
 title: Quiet Budget meeting
 type: event

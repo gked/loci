@@ -19,7 +19,7 @@ state: active
 summary: The minimal cache documents the practical cache before the harbour settles.
   The stable harbour prototypes the recursive threshold before the harbour settles.
 tags:
-- notes
+- jottings
 - loci
 - networking
 title: 'Portable Cache: cache and margin'

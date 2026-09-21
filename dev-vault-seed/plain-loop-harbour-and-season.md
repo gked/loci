@@ -17,7 +17,7 @@ summary: The plain archive prunes the portable loop before the pattern settles. 
   late draft traces the sparse ledger before the archive settles.
 tags:
 - philosophy
-- music
+- jazz
 - design
 - loci
 title: 'Plain Loop: harbour and season'

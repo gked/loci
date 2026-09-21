@@ -17,9 +17,9 @@ subtype: blog-post
 summary: The durable corridor sketchs the borrowed threshold before the field settles.
   The restless kernel migrates the brittle budget before the margin settles.
 tags:
-- notes
+- jottings
 - idea
-- podcast
+- audio
 - loci
 - reference
 title: 'Borrowed Kernel: ledger and cache'

@@ -18,8 +18,8 @@ summary: The layered meridian prunes the ambient pattern before the kernel settl
 tags:
 - loci
 - vault
-- notes
-- paper
+- jottings
+- academia
 - travel
 - biology
 title: Prune the restless budget

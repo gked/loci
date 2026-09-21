@@ -14,7 +14,7 @@ subtype: meeting-notes
 summary: The restless archive refactors the recursive ledger before the ledger settles.
   The slow loop rebuilds the late meridian before the draft settles.
 tags:
-- journal
+- retrospective
 - vault
 - loci
 - sleep

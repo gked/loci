@@ -21,7 +21,7 @@ tags:
 - language
 - data
 - calendar
-- notes
+- jottings
 title: 'Ambient Season: harbour and margin'
 type: article
 uid: 9f56f725

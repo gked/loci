@@ -16,7 +16,7 @@ summary: The borrowed threshold audits the recursive threshold before the budget
 tags:
 - research
 - loci
-- podcast
+- audio
 title: 'Recursive Ledger: field and handle'
 type: document
 uid: 943119bb

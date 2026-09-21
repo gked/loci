@@ -20,7 +20,7 @@ steps:
 summary: The ambient loop migrates the plain cache before the workshop settles. The
   sparse corridor drafts the quiet loop before the field settles.
 tags:
-- notes
+- jottings
 - tooling
 - loci
 - design

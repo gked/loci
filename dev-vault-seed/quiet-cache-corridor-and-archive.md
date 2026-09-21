@@ -22,7 +22,7 @@ summary: The adaptive field migrates the hidden season before the signal settles
   The ambient protocol documents the adaptive garden before the kernel settles.
 tags:
 - graph
-- notes
+- jottings
 - howto
 title: 'Quiet Cache: corridor and archive'
 type: bookmark

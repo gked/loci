@@ -20,7 +20,7 @@ summary: The quiet lattice traces the practical handle before the threshold sett
 tags:
 - cli
 - economics
-- notes
+- jottings
 - reading
 title: On the late loop
 type: conversation

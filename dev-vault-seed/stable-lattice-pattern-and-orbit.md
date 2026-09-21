@@ -19,8 +19,8 @@ summary: The hidden pattern drafts the practical kernel before the orbit settles
   The restless margin documents the plain ledger before the garden settles.
 tags:
 - loci
-- notes
-- podcast
+- jottings
+- audio
 title: 'Stable Lattice: pattern and orbit'
 type: asset
 uid: b5741189

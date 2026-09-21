@@ -19,7 +19,7 @@ tags:
 - design
 - react
 - loci
-- notes
+- jottings
 - cli
 title: 'Hidden Draft: threshold and threshold'
 type: article

@@ -25,7 +25,7 @@ summary: The practical cache compares the ambient workshop before the meridian s
 tags:
 - economics
 - reference
-- journal
+- retrospective
 - loci
 title: 'Portable Archive: protocol and pattern'
 type: asset

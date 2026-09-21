@@ -18,7 +18,7 @@ summary: The adaptive season measures the plain corridor before the margin settl
 tags:
 - writing
 - hardware
-- podcast
+- audio
 - loci
 - python
 title: 'Durable Field: garden and meridian'

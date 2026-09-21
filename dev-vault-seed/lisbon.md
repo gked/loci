@@ -25,7 +25,7 @@ summary: The layered meridian migrates the narrow outline before the signal sett
   The hidden budget rebuilds the stable handle before the budget settles.
 tags:
 - planning
-- notes
+- jottings
 - idea
 - loci
 - testing

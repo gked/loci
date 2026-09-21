@@ -17,7 +17,7 @@ summary: The recursive kernel compares the restless cache before the corridor se
   The brittle orbit reviews the stable kernel before the signal settles.
 tags:
 - loci
-- journal
+- retrospective
 - idea
 title: 'Narrow Ledger: pattern and workshop'
 type: document

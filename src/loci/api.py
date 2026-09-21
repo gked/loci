@@ -30,6 +30,7 @@ from loci.tools.type_registry import get_registry
 from loci.tools.relation_registry import get_relation_registry
 from loci.tools.frontmatter import load_frontmatter
 from loci.tools import nx_graph as graph
+from loci.tools import tag_hygiene
 from loci.tools.vault_linter import lint_vault as _lint_vault
 from loci.tools import asset_registry as ar
 from loci.tools.resolvers.dispatcher import dispatch_resolve
@@ -179,6 +180,7 @@ def save(
         if refusal:
             return refusal
 
+    index = _name_index(bool(tags))   # before the write: see _name_index
     # Redirect stdout to prevent write_item's print() calls from corrupting
     # the MCP stdio protocol (or cluttering non-interactive use)
     with contextlib.redirect_stdout(io.StringIO()):
@@ -196,11 +198,12 @@ def save(
             skip_duplicate_check=True,
         )
     if result and "uid" in result:
+        _attach_tag_warnings(result, index, tags, type, (extra_fields or {}).get("subtype"), result["uid"], relations)
         graph.index_node(
             result["uid"],
             type=type,
             title=title,
-            tags=tags or [],
+            tags=tag_hygiene.as_tag_list(tags),
             domains=domains or [],
             summary=summary or "",
             state="active",
@@ -209,7 +212,50 @@ def save(
             path=result["path"],
         )
         graph.index_edges(result["uid"], relations or [])
+        graph.mark_fresh(_vault_root())
     return result
+
+
+def _name_index(wanted: bool = True) -> dict | None:
+    """tag_hygiene's name index for a write that may need it, or None. A save
+    with no tags does not want it — it never loaded the graph before, and
+    still does not.
+
+    Taken *before* the write, on purpose: the graph decides it is stale from
+    the vault directory's mtime, and the write about to happen bumps it. An
+    index taken afterwards re-parsed the whole vault on every save, so a
+    batch ingest of N files was N full rebuilds. Before the write the graph
+    is fresh from the previous call's mark_fresh, and the lookup is a walk
+    over nodes already in memory.
+
+    Building the index loads the whole vault, and one hand-edited node
+    elsewhere (a bare string under `relations`) is enough to make that
+    raise. Tags are advisory, and the write must not fail for it, so any
+    error here means no index and no warnings — the caller skips them."""
+    if not wanted:
+        return None
+    try:
+        return graph.name_index(_vault_root())
+    except Exception:
+        return None
+
+
+def _attach_tag_warnings(result: dict, index: dict | None, tags, node_type, subtype, uid, relations=None) -> None:
+    """Warn — never block — when a tag has a better home: it names a
+    project/entity/topic (a relation), or repeats the node's own type or
+    subtype. The write has already happened; the caller decides.
+
+    `uid` is stringified: the index stores str(uid), and a hand-written
+    all-digit uid loads as int, which would make a node fail to recognise
+    itself and be told to link to itself."""
+    if index is None:
+        return
+    try:
+        warnings = tag_hygiene.check_tags(tags, node_type, subtype, index, self_uid=str(uid), relations=relations)
+    except Exception:
+        return
+    if warnings:
+        result["tag_warnings"] = [w.message for w in warnings]
 
 
 def delete(path: str) -> dict:
@@ -240,8 +286,11 @@ def patch(path: str, updates: dict, body: str = None) -> dict:
     Returns {uid, path, type, title}.
     """
     p = _resolve_vault_path(path)
+    index = _name_index()   # before the write: see _name_index. The merged tags are checked,
+                            # so a patch that only sets the subtype still wants the index.
     result = _patch_item(str(p), updates, body)
     if result.get("uid"):
+        _attach_tag_warnings(result, index, result.get("tags"), result.get("type"), result.get("subtype"), result["uid"], result.get("relations"))
         graph.index_node(
             result["uid"],
             type=result.get("type", ""),
@@ -257,6 +306,7 @@ def patch(path: str, updates: dict, body: str = None) -> dict:
             path=str(p),
         )
         graph.index_edges(result["uid"], result.get("relations", []))
+        graph.mark_fresh(_vault_root())
     return result
 
 
@@ -542,6 +592,7 @@ def save_asset(
         "extra_fields": extra_fields,
     }
 
+    index = _name_index(bool(tags))   # before any write: see _name_index
     ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
     ar.pending_dir(loci_root).mkdir(parents=True, exist_ok=True)
 
@@ -574,7 +625,7 @@ def save_asset(
         uid,
         type=node_type,
         title=title,
-        tags=tags or [],
+        tags=tag_hygiene.as_tag_list(tags),
         domains=domains or [],
         summary=summary or "",
         state="active",
@@ -585,8 +636,11 @@ def save_asset(
 
     # Step 7: Delete intent file
     intent_path.unlink()
+    graph.mark_fresh(_vault_root())
 
-    return {"uid": uid, "asset_path": str(asset_final), "vault_path": result["path"]}
+    out = {"uid": uid, "asset_path": str(asset_final), "vault_path": result["path"]}
+    _attach_tag_warnings(out, index, tags, node_type, effective_subtype, uid, relations)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -712,7 +766,9 @@ def execute_inbox_file_batch() -> dict:
             content = file_path.read_bytes()
             title = item.get("title", file_path.stem)
 
-            tags = [item.get("subtype", "book")] if item.get("subtype") else ["book"]
+            # The subtype already says what the file is; repeating it as a
+            # tag is what tag-repeats-type warns about.
+            tags = []
             domains = ["personal-library"]
 
             relations = []
@@ -755,7 +811,10 @@ def execute_inbox_file_batch() -> dict:
                 file_path.unlink()
             except OSError:
                 pass
-            processed.append({"path": item_path, "uid": result["uid"], "title": title})
+            entry = {"path": item_path, "uid": result["uid"], "title": title}
+            if result.get("tag_warnings"):
+                entry["tag_warnings"] = result["tag_warnings"]
+            processed.append(entry)
 
         except Exception as e:
             try:

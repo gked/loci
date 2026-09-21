@@ -17,7 +17,7 @@ summary: The portable harbour refactors the quiet ledger before the draft settle
 tags:
 - loci
 - networking
-- notes
+- jottings
 title: Quiet Kernel
 type: topic
 uid: 306348cf

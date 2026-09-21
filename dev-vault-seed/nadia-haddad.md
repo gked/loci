@@ -25,7 +25,7 @@ summary: The practical compass migrates the late garden before the orbit settles
 tags:
 - loci
 - ontology
-- notes
+- jottings
 - ux
 title: Nadia Haddad
 type: entity

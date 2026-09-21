@@ -20,7 +20,7 @@ summary: The local outline compares the late handle before the archive settles. 
 tags:
 - loci
 - learning
-- notes
+- jottings
 - idea
 title: 'Restless Margin: harbour and orbit'
 type: document

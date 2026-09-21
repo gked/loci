@@ -15,10 +15,10 @@ subtype: note
 summary: The slow signal migrates the adaptive garden before the lattice settles.
   The quiet kernel archives the hidden register before the signal settles.
 tags:
-- book
+- library
 - graph
 - language
-- journal
+- retrospective
 - health
 - loci
 title: 'Restless Cache: field and corridor'

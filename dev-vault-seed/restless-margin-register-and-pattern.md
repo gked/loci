@@ -20,7 +20,7 @@ summary: The layered draft prunes the practical index before the protocol settle
 tags:
 - reading
 - loci
-- podcast
+- audio
 - design
 title: 'Restless Margin: register and pattern'
 type: bookmark

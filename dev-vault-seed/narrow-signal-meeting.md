@@ -21,7 +21,7 @@ tags:
 - mcp
 - cli
 - design
-- notes
+- jottings
 - planning
 - howto
 title: Narrow Signal meeting

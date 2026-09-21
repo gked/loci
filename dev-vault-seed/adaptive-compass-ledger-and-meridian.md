@@ -17,7 +17,7 @@ summary: The narrow lattice reviews the local register before the corridor settl
 tags:
 - loci
 - reading
-- podcast
+- audio
 - react
 title: 'Adaptive Compass: ledger and meridian'
 type: bookmark

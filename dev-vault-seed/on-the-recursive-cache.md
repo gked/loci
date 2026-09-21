@@ -23,7 +23,7 @@ tags:
 - python
 - typography
 - design
-- paper
+- academia
 title: On the recursive cache
 type: conversation
 uid: 8b32459d

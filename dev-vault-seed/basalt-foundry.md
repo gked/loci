@@ -21,7 +21,7 @@ subtype: organization
 summary: The recursive handle audits the minimal pattern before the field settles.
   The quiet handle compares the layered index before the margin settles.
 tags:
-- notes
+- jottings
 - design
 - loci
 - ontology

@@ -20,7 +20,7 @@ subtype: chore
 summary: The slow protocol audits the portable margin before the margin settles. The
   minimal loop sketchs the recursive season before the protocol settles.
 tags:
-- notes
+- jottings
 - tooling
 - data
 title: Rebuild the recursive index

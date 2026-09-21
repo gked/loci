@@ -16,7 +16,7 @@ summary: The quiet threshold prototypes the practical ledger before the ledger s
   The brittle compass prototypes the slow lattice before the register settles.
 tags:
 - design
-- notes
+- jottings
 - python
 title: 'Ambient Register: orbit and meridian'
 type: document

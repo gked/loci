@@ -17,7 +17,7 @@ status: abandoned
 summary: The adaptive season prunes the ambient corridor before the orbit settles.
   The brittle threshold rebuilds the adaptive handle before the lattice settles.
 tags:
-- notes
+- jottings
 - design
 - idea
 - research

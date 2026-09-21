@@ -18,7 +18,7 @@ summary: The plain loop prototypes the quiet protocol before the cache settles. 
 tags:
 - release
 - loci
-- notes
+- jottings
 title: 'Recursive Index: margin and handle'
 type: article
 uid: 8d93b450

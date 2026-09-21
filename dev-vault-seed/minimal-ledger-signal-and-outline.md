@@ -22,7 +22,7 @@ tags:
 - design
 - graph
 - reference
-- notes
+- jottings
 - loci
 title: 'Minimal Ledger: signal and outline'
 type: bookmark

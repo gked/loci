@@ -17,7 +17,7 @@ summary: The stable signal sketchs the hidden margin before the orbit settles. T
   restless cache sketchs the restless lattice before the lattice settles.
 tags:
 - planning
-- notes
+- jottings
 - design
 - reference
 - search

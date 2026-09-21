@@ -22,7 +22,7 @@ summary: The adaptive handle documents the hidden protocol before the pattern se
   The hidden ledger migrates the sparse draft before the orbit settles.
 tags:
 - loci
-- notes
+- jottings
 title: 'Brittle Protocol: outline and harbour'
 type: article
 uid: bb71158a

@@ -16,7 +16,7 @@ summary: The practical season compares the minimal compass before the lattice se
 tags:
 - loci
 - history
-- book
+- library
 - reading
 title: 'Recursive Loop: ledger and threshold'
 type: document

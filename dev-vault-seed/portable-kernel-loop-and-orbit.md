@@ -17,7 +17,7 @@ tags:
 - loci
 - biology
 - infra
-- notes
+- jottings
 title: 'Portable Kernel: loop and orbit'
 type: bookmark
 uid: e085ed86

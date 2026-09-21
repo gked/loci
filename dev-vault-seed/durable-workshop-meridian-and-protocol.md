@@ -19,7 +19,7 @@ summary: The quiet lattice migrates the borrowed corridor before the loop settle
   The late budget archives the narrow signal before the workshop settles.
 tags:
 - meeting
-- notes
+- jottings
 - reading
 - design
 title: 'Durable Workshop: meridian and protocol'

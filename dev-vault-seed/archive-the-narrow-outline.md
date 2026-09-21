@@ -18,7 +18,7 @@ summary: The hidden compass documents the minimal index before the margin settle
   The recursive budget compares the narrow draft before the lattice settles.
 tags:
 - loci
-- notes
+- jottings
 - graph
 title: Archive the narrow outline
 type: task

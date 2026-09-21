@@ -20,7 +20,7 @@ summary: The local budget measures the portable signal before the protocol settl
   The narrow loop compares the layered kernel before the loop settles.
 tags:
 - loci
-- notes
+- jottings
 - meeting
 - writing
 title: On the recursive garden

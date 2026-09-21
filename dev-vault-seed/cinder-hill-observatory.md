@@ -22,7 +22,7 @@ tags:
 - graph
 - reading
 - howto
-- book
+- library
 - ontology
 title: Cinder Hill Observatory
 type: entity

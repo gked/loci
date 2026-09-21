@@ -15,7 +15,7 @@ summary: The minimal garden measures the portable ledger before the threshold se
   The brittle garden reviews the brittle kernel before the signal settles.
 tags:
 - react
-- notes
+- jottings
 - loci
 - research
 title: 'Ambient Archive: field and register'

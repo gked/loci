@@ -19,7 +19,7 @@ summary: The ambient compass documents the sparse field before the margin settle
 tags:
 - loci
 - reading
-- notes
+- jottings
 - cli
 - health
 title: 'Durable Pattern: budget and kernel'

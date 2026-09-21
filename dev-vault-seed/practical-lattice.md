@@ -15,7 +15,7 @@ summary: The portable signal documents the adaptive season before the field sett
 tags:
 - design
 - react
-- notes
+- jottings
 - reading
 - reference
 - loci

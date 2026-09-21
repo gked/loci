@@ -21,6 +21,7 @@ REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from scripts import migrate_tags_to_relations as mig  # noqa: E402  (must follow sys.path insert)
+from loci.tools import tag_hygiene  # noqa: E402  — the matching the script now shares with the linter
 
 
 BASE = {
@@ -69,37 +70,37 @@ def _vault(tmp_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 def test_normalise_folds_case_separators_and_accents():
-    assert mig.normalise("Acme-Corp") == mig.normalise("acmecorp") == "acmecorp"
-    assert mig.normalise("Айрат") == mig.normalise("айрат") != ""
-    assert mig.normalise("--") == ""
+    assert tag_hygiene.normalise("Acme-Corp") == tag_hygiene.normalise("acmecorp") == "acmecorp"
+    assert tag_hygiene.normalise("Айрат") == tag_hygiene.normalise("айрат") != ""
+    assert tag_hygiene.normalise("--") == ""
 
 
 def test_normalise_keeps_the_symbols_that_make_a_name():
     # C, C++ and C# are three topics; R and R&D two entities.
-    assert len({mig.normalise(n) for n in ("C", "C++", "C#")}) == 3
-    assert mig.normalise("R&D") != mig.normalise("R")
-    assert mig.normalise("Node.js") == mig.normalise("nodejs")  # a dot is still a separator
+    assert len({tag_hygiene.normalise(n) for n in ("C", "C++", "C#")}) == 3
+    assert tag_hygiene.normalise("R&D") != tag_hygiene.normalise("R")
+    assert tag_hygiene.normalise("Node.js") == tag_hygiene.normalise("nodejs")  # a dot is still a separator
 
 
 def test_candidate_names_use_title_stem_and_only_abbreviation_parentheticals():
-    assert mig.candidate_names({"title": "Globex Corp (GLX)"}) == ["Globex Corp (GLX)", "Globex Corp", "GLX"]
-    assert mig.candidate_names({"title": "Initech (company)"}) == ["Initech (company)", "Initech"]
-    assert mig.candidate_names({"title": "Acme Corp", "aliases": ["CM"]}) == ["Acme Corp", "CM"]
+    assert tag_hygiene.candidate_names({"title": "Globex Corp (GLX)"}) == ["Globex Corp (GLX)", "Globex Corp", "GLX"]
+    assert tag_hygiene.candidate_names({"title": "Initech (company)"}) == ["Initech (company)", "Initech"]
+    assert tag_hygiene.candidate_names({"title": "Acme Corp", "aliases": ["CM"]}) == ["Acme Corp", "CM"]
 
 
 def test_candidate_names_ignore_aliases_that_are_not_a_list():
     # `aliases: CM` iterated as a string would answer to `c` and `m`.
-    assert mig.candidate_names({"title": "Acme Corp", "aliases": "CM"}) == ["Acme Corp"]
-    assert mig.candidate_names({"title": "Acme Corp", "aliases": None}) == ["Acme Corp"]
+    assert tag_hygiene.candidate_names({"title": "Acme Corp", "aliases": "CM"}) == ["Acme Corp"]
+    assert tag_hygiene.candidate_names({"title": "Acme Corp", "aliases": None}) == ["Acme Corp"]
 
 
 def test_candidate_names_treat_proper_noun_and_year_parentheticals_as_glosses():
     # A capital or a digit alone does not make an abbreviation: otherwise every
     # node tagged `acme-corp` would link to the person, not the company.
-    assert mig.candidate_names({"title": "Jane Doe (Acme Corp)"}) == ["Jane Doe (Acme Corp)", "Jane Doe"]
-    assert mig.candidate_names({"title": "Initech (French startup)"}) == ["Initech (French startup)", "Initech"]
-    assert mig.candidate_names({"title": "Offsite (2024)"}) == ["Offsite (2024)", "Offsite"]
-    assert mig.candidate_names({"title": "Two-factor (2FA)"}) == ["Two-factor (2FA)", "Two-factor", "2FA"]
+    assert tag_hygiene.candidate_names({"title": "Jane Doe (Acme Corp)"}) == ["Jane Doe (Acme Corp)", "Jane Doe"]
+    assert tag_hygiene.candidate_names({"title": "Initech (French startup)"}) == ["Initech (French startup)", "Initech"]
+    assert tag_hygiene.candidate_names({"title": "Offsite (2024)"}) == ["Offsite (2024)", "Offsite"]
+    assert tag_hygiene.candidate_names({"title": "Two-factor (2FA)"}) == ["Two-factor (2FA)", "Two-factor", "2FA"]
 
 
 # ---------------------------------------------------------------------------
@@ -210,11 +211,13 @@ def test_plan_drops_a_tag_naming_the_node_itself_without_a_self_edge(tmp_path):
 
 def test_plan_drops_a_tag_that_repeats_the_nodes_own_type_or_subtype(tmp_path):
     v = _vault(tmp_path)
-    _node(v, "bk", uid="dddd0001", type="asset", title="A Book", subtype="book", tags=["book", "Asset", "python"])
+    # `books` too: the linter's repeats-type rule compares singular forms, and a
+    # tag the migration leaves in place is one the linter warns on next.
+    _node(v, "bk", uid="dddd0001", type="asset", title="A Book", subtype="book", tags=["book", "Asset", "books", "python"])
     plan = mig.plan_vault(v)
 
     own = {e.tag for e in plan.edges if e.uid == "dddd0001"}
-    assert own == {"book", "Asset"}
+    assert own == {"book", "Asset", "books"}
     assert all(e.drop_only and e.target is None for e in plan.edges if e.uid == "dddd0001")
     assert plan.unmatched["python"] == 4
 

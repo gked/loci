@@ -21,10 +21,10 @@ subtype: paper
 summary: The narrow register compares the hidden ledger before the season settles.
   The sparse threshold reviews the portable cache before the index settles.
 tags:
-- notes
+- jottings
 - loci
 - ontology
-- paper
+- academia
 - python
 title: 'Local Cache: archive and pattern'
 type: article

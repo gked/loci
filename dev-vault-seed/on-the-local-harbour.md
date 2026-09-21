@@ -20,7 +20,7 @@ tags:
 - graph
 - howto
 - loci
-- book
+- library
 title: On the local harbour
 turns: '29'
 type: conversation

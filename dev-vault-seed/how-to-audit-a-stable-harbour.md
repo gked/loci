@@ -23,7 +23,7 @@ summary: The adaptive ledger prunes the restless garden before the kernel settle
 tags:
 - loci
 - design
-- notes
+- jottings
 title: How to audit a stable harbour
 type: procedure
 uid: 94ac4563

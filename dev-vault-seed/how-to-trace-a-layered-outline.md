@@ -26,7 +26,7 @@ tags:
 - loci
 - research
 - howto
-- notes
+- jottings
 - finance
 title: How to trace a layered outline
 type: procedure

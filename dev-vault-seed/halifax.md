@@ -25,7 +25,7 @@ subtype: place
 summary: The sparse cache prototypes the restless signal before the protocol settles.
   The practical meridian documents the plain cache before the lattice settles.
 tags:
-- book
+- library
 - loci
 - react
 - infra

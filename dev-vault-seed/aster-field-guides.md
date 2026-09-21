@@ -23,7 +23,7 @@ subtype: organization
 summary: The late corridor compares the quiet kernel before the register settles.
   The minimal margin reviews the restless loop before the workshop settles.
 tags:
-- paper
+- academia
 - design
 - react
 - loci

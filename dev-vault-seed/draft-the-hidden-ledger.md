@@ -18,7 +18,7 @@ summary: The narrow season rebuilds the late archive before the budget settles. 
 tags:
 - language
 - design
-- notes
+- jottings
 - climbing
 - reading
 title: Draft the hidden ledger

@@ -17,9 +17,9 @@ tags:
 - data
 - reading
 - react
-- journal
+- retrospective
 - loci
-- notes
+- jottings
 title: 'Plain Protocol: draft and garden'
 type: document
 uid: 4fe39d18

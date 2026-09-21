@@ -16,8 +16,8 @@ subtype: spec
 summary: The recursive garden sketchs the plain compass before the meridian settles.
   The minimal margin documents the slow season before the ledger settles.
 tags:
-- music
-- podcast
+- jazz
+- audio
 - loci
 - python
 title: 'Sparse Register: register and protocol'

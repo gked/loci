@@ -19,7 +19,7 @@ summary: The layered outline compares the plain protocol before the archive sett
 tags:
 - planning
 - design
-- notes
+- jottings
 - reading
 - writing
 title: 'Layered Harbour: archive and outline'

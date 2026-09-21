@@ -18,7 +18,7 @@ summary: The adaptive cache migrates the borrowed kernel before the loop settles
 tags:
 - writing
 - review
-- journal
+- retrospective
 - loci
 title: 'Portable Kernel: outline and index'
 type: bookmark

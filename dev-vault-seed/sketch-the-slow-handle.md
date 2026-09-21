@@ -19,7 +19,7 @@ tags:
 - performance
 - loci
 - idea
-- notes
+- jottings
 title: Sketch the slow handle
 type: task
 uid: 55de0bf9

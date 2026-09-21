@@ -28,7 +28,7 @@ subtype: person
 summary: The minimal orbit rebuilds the local budget before the orbit settles. The
   ambient index prototypes the plain workshop before the harbour settles.
 tags:
-- notes
+- jottings
 - release
 - cooking
 title: Freya Nilsen

@@ -21,7 +21,7 @@ summary: The recursive meridian prunes the minimal season before the cache settl
 tags:
 - loci
 - hardware
-- notes
+- jottings
 - idea
 title: 'Narrow Ledger: garden and draft'
 type: bookmark

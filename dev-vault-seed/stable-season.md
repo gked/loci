@@ -16,7 +16,7 @@ status: active
 summary: The hidden orbit rebuilds the ambient outline before the register settles.
   The recursive field traces the quiet lattice before the threshold settles.
 tags:
-- notes
+- jottings
 - loci
 - research
 title: Stable Season

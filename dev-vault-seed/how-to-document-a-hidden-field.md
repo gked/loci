@@ -27,7 +27,7 @@ summary: The sparse margin drafts the ambient ledger before the kernel settles. 
 tags:
 - react
 - reading
-- notes
+- jottings
 - performance
 title: How to document a hidden field
 type: procedure

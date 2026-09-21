@@ -18,7 +18,7 @@ summary: The quiet archive archives the local ledger before the pattern settles.
 tags:
 - loci
 - review
-- notes
+- jottings
 title: 'Recursive Budget: lattice and compass'
 type: article
 uid: a48b7891

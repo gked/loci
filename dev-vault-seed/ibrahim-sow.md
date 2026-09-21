@@ -18,10 +18,10 @@ subtype: person
 summary: The hidden threshold compares the durable archive before the cache settles.
   The narrow corridor reviews the adaptive ledger before the corridor settles.
 tags:
-- book
+- library
 - design
 - finance
-- notes
+- jottings
 - writing
 title: Ibrahim Sow
 type: entity

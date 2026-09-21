@@ -20,7 +20,7 @@ summary: The restless lattice migrates the hidden compass before the pattern set
 tags:
 - habits
 - infra
-- podcast
+- audio
 - loci
 title: On the quiet ledger
 turns: '36'

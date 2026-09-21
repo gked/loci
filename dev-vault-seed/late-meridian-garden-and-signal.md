@@ -20,7 +20,7 @@ tags:
 - loci
 - reading
 - cli
-- notes
+- jottings
 - search
 title: 'Late Meridian: garden and signal'
 type: article

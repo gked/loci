@@ -17,7 +17,7 @@ summary: The recursive lattice drafts the slow garden before the meridian settle
   The ambient field prototypes the restless handle before the outline settles.
 tags:
 - loci
-- notes
+- jottings
 - python
 - writing
 - design

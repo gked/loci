@@ -16,7 +16,7 @@ summary: The minimal garden compares the late protocol before the archive settle
   The plain kernel measures the recursive compass before the compass settles.
 tags:
 - reading
-- notes
+- jottings
 - design
 - research
 title: 'Slow Harbour: season and harbour'

@@ -17,7 +17,7 @@ summary: The portable ledger sketchs the recursive ledger before the outline set
   The layered lattice prunes the plain handle before the kernel settles.
 tags:
 - loci
-- notes
+- jottings
 - research
 title: Salta
 type: entity

@@ -16,7 +16,7 @@ status: abandoned
 summary: The plain lattice prunes the minimal index before the signal settles. The
   portable kernel reviews the portable threshold before the outline settles.
 tags:
-- notes
+- jottings
 - typography
 - design
 - ontology

@@ -234,7 +234,16 @@ Every save ends here, whichever path it took.
    ```
 2. Surface anything the tools returned that the user should know — `body_warnings`, lint notices,
    a `_notice` deferred from Step 0 — in one line each. Don't act on them unasked.
-3. Offer the one follow-on that fits: the topic link scan from Step 3, creating a node for a
+3. `tag_warnings` is the exception: the write went through, but a tag has a better home — it
+   names a project, entity, or topic (should be a relation) or repeats the node's own type or
+   subtype. Offer the fix in one line and do it on a yes, never before:
+   ```
+   Tag #mercury names project Mercury — replace it with a belongs-to edge? [yes / keep the tag]
+   ```
+   On yes, `loci__patch_vault(path=<uid>, updates={relations: <existing + new edge>, tags: <without it>})`.
+   When the warning says the node *already links to* that target, or the tag repeats the type,
+   there is no edge to add — the offer is to drop the tag, and on yes the patch is `tags` only.
+4. Offer the one follow-on that fits: the topic link scan from Step 3, creating a node for a
    `missing` mention the user skipped, or reading the saved node back. One offer, not a menu.
 
 ---

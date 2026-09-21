@@ -19,7 +19,7 @@ tags:
 - philosophy
 - loci
 - design
-- book
+- library
 title: On the narrow pattern
 type: conversation
 uid: d5b0ad47

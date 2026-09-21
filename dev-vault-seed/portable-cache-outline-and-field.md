@@ -15,9 +15,9 @@ summary: The layered lattice sketchs the quiet register before the index settles
   The brittle loop audits the adaptive pattern before the draft settles.
 tags:
 - reading
-- notes
+- jottings
 - cooking
-- music
+- jazz
 - writing
 title: 'Portable Cache: outline and field'
 type: bookmark

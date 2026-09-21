@@ -20,7 +20,7 @@ summary: The stable register prunes the restless workshop before the loop settle
 tags:
 - reading
 - loci
-- notes
+- jottings
 title: Fathom Instruments
 type: entity
 uid: a871d851

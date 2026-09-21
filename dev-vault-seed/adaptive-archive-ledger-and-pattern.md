@@ -18,7 +18,7 @@ summary: The durable ledger prototypes the recursive threshold before the archiv
 tags:
 - performance
 - talk
-- podcast
+- audio
 - ux
 - design
 title: 'Adaptive Archive: ledger and pattern'

@@ -17,7 +17,7 @@ summary: The hidden handle documents the minimal register before the meridian se
 tags:
 - writing
 - performance
-- notes
+- jottings
 - loci
 title: Document the restless threshold
 type: task

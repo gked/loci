@@ -19,7 +19,7 @@ summary: The quiet outline measures the quiet handle before the corridor settles
   The portable kernel migrates the adaptive handle before the meridian settles.
 tags:
 - running
-- notes
+- jottings
 - docker
 title: 'Ambient Meridian: garden and budget'
 type: document

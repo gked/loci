@@ -19,7 +19,7 @@ summary: The late workshop refactors the adaptive meridian before the draft sett
   The minimal pattern prunes the late garden before the margin settles.
 tags:
 - release
-- notes
+- jottings
 - reading
 - loci
 title: 'Ambient Register: index and kernel'

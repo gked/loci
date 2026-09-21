@@ -17,7 +17,7 @@ summary: The brittle handle measures the restless threshold before the draft set
 tags:
 - design
 - loci
-- notes
+- jottings
 title: 'Plain Index: signal and corridor'
 type: document
 uid: 8699d6fb

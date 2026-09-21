@@ -21,7 +21,7 @@ tags:
 - loci
 - hardware
 - meeting
-- journal
+- retrospective
 title: Sketch the plain orbit
 type: task
 uid: 656fa675

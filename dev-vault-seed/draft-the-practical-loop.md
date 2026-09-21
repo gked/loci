@@ -24,8 +24,8 @@ tags:
 - research
 - reading
 - meeting
-- podcast
-- notes
+- audio
+- jottings
 title: Draft the practical loop
 type: task
 uid: 4dcfc139

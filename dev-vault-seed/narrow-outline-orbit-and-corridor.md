@@ -18,7 +18,7 @@ subtype: blog-post
 summary: The narrow margin prunes the hidden harbour before the cache settles. The
   adaptive threshold prunes the stable kernel before the outline settles.
 tags:
-- notes
+- jottings
 - loci
 - ux
 title: 'Narrow Outline: orbit and corridor'

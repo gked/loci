@@ -116,14 +116,17 @@ VERBS = [
     "migrate", "review", "sketch", "refactor", "measure", "archive", "draft",
     "compare", "rebuild", "document", "trace", "prune", "audit", "prototype",
 ]
+# No word here may equal a type or subtype (`journal`, `book`, `paper`,
+# `podcast`, `music`, `notes` were — plural included): the linter warns on a tag that repeats the node's own
+# field, and the seed is meant to lint clean.
 TAG_POOL = [
-    "loci", "design", "notes", "reading", "python", "react", "graph", "writing",
+    "loci", "design", "jottings", "reading", "python", "react", "graph", "writing",
     "research", "meeting", "idea", "reference", "howto", "review", "planning",
     "ontology", "tooling", "cli", "ux", "performance", "testing", "release",
-    "infra", "docker", "mcp", "vault", "search", "typography", "journal",
-    "health", "finance", "book", "paper", "talk", "podcast", "history",
+    "infra", "docker", "mcp", "vault", "search", "typography", "retrospective",
+    "health", "finance", "library", "academia", "talk", "audio", "history",
     "philosophy", "economics", "biology", "hardware", "networking", "security",
-    "data", "statistics", "learning", "language", "music", "travel", "cooking",
+    "data", "statistics", "learning", "language", "jazz", "travel", "cooking",
     "gardening", "woodwork", "climbing", "running", "sleep", "habits",
     "productivity", "email", "calendar", "backup", "migration",
 ]
