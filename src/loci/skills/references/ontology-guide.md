@@ -52,6 +52,35 @@ week", "everything linked to the Loci project", "all Russian-language books".
 
 ---
 
+## Four kinds of thing
+
+Before the types, the idea behind them. Every note stands for something, and
+there are only four sorts of something a note can stand for:
+
+| Kind | What it is | Types |
+|---|---|---|
+| **object** | Exists on its own, persists through time — a person, a company, a place, a copy you own | `entity`, `asset` |
+| **information** | Content *about* something, carried by text or a file — written by you or someone else | `document`, `article`, `bookmark`, `conversation`, `procedure`, `log` |
+| **occurrent** | Unfolds in time, has a start and an end — happened, or meant to happen | `event`, `task`, `project` |
+| **concept** | Has no place or time; exists only to be pointed at | `topic` |
+
+A few placements are worth spelling out, because the obvious answer is wrong:
+
+- A **log** is information, not an occurrent. The reading is what happened; the
+  log is your *account* of it — the same family as a document.
+- An **asset** is always an object, even when it's an epub. The node stands for
+  the copy you own, in whatever medium; `subtype: book` says what the copy
+  carries. What you *thought* about the book goes in a log.
+- **task** and **project** are occurrents with an *intended* time — a due date
+  is a claim about when the thing should end. An event is one that already did.
+
+The kinds aren't a field on the note; nothing in the software reads them. They
+are the reason the type list is what it is: one or two concrete types per kind,
+and everything else a subtype or a tag. When you're tempted to add a type, place
+it in a kind first. If it doesn't fit one, it isn't a type.
+
+---
+
 ## Three vocabularies
 
 The ontology is three separate lists, each doing one job.
@@ -210,6 +239,43 @@ a tag. Most tag sprawl comes from skipping the first question — a project's
 name as a tag on fifty notes is fifty strings the graph can't see, where one
 `belongs-to` edge each would do.
 
+A good tag passes one more test: it makes sense on notes in unrelated parts of
+the vault. `quantitative` fits a survey readout and a pipeline eval;
+`kernel-research` only ever meant one project, so it became an edge. And a tag
+never repeats what an edge already says — there is no `product-brainstorming`,
+only `brainstorm` on a note that is `about` Product Management.
+
+Loci checks this as you go. Saving a note whose tag names a project, entity, or
+topic — or repeats the note's own type or subtype — comes back with a
+`tag_warnings` line, and Claude offers the edge instead. The linter reports the
+same across the whole vault, plus spellings that differ only by a hyphen or a
+plural (`open-question` / `open-questions`) and a census of tags used once.
+
+---
+
+## How notes go stale
+
+Old isn't stale. A note from a year ago with nothing newer on its subject is
+still the current state of what you know. A note is **stale** when a *newer*
+note on the same subject exists and the two were never linked — the older one
+should say "superseded by …" and doesn't.
+
+Today the fix is yours to make: add a `supersedes` edge from the newer note to
+the older one when you save it, and the older note is marked as replaced.
+
+> **Not built yet.** The plan is for Loci to treat staleness as a question for
+> you, not a rule for the software: look for pairs that could be old-and-new
+> versions of one thing — same type and subtype, same subject or project,
+> similar title — and ask, per pair, whether the newer one **replaces** the
+> older, whether they are **a series** (two biweekly updates, both still
+> valid), or **unrelated**. Your answer would be written down, so the same pair
+> is never asked twice; *replace* would add the `supersedes` edge, *series*
+> would put both under a hub. Nothing detects pairs or asks today.
+
+The one thing that *is* about dates: a task or project past its due date and
+untouched is **neglected**. That's a different problem with a different fix, and
+it never applies to documents. (Not built yet either — nothing reports it.)
+
 ---
 
 ## Making it your own
@@ -235,7 +301,7 @@ Three rules constrain what you can define:
 
 1. **Your type must extend a canonical one.** No brand-new roots. This keeps the
    hierarchy exactly one level deep, so every note remains recognisable as one
-   of the twelve base kinds.
+   of the twelve base types.
 2. **The name must not collide** with a canonical type.
 3. **Additive only** — you can add fields, never redefine or remove inherited
    ones.
@@ -264,7 +330,11 @@ Deliberately not all at once:
   about fields you aren't touching.
 - **Linting** is the safety net. `lint_vault` checks the whole vault and reports
   everything: unknown types, missing fields, bad enum values, links pointing at
-  notes that no longer exist, notes with no links at all, empty summaries.
+  notes that no longer exist, notes with no links at all, empty summaries, tags
+  that should be edges or repeat the type, and tag spellings that collide.
+- **Tag problems warn instead of rejecting.** The note is
+  written; the warning says a tag has a better home. That's deliberate — tags
+  are the loose axis, and a save should never fail over one.
 
 The third one matters more than it sounds. The ontology evolves — a field
 becomes required, an enum gains a value — and notes written last year can fall

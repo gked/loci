@@ -14,6 +14,14 @@ about the machinery*.
 
 ## 1. What the ontology system is
 
+> **Two words that are not the same thing.** The user guide groups the types
+> into four *kinds* (object, information, occurrent, concept). Kinds live in
+> prose only — no registry reads them — and the word is `kind`.
+> `relation-dictionary.yaml` has a `group:` key on every relation, and that
+> one *is* loaded and stored, but nothing acts on it: it carries no rules.
+> Don't "harmonise" the two names; they differ because one
+> is a design-time idea and the other is a cosmetic label.
+
 Loci stores knowledge as markdown files with YAML frontmatter. The ontology
 system is what makes that frontmatter *mean* something: it defines which node
 types exist, which fields each type requires, which values enum fields may hold,

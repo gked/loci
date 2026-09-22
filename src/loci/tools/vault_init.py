@@ -27,7 +27,7 @@ from typing import Optional
 LEGACY_CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "skills" / "references"
 
-META_VERSION = 12
+META_VERSION = 13
 
 # Records META_VERSION inside the vault. Only env-var mode (Docker) relies on
 # it; a config.yml install tracks the same number there.
