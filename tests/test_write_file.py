@@ -15,6 +15,7 @@ from loci.tools.write_file import (
     write_item,
     patch_item,
     check_duplicate,
+    find_uid,
     validate_required_fields,
 )
 from loci.tools.type_registry import TypeRegistry, REFERENCES_DIR
@@ -260,6 +261,27 @@ def test_check_duplicate_does_not_compare_slugs(tmp_vault):
     stem = "Meeting notes: Q3 planning session with the platform team"
     write_item(type="document", title=f"{stem} — 2026-09-01", body="", extra_fields={"status": "draft", "subtype": "note"}, skip_duplicate_check=True)
     assert check_duplicate(tmp_vault, f"{stem} — 2026-09-08") is None
+
+
+def test_check_duplicate_ignores_skill_overlays(tmp_vault):
+    """An overlay is prose the user wrote through write_skill, and one that
+    happens to open with a frontmatter block would otherwise refuse a
+    legitimate save, pointing at vault/skills/loci-save.md as the duplicate."""
+    overlay = tmp_vault / "skills" / "loci-save.md"
+    overlay.parent.mkdir(exist_ok=True)
+    overlay.write_text(
+        "---\ntitle: Ask First Policy\n---\n\n- always ask first\n", encoding="utf-8"
+    )
+
+    assert check_duplicate(tmp_vault, "Ask First Policy") is None
+
+
+def test_find_uid_ignores_skill_overlays(tmp_vault):
+    overlay = tmp_vault / "skills" / "loci-save.md"
+    overlay.parent.mkdir(exist_ok=True)
+    overlay.write_text("---\nuid: 0ver1ay0\n---\n", encoding="utf-8")
+
+    assert find_uid(tmp_vault, "0ver1ay0") is None
 
 
 def test_check_duplicate_matches_source_url(tmp_vault):

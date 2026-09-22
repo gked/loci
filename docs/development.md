@@ -31,8 +31,9 @@ loci/
       loci-query/SKILL.md           ← querying and traversal
       loci-inbox/SKILL.md           ← processing loci-stage/
       loci-ingest-directory/SKILL.md ← cataloguing a directory in place
-      references/                   ← source of truth for vault/meta/ seed files
-        <skill>-user.md             ← skill overlay seeds (seeded once, user-owned)
+      references/                   ← source of truth for vault/ seed files
+        <skill>-user.md             ← skill overlay seeds → vault/skills/<skill>.md
+                                       (seeded once, user-owned)
         ontology.yaml               ← type system (TypeRegistry source)
         ontology-user.yaml          ← user type extensions (seeded once, user-owned)
         relation-dictionary.yaml    ← relation vocabulary (RelationRegistry source)

@@ -26,7 +26,7 @@ from pathlib import Path
 # Import sibling tools
 from loci.tools.uid_generator import generate_uid
 from loci.tools.slug import filename as make_filename
-from loci.tools.vault_init import NOT_CONFIGURED_MESSAGE, load_config
+from loci.tools.vault_init import NON_NODE_DIRS, NOT_CONFIGURED_MESSAGE, load_config
 from loci.tools.type_registry import get_registry
 from loci.tools.relation_registry import get_relation_registry
 from loci.tools.frontmatter import load_frontmatter, split_frontmatter
@@ -81,7 +81,7 @@ def check_duplicate(vault_root: Path, title: str, url: str = None) -> Optional[P
         return None
 
     for md_file in vault_root.rglob("*.md"):
-        if md_file.parent.name == "meta":
+        if md_file.parent.name in NON_NODE_DIRS:
             continue
         try:
             fm, _ = load_frontmatter(md_file.read_text(encoding="utf-8"))
@@ -108,7 +108,7 @@ def find_uid(vault_root: Path, uid: str) -> Optional[Path]:
     can lag an in-place edit, and a save is not a hot path.
     """
     for md_file in vault_root.rglob("*.md"):
-        if md_file.parent.name == "meta":
+        if md_file.parent.name in NON_NODE_DIRS:
             continue
         try:
             fm, _ = load_frontmatter(md_file.read_text(encoding="utf-8"))

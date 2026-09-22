@@ -1149,7 +1149,7 @@ def scan_directory(path: str, recursive: bool = False) -> dict:
 def read_skill(skill: str = "loci-save") -> str:
     """
     The assembled skill: packaged procedure plus the user's additions from
-    vault/meta/<skill>-user.md. Works with no vault configured — the packaged
+    vault/skills/<skill>.md. Works with no vault configured — the packaged
     half is what tells the model to ask for one — and says so in place of the
     additions.
     """
@@ -1178,7 +1178,7 @@ def lint_vault() -> dict:
 
 def write_skill(content: str, skill: str = "loci-save", append: bool = False) -> str:
     """
-    Write the user's additions for a skill — vault/meta/<skill>-user.md, the
+    Write the user's additions for a skill — vault/skills/<skill>.md, the
     file read_skill appends to the packaged procedure. Returns the path written.
 
     Only that file. The packaged procedure ships inside the wheel and is

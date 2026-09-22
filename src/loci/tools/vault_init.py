@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from loci import skill_assembly
+
 
 # Where config lived before it moved out of the checkout. A uvx install has no
 # checkout — the package is unpacked into an ephemeral uv cache — so a path
@@ -27,7 +29,7 @@ from typing import Optional
 LEGACY_CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "skills" / "references"
 
-META_VERSION = 13
+META_VERSION = 14
 
 # Records META_VERSION inside the vault. Only env-var mode (Docker) relies on
 # it; a config.yml install tracks the same number there.
@@ -35,7 +37,17 @@ VERSION_MARKER = ".meta-version"
 
 VAULT_FOLDERS = [
     "meta",
+    "skills",
 ]
+
+# Every directory Loci seeds into the vault holds Loci's own files, never
+# nodes: meta/ the registries, skills/ the user's skill overlays. Nodes live
+# in type directories created on demand, so anything seeded here is something
+# the vault walkers must skip — an overlay is free-form prose the user wrote,
+# and one that happens to open with a `---` line would otherwise read as a
+# node and be offered back as a duplicate. Derived from VAULT_FOLDERS so a
+# folder added there is excluded by default rather than by remembering to.
+NON_NODE_DIRS = frozenset(VAULT_FOLDERS)
 
 # Reseeded on every META_VERSION bump. Nothing here is writable at runtime:
 # api.write_meta() refuses every one of them, so overwriting can only ever
@@ -53,7 +65,7 @@ META_FILES = [
     "update-workflow.md",        # ditto — the update / archive / delete procedure
 ]
 
-# Seeded once on first setup, never overwritten — user owns these.
+# Seeded once into meta/ on first setup, never overwritten — user owns these.
 #
 # tag-dictionary.md and foreign-definitions.md sit here rather than in
 # META_FILES because they are written at runtime: api.write_meta() accepts both
@@ -63,20 +75,35 @@ META_FILES = [
 # so a reseed would destroy work with no way back. That is also what README's
 # "the files you own ... are never overwritten" promises.
 #
-# The *-user.md files are the skill overlays: one per packaged skill, appended
-# to the procedure by read_skill and written by write_skill (see
-# skill_assembly.py). They are the user's rules and nothing else, which is
-# the whole reason they sit in the vault rather than in the package.
+# Everything here belongs to the *substrate*: it describes what the vault holds
+# — which types and relations exist, what the tags and foreign terms mean. The
+# three `-user` files extend a packaged registry and are merged with it by a
+# loader, so they stay beside the file they extend. What they cannot do is
+# override it: type_registry._load_user() skips any user type that omits
+# `extends`, collides with a canonical name, or redefines an inherited field.
 USER_META_FILES = [
     "ontology-user.yaml",
     "relation-dictionary-user.yaml",
     "scheme-dictionary-user.yaml",
     "tag-dictionary.md",
     "foreign-definitions.md",
-    "loci-save-user.md",
-    "loci-query-user.md",
-    "loci-inbox-user.md",
-    "loci-ingest-directory-user.md",
+]
+
+# Seeded once into skills/, never overwritten — the user's half of each
+# packaged skill, appended to the procedure by read_skill and written by
+# write_skill (see skill_assembly.py).
+#
+# These are *policy*, not substrate: they say how a procedure should behave, not
+# what the vault contains, and unlike the registry extensions above they are
+# meant to override the packaged half — that is the contract read_skill states,
+# with 🔒 headings as the only exception. Different rules, so a different
+# directory; they lived in meta/ under their seed name until META_VERSION 14,
+# and migrate_skill_overlays() moves any that are still there.
+USER_SKILL_OVERLAYS = [
+    "loci-save",
+    "loci-query",
+    "loci-inbox",
+    "loci-ingest-directory",
 ]
 
 
@@ -171,13 +198,19 @@ def save_config(config: dict) -> None:
     print(f"Config saved to {path}")
 
 
-def create_vault_structure(vault_root: Path, include_siblings: bool = True) -> None:
+def create_vault_structure(vault_root: Path, include_siblings: bool = True) -> list[str]:
     """Create vault folder structure, asset storage, and seed meta files.
 
     include_siblings=False skips the assets/ and loci-stage/ directories that
     normally sit next to the vault. In env-var mode the vault is a bind mount
     and its parent is the container root, so creating them there would write
     outside the mount, where the contents vanish on the next container start.
+
+    Returns the skill overlays moved out of meta/ by this call, for the upgrade
+    paths to put in their notice. Everything this function prints is swallowed
+    by a redirect_stdout at every call site — under stdio that stream is the
+    JSON-RPC channel — so a return value is the only way the move reaches the
+    user, and it is their own file that moved.
     """
     vault_root.mkdir(parents=True, exist_ok=True)
 
@@ -213,6 +246,62 @@ def create_vault_structure(vault_root: Path, include_siblings: bool = True) -> N
             dest.write_text(src.read_text())
             print(f"  Seeded (user): {dest}")
 
+    # Before seeding: a pre-v14 vault has the user's rules under meta/, and
+    # seeding first would put a fresh empty stub in skills/ that the move then
+    # had to refuse, stranding the real file.
+    moved_overlays = migrate_skill_overlays(vault_root)
+
+    for skill in USER_SKILL_OVERLAYS:
+        dest = skill_assembly.overlay_path(vault_root, skill)
+        src = REFERENCES_DIR / skill_assembly.seed_filename(skill)
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(src.read_text())
+            print(f"  Seeded (user): {dest}")
+
+    return moved_overlays
+
+
+def overlay_move_notice(moved: list[str]) -> str | None:
+    """One line naming the overlays the upgrade moved, or None if none did.
+
+    The overlays are the one thing in the vault Loci did not write, and a user
+    may be pointing an editor or a script at the old path, so the move says so
+    for itself rather than hiding behind "meta files were updated".
+    """
+    if not moved:
+        return None
+    return (
+        f"Your skill additions moved from vault/meta/ to "
+        f"vault/{skill_assembly.OVERLAY_DIR}/: {', '.join(sorted(moved))}. "
+        f"The contents are unchanged."
+    )
+
+
+def migrate_skill_overlays(vault_root: Path) -> list[str]:
+    """Move pre-v14 skill overlays from meta/<skill>-user.md to skills/<skill>.md.
+
+    Returns the skills moved. Idempotent: a vault with nothing left in meta/ is
+    a no-op, so every seed and upgrade path can call it unconditionally.
+
+    A destination that already exists is never overwritten — the user's rules
+    are the one thing in the vault Loci did not write and cannot reconstruct.
+    That leaves the old file in place rather than deleting it, which only
+    happens if both were created by hand, and losing it silently would be worse
+    than a stale copy the user can see.
+    """
+    moved = []
+    for skill in USER_SKILL_OVERLAYS:
+        old = skill_assembly.legacy_overlay_path(vault_root, skill)
+        new = skill_assembly.overlay_path(vault_root, skill)
+        if not old.is_file() or new.exists():
+            continue
+        new.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(old), str(new))
+        moved.append(skill)
+        print(f"  Moved: {old} -> {new}")
+    return moved
+
 
 def write_vault_meta_version(vault_root: Path, version: int) -> None:
     """Record the seeded meta version inside the vault."""
@@ -224,10 +313,11 @@ def write_vault_meta_version(vault_root: Path, version: int) -> None:
 def reseed_meta(vault_root: Path) -> None:
     """Force overwrite canonical meta files from references/.
 
-    USER_META_FILES are never touched — the user owns those, and two of them
-    (tag-dictionary.md, foreign-definitions.md) accumulate content that exists
-    nowhere but the vault. Call create_vault_structure() first if the vault may
-    be missing files: this only rewrites what META_FILES lists."""
+    USER_META_FILES and USER_SKILL_OVERLAYS are never touched — the user owns
+    those, and several of them (tag-dictionary.md, foreign-definitions.md, every
+    skill overlay) accumulate content that exists nowhere but the vault. Call
+    create_vault_structure() first if the vault may be missing files: this only
+    rewrites what META_FILES lists, and the overlay move lives there too."""
     for filename in META_FILES:
         dest = vault_root / "meta" / filename
         src = REFERENCES_DIR / filename
@@ -487,21 +577,29 @@ def ensure_env_vault(vault_root: Path) -> str | None:
                 # the version. create_vault_structure only writes files that are
                 # missing, so it fills USER_META_FILES gaps without touching
                 # anything else.
-                create_vault_structure(vault_root, include_siblings=False)
+                moved = create_vault_structure(vault_root, include_siblings=False)
                 write_vault_meta_version(vault_root, META_VERSION)
-                return None
-            # Fills in USER_META_FILES too: reseed_meta only rewrites the
+                # Nothing was reseeded, so there is usually nothing to say —
+                # unless the adopted vault still had its overlays in meta/.
+                notice = overlay_move_notice(moved)
+                if notice is None:
+                    return None
+                print(notice, file=sys.stderr)
+                return notice
+            # Fills in USER_META_FILES and the skill overlays too, and moves
+            # any pre-v14 overlay out of meta/: reseed_meta only rewrites the
             # canonical set, and a vault seeded before this path existed has
             # neither.
-            create_vault_structure(vault_root, include_siblings=False)
+            moved = create_vault_structure(vault_root, include_siblings=False)
             reseed_meta(vault_root)
             write_vault_meta_version(vault_root, META_VERSION)
             from_version = f"v{current}" if current is not None else "unversioned"
-            notice = (
+            notice = " ".join(filter(None, [
                 f"Vault meta files at {describe_vault_location(vault_root)} were "
                 f"automatically updated from {from_version} to v{META_VERSION}. "
-                f"No action needed."
-            )
+                f"No action needed.",
+                overlay_move_notice(moved),
+            ]))
 
     # stderr, not stdout: visible in `docker logs` without waiting for the
     # _notice channel, which only reaches the user on the next list_vault.
@@ -564,8 +662,8 @@ def _check_meta_version() -> str | None:
         # A vault only ever opened through the HTTP UI was never seeded, so it
         # can reach this branch with no meta/ at all — reseed_meta writes into
         # that directory without creating it. This also backfills any
-        # USER_META_FILES the vault predates; reseed_meta only rewrites the
-        # canonical set. The siblings are built too, unlike ensure_env_vault
+        # USER_META_FILES the vault predates and moves pre-v14 skill overlays
+        # into skills/; reseed_meta only rewrites the canonical set. The siblings are built too, unlike ensure_env_vault
         # below: that path skips them because a Docker vault's parent is the
         # container root, outside the bind mount. Here the parent is an ordinary
         # user directory, and init()/set_vault_root() seed it the same way —
@@ -573,7 +671,7 @@ def _check_meta_version() -> str | None:
         # loci-stage/ and assets/ never get built, and since config now reads as
         # current nothing seeds them later: the first scan_inbox fails with a
         # bare errno.
-        create_vault_structure(vault_root)
+        moved = create_vault_structure(vault_root)
         reseed_meta(vault_root)
         config["meta_version"] = META_VERSION
         save_config(config)
@@ -583,6 +681,7 @@ def _check_meta_version() -> str | None:
             migration_notice,
             f"Vault meta files were automatically updated from {from_version} "
             f"to v{META_VERSION}. No action needed.",
+            overlay_move_notice(moved),
         ]))
     # Config mode tracks the version in config.yml, but the vault itself may
     # later be addressed by LOCI_VAULT_ROOT (the same files, run under Docker).
@@ -782,7 +881,7 @@ def set_vault_root(path: str, create: bool = True) -> dict:
         # print()s its way through the seeding, and under stdio that is the
         # JSON-RPC channel.
         with contextlib.redirect_stdout(io.StringIO()):
-            create_vault_structure(root)
+            moved_overlays = create_vault_structure(root)
             if needs_upgrade:
                 # create_vault_structure only writes files that are *missing*,
                 # so adopting a vault seeded at an older META_VERSION leaves its
@@ -821,11 +920,18 @@ def set_vault_root(path: str, create: bool = True) -> dict:
     reset_ready_state()
     _reset_vault_caches()
 
-    return {
+    result = {
         "vault_root": str(root),
         "created": created,
         "configured_at": configured_at,
     }
+    # Adopting a pre-v14 vault moves the user's own files. This is the only
+    # channel that reaches them here: the notice paths in _check_meta_version
+    # never run again once this call has stamped the version as current.
+    notice = overlay_move_notice(moved_overlays)
+    if notice:
+        result["notice"] = notice
+    return result
 
 
 def _reset_vault_caches() -> None:

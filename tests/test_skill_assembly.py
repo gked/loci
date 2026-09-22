@@ -1,7 +1,7 @@
 """
 tests/test_skill_assembly.py
 How read_skill and write_skill put a skill together: the packaged procedure
-plus the user's additions from vault/meta/<skill>-user.md.
+plus the user's additions from vault/skills/<skill>.md.
 
 The design this replaces kept a full copy of every skill in ~/.claude/skills/
 with a version check at the top, and that copy ran on its own whenever the
@@ -110,8 +110,19 @@ def test_read_skill_labels_a_real_overlay_as_the_vault_file(tmp_vault):
     out = api.read_skill("loci-save")
     heading = next(l for l in out.splitlines() if l.startswith(f"# {skill_assembly.OVERLAY_HEADING}"))
 
-    assert heading == f"# {skill_assembly.OVERLAY_HEADING} (`vault/meta/loci-save-user.md`)"
+    assert heading == f"# {skill_assembly.OVERLAY_HEADING} (`vault/skills/loci-save.md`)"
     assert "packaged default" not in out
+
+
+def test_read_skill_never_names_a_pre_v14_overlay_path(tmp_vault):
+    """The preamble and the "Your additions" heading both tell the model where
+    the user's rules live, and they have to agree. A preamble built from the old
+    directory and the new filename names a file that has existed under neither
+    layout, and it is the first thing the model reads."""
+    out = api.read_skill("loci-save")
+
+    assert "vault/meta/" not in out
+    assert out.split("---", 1)[0].count(skill_assembly.overlay_display("loci-save")) == 1
 
 
 def test_read_skill_names_the_override_rule_and_the_lock(tmp_vault):
@@ -227,7 +238,7 @@ def test_overlay_seed_carries_no_rules(skill):
     """The seed is appended to the skill verbatim, so anything instruction-
     shaped in it is a rule the user never wrote. Explanation and an empty
     section, nothing else — examples belong in the docs."""
-    seed = (REFERENCES_DIR / skill_assembly.overlay_filename(skill)).read_text()
+    seed = (REFERENCES_DIR / skill_assembly.seed_filename(skill)).read_text()
 
     rules = seed.split("## Rules", 1)[1].strip()
     assert rules == "_None yet._"

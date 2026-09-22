@@ -23,6 +23,7 @@ import networkx as nx
 
 from loci.tools import tag_hygiene
 from loci.tools.frontmatter import load_frontmatter
+from loci.tools.vault_init import NON_NODE_DIRS
 
 _graph: Optional[nx.DiGraph] = None
 _vault_root: Optional[Path] = None
@@ -72,8 +73,8 @@ def _build(vault_root: Path) -> nx.DiGraph:
     g = nx.DiGraph()
 
     for md_file in vault_root.rglob("*.md"):
-        # Skip meta files — they are not vault items
-        if md_file.parent.name == "meta":
+        # Skip meta files and skill overlays — they are not vault items
+        if md_file.parent.name in NON_NODE_DIRS:
             continue
 
         fm = _parse_frontmatter(md_file)

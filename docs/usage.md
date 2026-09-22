@@ -133,8 +133,8 @@ Ingest ~/Documents/papers into my loci vault
 
 Each skill has two halves. The packaged procedure ships inside Loci and is
 replaced on every upgrade. Your additions live in the vault —
-`<vault>/meta/loci-save-user.md`, `loci-query-user.md`, `loci-inbox-user.md`,
-`loci-ingest-directory-user.md` — seeded once and never overwritten. Every
+`<vault>/skills/loci-save.md`, `loci-query.md`, `loci-inbox.md`,
+`loci-ingest-directory.md` — seeded once and never overwritten. Every
 time a skill runs, the MCP server hands Claude the procedure with your file
 appended, under a preamble that says how they combine: **your additions win
 wherever they disagree with the procedure, except under headings marked 🔒**,
@@ -169,7 +169,7 @@ What goes where:
 
 | You want to… | Put it in |
 |---|---|
-| Change how a skill behaves for you | the skill's `*-user.md` overlay |
+| Change how a skill behaves for you | the skill's overlay in `<vault>/skills/` |
 | Add a type, relation, or scheme | `ontology-user.yaml` and friends — see below |
 | Teach Claude which words mean "use Loci" | `~/.claude/CLAUDE.md` — see [above](#teach-the-agent-once) |
 

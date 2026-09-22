@@ -49,7 +49,7 @@ uv run setup.py
        └─ ~/.claude/skills/loci-save/SKILL.md   # stub: packaged frontmatter over
        └─ ~/.claude/skills/loci-query/SKILL.md  #   "call loci__read_skill and follow it"
        └─ ... one per src/loci/skills/<name>/   # read_skill serves the procedure
-                                                #   + vault/meta/<name>-user.md
+                                                #   + vault/skills/<name>.md
 
 User restarts Claude Code / Claude Desktop
 Claude Code spawns:  uv run loci-mcp  (stdio transport)

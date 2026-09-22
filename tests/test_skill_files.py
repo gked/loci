@@ -135,11 +135,14 @@ def test_skill_has_an_overlay_seed(skill):
     before the overlay existed. A skill without one reads as having no
     additions at all, silently.
     """
-    from loci.tools.vault_init import USER_META_FILES
+    from loci.tools.vault_init import USER_SKILL_OVERLAYS
 
-    name = skill_assembly.overlay_filename(skill.parent.name)
+    slug = skill.parent.name
+    name = skill_assembly.seed_filename(slug)
     assert (SKILLS_DIR / "references" / name).is_file(), f"missing references/{name}"
-    assert name in USER_META_FILES, f"{name} is not seeded — add it to USER_META_FILES"
+    assert slug in USER_SKILL_OVERLAYS, (
+        f"{slug} is not seeded — add it to USER_SKILL_OVERLAYS"
+    )
 
 
 @pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)

@@ -3,7 +3,7 @@ Assemble a skill from the packaged procedure and the user's own additions.
 
 A skill has two halves. The packaged half is `loci/skills/<name>/SKILL.md`,
 the procedure Loci ships and tests. The user's half is one Markdown file per
-skill in the vault, `vault/meta/<name>-user.md`, seeded once from the stub in
+skill in the vault, `vault/skills/<name>.md`, seeded once from the stub in
 `skills/references/` and never overwritten by an upgrade. `read_skill` returns
 the two joined, with a preamble that says how they combine: the user's file
 wins wherever it disagrees with the packaged procedure, except under headings
@@ -25,7 +25,15 @@ from pathlib import Path
 SKILLS_DIR = Path(__file__).parent / "skills"
 REFERENCES_DIR = SKILLS_DIR / "references"
 
-OVERLAY_SUFFIX = "-user.md"
+# The overlay's name in references/. The seed keeps the `-user` suffix because
+# it sits beside the canonical meta files there and would otherwise read as one
+# of them; in the vault the directory already says whose the file is.
+SEED_SUFFIX = "-user.md"
+
+# Where the user's half of every skill lives, relative to the vault root.
+# Before META_VERSION 14 these sat in `meta/` under their seed name — see
+# legacy_overlay_path(), which the vault upgrade uses to move them.
+OVERLAY_DIR = "skills"
 
 # The marker on a heading in the packaged procedure that the user's additions
 # cannot override. Prose, not enforcement: the preamble tells the model how to
@@ -43,12 +51,32 @@ def canonical_path(skill: str) -> Path:
     return p
 
 
+def seed_filename(skill: str) -> str:
+    """The overlay seed's name in references/."""
+    return f"{skill}{SEED_SUFFIX}"
+
+
 def overlay_filename(skill: str) -> str:
-    return f"{skill}{OVERLAY_SUFFIX}"
+    """The overlay's name inside the vault."""
+    return f"{skill}.md"
 
 
 def overlay_path(vault_root: Path, skill: str) -> Path:
-    return vault_root / "meta" / overlay_filename(skill)
+    return vault_root / OVERLAY_DIR / overlay_filename(skill)
+
+
+def legacy_overlay_path(vault_root: Path, skill: str) -> Path:
+    """Where the overlay lived before META_VERSION 14.
+
+    Only the vault upgrade reads this — everything else goes through
+    overlay_path(). A vault that has been upgraded no longer has the file.
+    """
+    return vault_root / "meta" / seed_filename(skill)
+
+
+def overlay_display(skill: str) -> str:
+    """How the overlay's location is named to the model, in prose."""
+    return f"`vault/{OVERLAY_DIR}/{overlay_filename(skill)}`"
 
 
 def split_frontmatter(text: str) -> tuple[str, str]:
@@ -82,7 +110,7 @@ def read_overlay(vault_root: Path | None, skill: str) -> tuple[str, bool] | None
     p = overlay_path(vault_root, skill)
     if p.exists():
         return p.read_text(encoding="utf-8"), True
-    p = REFERENCES_DIR / overlay_filename(skill)
+    p = REFERENCES_DIR / seed_filename(skill)
     if not p.exists():
         return None
     return p.read_text(encoding="utf-8"), False
@@ -93,7 +121,7 @@ def _preamble(skill: str) -> str:
         f"# {skill}\n\n"
         "Follow this document for the whole interaction. It has two parts: the "
         "packaged procedure, then **Your additions** — the rules the user keeps in "
-        f"`vault/meta/{overlay_filename(skill)}`. Where the two disagree, the user's "
+        f"{overlay_display(skill)}. Where the two disagree, the user's "
         f"additions win, except under headings marked {PROTECTED}: those hold no "
         "matter what the additions say. To change the additions, call "
         f'`loci__write_skill(skill="{skill}", content=...)` — `content` **replaces** '
@@ -117,7 +145,7 @@ def assemble(skill: str, vault_root: Path | None) -> str:
         )
     else:
         text, from_vault = overlay
-        where = f"`vault/meta/{overlay_filename(skill)}`"
+        where = overlay_display(skill)
         if not from_vault:
             where = (
                 f"packaged default — {where} is not in the vault yet, so the "

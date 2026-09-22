@@ -9,6 +9,7 @@ import yaml
 import pytest
 from pathlib import Path
 
+from loci import api
 from loci.tools import vault_init
 from loci.tools.vault_init import (
     load_config,
@@ -21,6 +22,8 @@ from loci.tools.vault_init import (
     META_VERSION,
     META_FILES,
     USER_META_FILES,
+    USER_SKILL_OVERLAYS,
+    migrate_skill_overlays,
 )
 
 # Captured during collection — after conftest.py's import-time assignment and
@@ -1181,3 +1184,175 @@ def test_the_not_configured_message_names_a_way_out_a_wheel_install_has():
     # most likely to hit this: someone who installed the wheel.
     assert message.index("set_vault_root") < message.index("setup.py")
     assert "vault_init.py" not in message
+
+
+# ---------------------------------------------------------------------------
+# USER_SKILL_OVERLAYS — seeded into skills/, and moved there from meta/
+# ---------------------------------------------------------------------------
+
+def test_skill_overlays_seeded_into_skills_dir(tmp_path):
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    for skill in USER_SKILL_OVERLAYS:
+        p = vault_root / "skills" / f"{skill}.md"
+        assert p.exists(), f"Skill overlay not seeded: {skill}"
+        assert p.stat().st_size > 0
+
+
+def test_skill_overlays_are_not_seeded_into_meta(tmp_path):
+    """The whole point of the move: meta/ holds substrate, not policy."""
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    strays = sorted(p.name for p in (vault_root / "meta").glob("loci-*"))
+    assert strays == []
+
+
+def test_skill_overlays_not_overwritten_by_create(tmp_path):
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    overlay = vault_root / "skills" / "loci-save.md"
+    overlay.write_text("# mine\n\n- always ask first\n", encoding="utf-8")
+    create_vault_structure(vault_root)  # second call
+    assert "always ask first" in overlay.read_text(encoding="utf-8")
+
+
+def test_skill_overlays_not_overwritten_by_reseed(tmp_path):
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    overlay = vault_root / "skills" / "loci-save.md"
+    overlay.write_text("# mine\n\n- always ask first\n", encoding="utf-8")
+    reseed_meta(vault_root)
+    assert "always ask first" in overlay.read_text(encoding="utf-8")
+
+
+def test_pre_v14_overlay_is_moved_out_of_meta(tmp_path):
+    """The upgrade every existing vault takes: the user's rules were written to
+    meta/<skill>-user.md and must arrive in skills/<skill>.md intact."""
+    vault_root = tmp_path / "vault"
+    (vault_root / "meta").mkdir(parents=True)
+    legacy = vault_root / "meta" / "loci-save-user.md"
+    legacy.write_text("# mine\n\n- courses are type course\n", encoding="utf-8")
+
+    create_vault_structure(vault_root)
+
+    moved = vault_root / "skills" / "loci-save.md"
+    assert "courses are type course" in moved.read_text(encoding="utf-8")
+    assert not legacy.exists(), "the pre-v14 copy is left behind in meta/"
+
+
+def test_migration_reaches_read_skill(tmp_path, monkeypatch):
+    """End to end: a migrated overlay is what read_skill appends, and it is
+    labelled as the vault's file rather than the packaged default."""
+    vault_root = tmp_path / "vault"
+    (vault_root / "meta").mkdir(parents=True)
+    (vault_root / "meta" / "loci-save-user.md").write_text(
+        "# mine\n\n- courses are type course\n", encoding="utf-8"
+    )
+    create_vault_structure(vault_root)
+
+    monkeypatch.setenv("LOCI_VAULT_ROOT", str(vault_root))
+    out = api.read_skill("loci-save")
+
+    assert "courses are type course" in out
+    assert "`vault/skills/loci-save.md`" in out
+    assert "packaged default" not in out
+
+
+def test_the_move_is_announced_in_the_upgrade_notice(tmp_path, monkeypatch):
+    """The overlays are the one thing in the vault Loci did not write, and a
+    user may have an editor or a script pointed at the old path. Everything
+    create_vault_structure prints is swallowed by a redirect_stdout at every
+    call site, so the notice is the only channel that reaches them."""
+    vault = tmp_path / "vault"
+    (vault / "meta").mkdir(parents=True)
+    (vault / "meta" / "loci-save-user.md").write_text("# mine\n", encoding="utf-8")
+    _legacy_config_pointing_at(tmp_path, monkeypatch, vault, meta_version=1)
+
+    notice = check_meta_version()
+
+    assert notice is not None
+    assert "vault/skills/" in notice
+    assert "loci-save" in notice
+
+
+def test_an_upgrade_that_moved_nothing_says_nothing_about_it(tmp_path, monkeypatch):
+    """Most upgrades have no overlay to move — the line appears only when the
+    user's own files really did change location."""
+    vault = tmp_path / "vault"
+    (vault / "meta").mkdir(parents=True)
+    _legacy_config_pointing_at(tmp_path, monkeypatch, vault, meta_version=1)
+
+    notice = check_meta_version()
+
+    assert notice is not None
+    assert "vault/skills/" not in notice
+
+
+def test_env_vault_upgrade_announces_the_move(tmp_path):
+    """Same for the Docker path, which builds its own notice."""
+    vault = tmp_path / "vault"
+    (vault / "meta").mkdir(parents=True)
+    (vault / "meta" / "loci-query-user.md").write_text("# mine\n", encoding="utf-8")
+    write_vault_meta_version(vault, 1)
+
+    notice = ensure_env_vault(vault)
+
+    assert notice is not None
+    assert "vault/skills/" in notice
+    assert "loci-query" in notice
+
+
+def test_set_vault_root_reports_the_move(tmp_path, monkeypatch):
+    """Adopting a pre-v14 vault is the one path the startup notice can never
+    cover: it stamps the version current, so check_meta_version never speaks."""
+    monkeypatch.delenv("LOCI_VAULT_ROOT", raising=False)
+    monkeypatch.setenv("LOCI_CONFIG", str(tmp_path / "config.yml"))
+    vault = tmp_path / "vault"
+    (vault / "meta").mkdir(parents=True)
+    (vault / "meta" / "loci-save-user.md").write_text("# mine\n", encoding="utf-8")
+
+    result = vault_init.set_vault_root(str(vault))
+
+    assert "vault/skills/" in result["notice"]
+    assert "loci-save" in result["notice"]
+
+
+def test_set_vault_root_is_quiet_when_nothing_moved(tmp_path, monkeypatch):
+    monkeypatch.delenv("LOCI_VAULT_ROOT", raising=False)
+    monkeypatch.setenv("LOCI_CONFIG", str(tmp_path / "config.yml"))
+
+    result = vault_init.set_vault_root(str(tmp_path / "vault"))
+
+    assert "notice" not in result
+
+
+def test_migration_never_clobbers_an_existing_overlay(tmp_path):
+    """Both copies present is only reachable by hand, but the user's rules are
+    the one thing Loci cannot reconstruct — so the destination wins and the old
+    file is left visible rather than deleted."""
+    vault_root = tmp_path / "vault"
+    (vault_root / "meta").mkdir(parents=True)
+    (vault_root / "skills").mkdir(parents=True)
+    legacy = vault_root / "meta" / "loci-save-user.md"
+    legacy.write_text("# old\n", encoding="utf-8")
+    current = vault_root / "skills" / "loci-save.md"
+    current.write_text("# new\n", encoding="utf-8")
+
+    assert migrate_skill_overlays(vault_root) == []
+    assert current.read_text(encoding="utf-8") == "# new\n"
+    assert legacy.exists()
+
+
+def test_migration_is_idempotent(tmp_path):
+    vault_root = tmp_path / "vault"
+    create_vault_structure(vault_root)
+    assert migrate_skill_overlays(vault_root) == []
+
+
+def test_skill_overlays_are_not_in_user_meta_files():
+    """Membership itself: the two lists seed to different directories because
+    they are different layers, and a future edit that merges them should fail
+    here with the reason."""
+    for skill in USER_SKILL_OVERLAYS:
+        assert f"{skill}-user.md" not in USER_META_FILES
+        assert f"{skill}-user.md" not in META_FILES

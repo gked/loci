@@ -226,6 +226,22 @@ def test_get_skips_meta_files(tmp_vault, monkeypatch):
     assert not graph_obj.has_node("metaonly")
 
 
+def test_get_skips_skill_overlays(tmp_vault, monkeypatch):
+    """skills/ is the second directory of non-node markdown in the vault. Its
+    contents are free-form prose the user wrote, so one that opens with a
+    frontmatter block is not a node either."""
+    overlay = tmp_vault / "skills" / "loci-save.md"
+    overlay.parent.mkdir(exist_ok=True)
+    overlay.write_text(
+        "---\nuid: overlay1\ntype: document\ntitle: Should Not Index\n---\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(g, "_graph", None)
+    monkeypatch.setattr(g, "_built_at", 0.0)
+    graph_obj = g.get(tmp_vault)
+    assert not graph_obj.has_node("overlay1")
+
+
 def test_get_ignores_files_without_uid(tmp_vault, monkeypatch):
     (tmp_vault / "no-uid.md").write_text(
         "---\ntype: document\ntitle: No UID\n---\n\nBody.", encoding="utf-8"

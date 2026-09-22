@@ -60,12 +60,15 @@ For the full walkthrough — types, relations, schemes, how to extend them, and 
 
 ## Schema Versioning
 
-Meta files are seeded into `vault/meta/` from `src/loci/skills/references/`, which is the source of truth for what a fresh vault gets. `vault_init.py` holds the current `META_VERSION` and two lists:
+Meta files are seeded into `vault/meta/` from `src/loci/skills/references/`, which is the source of truth for what a fresh vault gets. `vault_init.py` holds the current `META_VERSION` and three lists:
 
 - `META_FILES`: reseeded on every `META_VERSION` bump
 - `USER_META_FILES`: seeded once and never overwritten — the `-user.yaml` extension
   files, plus `tag-dictionary.md` and `foreign-definitions.md`, which the model
   writes to at runtime
+- `USER_SKILL_OVERLAYS`: seeded once into `vault/skills/` and never overwritten —
+  the user's half of each packaged skill. Policy rather than substrate, which is
+  why it is not in `vault/meta/` (see `vault_init.py` for the distinction)
 
 The config file tracks the `meta_version` the vault was last seeded at. On startup, a vault behind `META_VERSION` is reseeded and its config updated.
 

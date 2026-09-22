@@ -193,7 +193,9 @@ def generate_uid() -> str:
 @mcp.tool()
 def set_vault_root(path: str, create: bool = True) -> dict:
     """
-    Point Loci at the user's vault directory. Returns {vault_root, created, configured_at}.
+    Point Loci at the user's vault directory. Returns {vault_root, created,
+    configured_at}, plus `notice` when adopting the vault moved files the user
+    owns — pass it on to them verbatim.
 
     Call this when a tool has failed with LOCI_NOT_CONFIGURED, or when the user
     asks to move Loci to a different vault. It records the path, creates and
@@ -507,7 +509,7 @@ def read_skill(skill: str = "loci-save") -> str:
 def write_skill(content: str, skill: str = "loci-save", append: bool = False) -> str:
     """
     Write the user's additions to a Loci skill — the "Your additions" section
-    read_skill returns, kept in vault/meta/<skill>-user.md.
+    read_skill returns, kept in vault/skills/<skill>.md.
     skill: loci-save | loci-query | loci-inbox | loci-ingest-directory
 
     Replaces the whole file unless append=True, so read the current additions
