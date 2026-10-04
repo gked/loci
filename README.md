@@ -99,8 +99,20 @@ Save this article to my loci vault: https://example.com/post
 What does my loci vault know about stoicism?
 ```
 
-`loci` starts the web UI on http://127.0.0.1:8765. Upgrading, running from a
-checkout, Docker, sync, and remote access are all in [docs/setup.md](docs/setup.md).
+**4. Run it**
+
+The wheel installs two console scripts, and they are separate processes:
+
+| Command | What it is |
+|---|---|
+| `loci` | The web UI and its HTTP backend, on http://127.0.0.1:8765. Change it with `--host` / `--port` (or `LOCI_UI_HOST` / `LOCI_UI_PORT`). |
+| `loci-mcp` | The stdio MCP server. Claude Code launches it for you once registered in step 2; you don't start it by hand. |
+
+`loci` needs a vault and exits with an error if none is configured yet (step 3
+sets one). To use a specific vault for one run: `LOCI_VAULT_ROOT=~/vault loci`.
+
+Upgrading, running from a checkout, Docker, sync, and remote access are all in
+[docs/setup.md](docs/setup.md).
 
 ---
 
