@@ -128,13 +128,15 @@ style-driven markup, so text selectors break on every design pass.
 | `vault-index` | `VaultIndex.jsx` | — |
 | `node-row` | `VaultIndex.jsx` | `data-uid`, `data-state` (active/archived/ghost) |
 | `type-filter` | `VaultIndex.jsx` | `data-type`, `data-active` — chips come from `/api/types`, so the set is the registry's |
-| `subtype-strip` | `VaultIndex.jsx` | present only while a type with subtypes is selected |
-| `subtype-filter` | `VaultIndex.jsx` | `data-subtype`, `data-active`, `data-count` (count within the current type × tag) |
+| `rail-type-group` | `VaultRail.jsx` | one per main type; `data-type`, `data-open` (open only for the selected type) |
+| `rail-type` | `VaultRail.jsx` | the group's header button; `data-type`, `data-active` |
+| `subtype-strip` | `VaultRail.jsx` | present only inside the open group of a type with subtypes |
+| `usertype-strip` / `usertype-filter` | `VaultRail.jsx` | the open group's user-defined types (`data-usertype`, `data-count`); no base-fixture node uses one, so no e2e covers them yet |
+| `subtype-filter` | `VaultRail.jsx` | `data-subtype`, `data-active`, `data-count` (count within the current type) |
 | `row-subtype` | `VaultIndex.jsx` | the subtype label under a row's type |
 | `toggle-ghost`, `toggle-archived` | `VaultIndex.jsx` | `data-active` |
 | `index-empty` | `VaultIndex.jsx` | — |
 | `rail-row` | `VaultRail.jsx` | `data-rail-id`, `data-active` |
-| `rail-tag` | `VaultRail.jsx` | `data-tag`, `data-active` |
 | `rail-count` | `VaultRail.jsx` | `data-count` |
 | `app-version` | `VaultRail.jsx` | `data-version`; empty until `/api/health` resolves |
 | `node-detail` | `NodeDetail.jsx` | `data-uid` |

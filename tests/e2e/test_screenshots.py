@@ -107,8 +107,8 @@ def _shoot(page, name: str) -> None:
 
 
 def test_capture_vault_index(app_page):
-    """The default view: type filter bar, tag rail, node list."""
-    app_page.wait_for_selector("[data-testid='rail-tag']")
+    """The default view: type filter bar, rail, node list."""
+    app_page.wait_for_selector("[data-testid='type-filter']")
     _shoot(app_page, "vault-index")
 
 

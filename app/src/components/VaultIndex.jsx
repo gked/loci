@@ -41,11 +41,10 @@ function ToggleSwitch({ active, onToggle, label }) {
   );
 }
 
-export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeTag, onTagSelect, types = [], activeSubtype, subtypeCounts = {}, onSubtypeSelect, showArchived, onToggleArchived, showGhost, onToggleGhost }) {
+export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, types = [], showArchived, onToggleArchived, showGhost, onToggleGhost }) {
   const [filterQ, setFilterQ] = useState("");
   const activeFilter = section?.startsWith("t:") ? section.slice(2) : "all";
   const filterTypes = ["all", ...(types.length ? types.map(t => t.name) : FALLBACK_TYPES)];
-  const subtypes = activeFilter === "all" ? [] : (types.find(t => t.name === activeFilter)?.subtypes || []);
   const archivedCount = showArchived ? nodes.filter(n => n.state === "archived").length : 0;
   const ghostCount = showGhost ? nodes.filter(n => !n.path).length : 0;
 
@@ -94,31 +93,17 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeT
         {filterTypes.map((t) => (
           <span
             key={t}
-            className="t-chip"
+            className="t-chip type-chip"
             onClick={() => onNav(t === "all" ? "all" : `t:${t}`)}
             data-testid="type-filter"
             data-type={t}
             data-active={activeFilter === t ? "true" : "false"}
-            style={{ cursor: "pointer", opacity: activeFilter === t ? 1 : 0.45 }}
+            style={{ cursor: "pointer" }}
           >
             {t !== "all" && <TypeDot type={t} size={6}/>}
             {t}
           </span>
         ))}
-        {activeTag && (
-          <>
-            <span style={{ color: "var(--t-rule)", margin: "0 2px" }}>·</span>
-            <span
-              className="t-chip"
-              onClick={() => onTagSelect(activeTag)}
-              style={{ cursor: "pointer", opacity: 1, color: "var(--t-bronze)", display: "flex", alignItems: "center", gap: 4 }}
-            >
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9 }}>#</span>
-              {activeTag}
-              <span style={{ fontSize: 9, opacity: 0.7, marginLeft: 2 }}>×</span>
-            </span>
-          </>
-        )}
         <span style={{ flex: 1 }}/>
         <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
           <input
@@ -144,35 +129,6 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, activeT
         <ToggleSwitch active={showGhost} onToggle={onToggleGhost} label="ghost"/>
         <ToggleSwitch active={showArchived} onToggle={onToggleArchived} label="archived"/>
       </div>
-
-      {/* subtype strip — only when a type with subtypes is selected */}
-      {subtypes.length > 0 && (
-        <div
-          data-testid="subtype-strip"
-          style={{ padding: "6px 24px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--t-rule-soft)", flexShrink: 0, flexWrap: "wrap" }}
-        >
-          <span className="smcaps">subtype</span>
-          {subtypes.map((st) => {
-            const count = subtypeCounts[st] || 0;
-            const active = activeSubtype === st;
-            return (
-              <span
-                key={st}
-                className="t-chip"
-                onClick={() => onSubtypeSelect(st)}
-                data-testid="subtype-filter"
-                data-subtype={st}
-                data-active={active ? "true" : "false"}
-                data-count={count}
-                style={{ cursor: "pointer", opacity: active ? 1 : count ? 0.45 : 0.2, display: "flex", alignItems: "center", gap: 4 }}
-              >
-                {st}
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, opacity: 0.7 }}>{count}</span>
-              </span>
-            );
-          })}
-        </div>
-      )}
 
       {/* column headers */}
       <div style={{

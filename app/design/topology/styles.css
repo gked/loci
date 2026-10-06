@@ -318,7 +318,26 @@ button { font-family: inherit; }
   color: var(--t-bronze);
   letter-spacing: 0.04em;
 }
+/* Type filter bar: bright at rest, filled when selected. */
+.type-chip {
+  cursor: pointer;
+  padding: 4px 12px;
+  font-size: 11px;
+  border-color: var(--t-bronze);
+  background: color-mix(in srgb, var(--t-bronze) 14%, transparent);
+  color: var(--t-fg);
+  transition: background 0.12s, color 0.12s;
+}
+.type-chip:hover { background: color-mix(in srgb, var(--t-bronze) 28%, transparent); }
+.type-chip[data-active="true"] {
+  background: var(--t-bronze);
+  color: var(--t-bg);
+  font-weight: 600;
+}
 .canvas.paper .t-chip { background: rgba(122,90,46,0.06); color: var(--t-bronze-d); }
+/* Compound selector: outranks .canvas.paper .t-chip whatever the source order. */
+.canvas.paper .t-chip.type-chip { background: color-mix(in srgb, var(--t-bronze-d) 14%, transparent); color: var(--t-fg); }
+.canvas.paper .t-chip.type-chip[data-active="true"] { background: var(--t-bronze-d); color: var(--t-bg); }
 
 .t-dot {
   display: inline-block;

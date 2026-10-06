@@ -41,6 +41,7 @@ import vault_facts  # noqa: E402  — same-directory module, see sys.path line a
 REPO_ROOT = Path(__file__).resolve().parents[2]
 APP_DIR = REPO_ROOT / "app"
 BASE_FIXTURE_VAULT = Path(__file__).resolve().parents[1] / "fixtures" / "vault"
+REFERENCES_DIR = Path(__file__).resolve().parents[2] / "src" / "loci" / "skills" / "references"
 OVERLAY_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "e2e-overlay"
 
 STARTUP_TIMEOUT = 90  # seconds — generous; CI cold-starts uvicorn and vite
@@ -156,6 +157,17 @@ def e2e_vault(tmp_path_factory) -> Path:
     root = tmp_path_factory.mktemp("e2e-loci")
     vault = root / "vault"
     shutil.copytree(BASE_FIXTURE_VAULT, vault)
+
+    # A user-defined type needs vault/meta/ontology-user.yaml, and the registry
+    # only reads it beside a vault copy of ontology.yaml (type_registry.get_registry
+    # falls back to references/ — user file ignored — when that one is absent).
+    # Deliberately partial: the other meta files (relation dictionary, guides) are
+    # not read by anything this suite drives, and each registry falls back to
+    # references/ per file, so only the ontology needs a vault copy.
+    meta = vault / "meta"
+    meta.mkdir()
+    shutil.copy(REFERENCES_DIR / "ontology.yaml", meta / "ontology.yaml")
+    shutil.copy(OVERLAY_DIR / "meta" / "ontology-user.yaml", meta / "ontology-user.yaml")
 
     # "e2e-*.md", not "*.md": the overlay directory's own README.md documents the
     # fixtures and must not land in the vault as a pseudo-node.

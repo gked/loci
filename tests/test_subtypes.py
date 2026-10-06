@@ -277,6 +277,11 @@ def test_http_types_endpoint_picks_up_a_type_defined_by_another_process(tmp_vaul
     after = {r["name"] for r in client.get("/api/types", headers=headers).json()}
     assert "recipe" in after
 
+    # The UI nests a user type under its parent, so the parent has to be served.
+    rows = {r["name"]: r["extends"] for r in client.get("/api/types", headers=headers).json()}
+    assert rows["recipe"] == "procedure"
+    assert rows["procedure"] is None
+
 
 # ---------------------------------------------------------------------------
 # Migration script

@@ -1,0 +1,6 @@
+# User ontology for the e2e vault only: one user-defined type, so the UI's
+# "yours" group in the rail has something to show. See ../README.md.
+types:
+  - name: recipe
+    extends: procedure
+    description: A cooking procedure (e2e fixture).

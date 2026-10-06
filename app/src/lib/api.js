@@ -64,8 +64,9 @@ export function getNode(uid) {
   return request(`/nodes/${uid}`);
 }
 
-// The type vocabulary, from the vault's registry: [{name, subtypes: [...]}, …]
-// in ontology order. Drives the index's type and subtype chips.
+// The type vocabulary, from the vault's registry: [{name, extends, subtypes: [...]}, …]
+// in ontology order; `extends` names the canonical parent of a user-defined type
+// and is null for canonical ones. Drives the top type bar and the rail's groups.
 export function getTypes() {
   return request("/types");
 }

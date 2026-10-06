@@ -430,8 +430,10 @@ def nodes_list(
 @app.get("/api/types")
 def types_list():
     """The type vocabulary, as the vault's registry has it: canonical types in
-    ontology order, then any user-defined ones. The UI's type chips and subtype
-    chips are driven from here rather than from a list in the bundle, so a type
+    ontology order, then any user-defined ones. A user-defined type carries the
+    canonical type it `extends`; canonical ones carry null. The UI's top bar
+    shows the canonical types, and its left rail nests subtypes and user-defined
+    types under them, all driven from here rather than from a list in the bundle, so a type
     added to the ontology (or by the user) shows up without a frontend change.
     The registry reloads when its files change on disk, so a type defined
     through `loci-mcp` reaches this process on the next request.
@@ -443,7 +445,7 @@ def types_list():
         for f in td.required_fields + td.optional_fields:
             if f.name == "subtype" and f.values:
                 subtypes = list(f.values)
-        result.append({"name": td.name, "subtypes": subtypes})
+        result.append({"name": td.name, "extends": td.extends, "subtypes": subtypes})
     return result
 
 

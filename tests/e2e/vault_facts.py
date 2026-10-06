@@ -28,14 +28,14 @@ with a clear diff.** Update these constants, then re-run. To recompute:
 """
 
 # Total nodes in the graph, including the implicit ghost.
-TOTAL_GRAPH_NODES = 32
+TOTAL_GRAPH_NODES = 33
 
-# Nodes with a file on disk (base 27 + 4 overlay).
-TOTAL_FILES = 31
+# Nodes with a file on disk (base 27 + 5 overlay).
+TOTAL_FILES = 32
 
 # Rendered by default: active state AND has a path.
 # App.jsx filters archived and pathless nodes out of the index unless toggled.
-DEFAULT_VISIBLE = 30
+DEFAULT_VISIBLE = 31
 
 ARCHIVED_UIDS = ["e2e00001"]
 GHOST_UIDS = ["e2e0dead"]
@@ -44,6 +44,11 @@ GHOST_PARENT_UID = "e2e00003"
 # Frontmatter value containing a horizontal rule. Dropped from the graph
 # entirely before the line-anchored frontmatter split.
 RULE_IN_FRONTMATTER_UID = "e2e00004"
+# The one node of a user-defined type (`recipe`, extends `procedure`; defined by
+# the overlay's meta/ontology-user.yaml). Drives the rail's "yours" group.
+USER_TYPE_UID = "e2e00005"
+USER_TYPE = "recipe"
+USER_TYPE_PARENT = "procedure"
 
 # The local asset carried by ASSET_UID. conftest writes ASSET_FILENAME with
 # ASSET_CONTENT into <loci_root>/assets/ so these cannot drift from the file.
@@ -60,6 +65,7 @@ TYPE_COUNTS = {
     "article": 3,
     "entity": 1,
     "project": 1,
+    "recipe": 1,
 }
 
 # Subtype counts among default-visible nodes of one type (drives the subtype

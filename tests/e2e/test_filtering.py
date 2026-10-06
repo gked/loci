@@ -1,6 +1,6 @@
 """
 tests/e2e/test_filtering.py
-Tag rail, type chips, and the archived / ghost toggles.
+Type chips, subtype rail, and the archived / ghost toggles.
 
 All filtering in the index is client-side (App.jsx computes `indexNodes` from a
 single state=all fetch), so these specs pin that logic rather than the API.
@@ -23,40 +23,6 @@ def _rows(page):
 
 
 # ---------------------------------------------------------------------------
-# Tags
-# ---------------------------------------------------------------------------
-
-def test_tag_selection_filters_index(app_page):
-    tag, expected = "python", vf.TAG_COUNTS["python"]
-    app_page.locator(f"[data-testid='rail-tag'][data-tag='{tag}']").click()
-    expect(_rows(app_page)).to_have_count(expected)
-
-
-def test_tag_deselection_restores_full_index(app_page):
-    chip = app_page.locator("[data-testid='rail-tag'][data-tag='python']")
-    chip.click()
-    expect(_rows(app_page)).to_have_count(vf.TAG_COUNTS["python"])
-
-    chip.click()
-    expect(_rows(app_page)).to_have_count(vf.DEFAULT_VISIBLE)
-
-
-def test_tag_row_marks_itself_active(app_page):
-    chip = app_page.locator("[data-testid='rail-tag'][data-tag='testing']")
-    expect(chip).to_have_attribute("data-active", "false")
-    chip.click()
-    expect(chip).to_have_attribute("data-active", "true")
-
-
-def test_switching_tags_replaces_the_filter(app_page):
-    app_page.locator("[data-testid='rail-tag'][data-tag='python']").click()
-    expect(_rows(app_page)).to_have_count(vf.TAG_COUNTS["python"])
-
-    app_page.locator("[data-testid='rail-tag'][data-tag='ml']").click()
-    expect(_rows(app_page)).to_have_count(vf.TAG_COUNTS["ml"])
-
-
-# ---------------------------------------------------------------------------
 # Type chips
 # ---------------------------------------------------------------------------
 
@@ -75,8 +41,22 @@ def test_type_filter_all_restores_index(app_page):
 
 def test_every_type_count_matches(app_page):
     for node_type, expected in vf.TYPE_COUNTS.items():
+        if node_type == vf.USER_TYPE:
+            continue  # no top-bar chip: it lives in the rail (user-type specs below)
         app_page.locator(f"[data-testid='type-filter'][data-type='{node_type}']").click()
         expect(_rows(app_page)).to_have_count(expected)
+
+
+def test_parent_type_view_includes_its_user_types_nodes(app_page):
+    app_page.locator(f"[data-testid='type-filter'][data-type='{vf.USER_TYPE_PARENT}']").click()
+    expect(_rows(app_page)).to_have_count(vf.TYPE_COUNTS.get(vf.USER_TYPE_PARENT, 0) + vf.TYPE_COUNTS[vf.USER_TYPE])
+
+
+def test_clicking_the_open_rail_type_clears_it(app_page):
+    app_page.locator("[data-testid='type-filter'][data-type='task']").click()
+    app_page.locator("[data-testid='rail-type'][data-type='task']").click()
+    expect(app_page.locator("[data-testid='rail-type-group'][data-open='true']")).to_have_count(0)
+    expect(_rows(app_page)).to_have_count(vf.DEFAULT_VISIBLE)
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +68,31 @@ STRIP = "[data-testid='subtype-strip']"
 
 def _subtype_chip(page, subtype):
     return page.locator(f"[data-testid='subtype-filter'][data-subtype='{subtype}']")
+
+
+def test_rail_lists_every_main_type_collapsed_until_one_is_chosen(app_page):
+    groups = app_page.locator("[data-testid='rail-type-group']")
+    expect(groups).not_to_have_count(0)
+    expect(app_page.locator("[data-testid='rail-type-group'][data-open='true']")).to_have_count(0)
+
+    app_page.locator("[data-testid='type-filter'][data-type='task']").click()
+    open_groups = app_page.locator("[data-testid='rail-type-group'][data-open='true']")
+    expect(open_groups).to_have_count(1)
+    expect(open_groups).to_have_attribute("data-type", "task")
+
+
+def test_subtypes_live_in_the_left_rail_not_the_index(app_page):
+    app_page.locator("[data-testid='type-filter'][data-type='task']").click()
+    expect(app_page.locator(f"aside {STRIP}")).to_have_count(1)
+    expect(app_page.locator(f"[data-testid='vault-index'] {STRIP}")).to_have_count(0)
+    expect(app_page.locator("[data-testid='rail-tag']")).to_have_count(0)
+
+
+def test_choosing_a_rail_type_selects_it_and_moves_the_open_group(app_page):
+    app_page.locator("[data-testid='type-filter'][data-type='task']").click()
+    app_page.locator("[data-testid='rail-type'][data-type='document']").click()
+    expect(app_page.locator("[data-testid='type-filter'][data-type='document']")).to_have_attribute("data-active", "true")
+    expect(app_page.locator("[data-testid='rail-type-group'][data-open='true']")).to_have_attribute("data-type", "document")
 
 
 def test_subtype_strip_absent_until_a_type_is_chosen(app_page):
@@ -235,3 +240,61 @@ def test_index_filter_no_match_shows_empty_state(app_page):
     app_page.get_by_placeholder("filter by uid or title…").fill(vf.SEARCH_MISS)
     expect(app_page.locator("[data-testid='index-empty']")).to_be_visible()
     expect(_rows(app_page)).to_have_count(0)
+
+
+# ---------------------------------------------------------------------------
+# User-defined types (rail "yours" group)
+# ---------------------------------------------------------------------------
+
+USER_STRIP = "[data-testid='usertype-strip']"
+
+
+def _user_chip(page):
+    return page.locator(f"[data-testid='usertype-filter'][data-usertype='{vf.USER_TYPE}']")
+
+
+def test_user_types_are_not_in_the_top_bar(app_page):
+    expect(app_page.locator(f"[data-testid='type-filter'][data-type='{vf.USER_TYPE}']")).to_have_count(0)
+    expect(app_page.locator(f"[data-testid='type-filter'][data-type='{vf.USER_TYPE_PARENT}']")).to_have_count(1)
+
+
+def test_user_type_sits_under_its_parent_in_the_rail(app_page):
+    expect(app_page.locator(USER_STRIP)).to_have_count(0)
+
+    app_page.locator(f"[data-testid='type-filter'][data-type='{vf.USER_TYPE_PARENT}']").click()
+    group = app_page.locator(f"[data-testid='rail-type-group'][data-type='{vf.USER_TYPE_PARENT}']")
+    expect(group.locator(USER_STRIP)).to_have_count(1)
+    expect(_user_chip(app_page)).to_have_attribute("data-count", "1")
+
+    # Another type's group does not show it.
+    app_page.locator("[data-testid='type-filter'][data-type='task']").click()
+    expect(app_page.locator(USER_STRIP)).to_have_count(0)
+
+
+def test_parent_type_view_includes_the_user_type_nodes(app_page):
+    app_page.locator(f"[data-testid='type-filter'][data-type='{vf.USER_TYPE_PARENT}']").click()
+    expect(_rows(app_page)).to_have_count(1)
+    expect(app_page.locator(f"[data-testid='node-row'][data-uid='{vf.USER_TYPE_UID}']")).to_have_count(1)
+
+
+def test_rail_type_header_reports_whether_its_group_is_open(app_page):
+    header = app_page.locator("[data-testid='rail-type'][data-type='task']")
+    expect(header).to_have_attribute("aria-expanded", "false")
+    assert header.get_attribute("aria-controls") is None
+
+    header.click()
+    expect(header).to_have_attribute("aria-expanded", "true")
+    controls = header.get_attribute("aria-controls")
+    expect(app_page.locator(f"[id='{controls}']")).to_have_count(1)
+
+
+def test_user_type_row_narrows_and_clears(app_page):
+    app_page.locator(f"[data-testid='type-filter'][data-type='{vf.USER_TYPE_PARENT}']").click()
+    chip = _user_chip(app_page)
+    chip.click()
+    expect(chip).to_have_attribute("data-active", "true")
+    expect(_rows(app_page)).to_have_count(1)
+
+    chip.click()
+    expect(chip).to_have_attribute("data-active", "false")
+    expect(_rows(app_page)).to_have_count(1)  # the parent view still has it

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { VaultRail } from "./components/VaultRail.jsx";
 import { VaultIndex } from "./components/VaultIndex.jsx";
@@ -10,8 +10,8 @@ import { getNodes, getNode, getNodeNeighbors, getRecentNodes, getGraph, getTypes
 export default function App() {
   const [selectedUid, setSelectedUid] = useState(null);
   const [section, setSection] = useState("all");
-  const [activeTag, setActiveTag] = useState(null);
-  const [activeSubtype, setActiveSubtype] = useState(null);
+  // The rail row narrowing a type view: "s:<subtype>" or "u:<user type>", or null.
+  const [activeChild, setActiveChild] = useState(null);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [paper, setPaper] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -31,7 +31,7 @@ export default function App() {
     staleTime: 30_000,
   });
 
-  // Active-only subset for rail counts (tags, etc.) — excludes archived regardless of toggle
+  // Active-only subset for the rail's total count — excludes archived regardless of toggle
   const allNodes = allNodesRaw.filter(n => n.state !== "archived" && n.path);
 
   // Recent nodes for "recent" section
@@ -113,37 +113,82 @@ export default function App() {
 
   const handleNav = (id) => {
     if (id === "cmd") { setCmdOpen(true); return; }
-    // A subtype only means something within its type, so leaving the type drops it.
-    if (id !== section) setActiveSubtype(null);
+    // A rail child only means something within its type, so leaving the type drops it.
+    if (id !== section) setActiveChild(null);
     setSection(id);
   };
 
-  const handleSubtypeSelect = useCallback((subtype) => {
-    setActiveSubtype(prev => prev === subtype ? null : subtype);
+  const handleChildSelect = useCallback((key) => {
+    setActiveChild(prev => prev === key ? null : key);
   }, []);
 
-  const handleTagSelect = useCallback((tag) => {
-    setActiveTag(prev => prev === tag ? null : tag);
-    if (section !== "all" && section !== "recent" && !section.startsWith("t:")) {
-      setSection("all");
+  // Main types head the top bar; user-defined types extend one and live in the rail under it.
+  const mainTypes = useMemo(() => types.filter(t => !t.extends), [types]);
+  const activeType = section.startsWith("t:") ? section.slice(2) : null;
+
+  // A user type has no chip of its own: any route to it (palette, node detail, a
+  // stale link) lands on its root main type narrowed to it. Runs once the types
+  // have loaded, so a link followed before that resolves too; a type that no
+  // longer exists falls back to "all".
+  useEffect(() => {
+    if (!types.length || !activeType) return;
+    const t = types.find(x => x.name === activeType);
+    if (!t) { setSection("all"); return; }
+    if (!t.extends) return;
+    let root = t;
+    const seen = new Set([t.name]);
+    while (root.extends && !seen.has(root.extends)) {
+      const parent = types.find(x => x.name === root.extends);
+      if (!parent) break;
+      root = parent;
+      seen.add(root.name);
     }
-  }, [section]);
+    setSection(`t:${root.name}`);
+    setActiveChild(`u:${t.name}`);
+  }, [types, activeType]);
+
+  // Every user type below the active one, however deeply it extends.
+  const userTypes = useMemo(() => {
+    if (!activeType) return [];
+    const found = [];
+    const seen = new Set([activeType]);
+    let level = [activeType];
+    while (level.length) {
+      const next = types.filter(t => t.extends && level.includes(t.extends) && !seen.has(t.name)).map(t => t.name);
+      next.forEach(n => seen.add(n));
+      found.push(...next);
+      level = next;
+    }
+    return found;
+  }, [types, activeType]);
 
   // Determine which nodes to show in VaultIndex
-  const visibleNodes = showArchived ? allNodesRaw : allNodesRaw.filter(n => n.state !== "archived");
-  const baseNodes = section === "recent" ? recentNodes
-    : section.startsWith("t:") ? visibleNodes.filter(n => n.type === section.slice(2))
-    : visibleNodes;
-  const withTag = activeTag ? baseNodes.filter(n => n.tags?.includes(activeTag)) : baseNodes;
-  // Subtype chips count what the type × tag filters left, then narrow it further.
-  // The subtype only applies inside a type view: every path back to "all"
-  // (node back, Escape, graph, tag click) would otherwise keep narrowing the
-  // index with no chip on screen to show why.
-  const subtypeCounts = {};
-  for (const n of withTag) if (n.subtype) subtypeCounts[n.subtype] = (subtypeCounts[n.subtype] || 0) + 1;
-  const effectiveSubtype = section.startsWith("t:") ? activeSubtype : null;
-  const withSubtype = effectiveSubtype ? withTag.filter(n => n.subtype === effectiveSubtype) : withTag;
-  const indexNodes = showGhost ? withSubtype : withSubtype.filter(n => n.path);
+  const visibleNodes = useMemo(
+    () => showArchived ? allNodesRaw : allNodesRaw.filter(n => n.state !== "archived"),
+    [showArchived, allNodesRaw]);
+  const baseNodes = useMemo(() => {
+    if (section === "recent") return recentNodes;
+    if (!activeType) return visibleNodes;
+    const family = new Set([activeType, ...userTypes]);
+    return visibleNodes.filter(n => family.has(n.type));
+  }, [section, recentNodes, visibleNodes, activeType, userTypes]);
+  // Rail counts reflect what the type filter left, then the chosen row narrows further.
+  // A rail child only applies inside a type view: every path back to "all"
+  // (node back, Escape, graph) would otherwise keep narrowing the
+  // index with no row on screen to show why.
+  const childCounts = useMemo(() => {
+    const counts = {};
+    for (const n of baseNodes) {
+      if (n.subtype) counts[`s:${n.subtype}`] = (counts[`s:${n.subtype}`] || 0) + 1;
+      if (activeType && n.type !== activeType) counts[`u:${n.type}`] = (counts[`u:${n.type}`] || 0) + 1;
+    }
+    return counts;
+  }, [baseNodes, activeType]);
+  const effectiveChild = activeType ? activeChild : null;
+  const withChild = !effectiveChild ? baseNodes
+    : effectiveChild.startsWith("s:") ? baseNodes.filter(n => n.subtype === effectiveChild.slice(2))
+    : baseNodes.filter(n => n.type === effectiveChild.slice(2));
+  const indexNodes = showGhost ? withChild : withChild.filter(n => n.path);
 
   // Active rail id (for VaultIndex sections we highlight the specific type/all/recent)
   const railActive = section;
@@ -159,7 +204,17 @@ export default function App() {
         "--meridian-opacity": 0.35,
       }}
     >
-      <VaultRail active={railActive} onNav={handleNav} nodes={allNodes} activeTag={activeTag} onTagSelect={handleTagSelect}/>
+      <VaultRail
+        active={railActive}
+        onNav={handleNav}
+        nodes={allNodes}
+        types={mainTypes}
+        userTypes={userTypes}
+        activeType={activeType}
+        childCounts={childCounts}
+        activeChild={effectiveChild}
+        onChildSelect={handleChildSelect}
+      />
 
       {/* main content area */}
       <div style={{ flex: 1, position: "relative", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -183,12 +238,7 @@ export default function App() {
             onOpen={handleOpenNode}
             section={section}
             onNav={handleNav}
-            activeTag={activeTag}
-            onTagSelect={handleTagSelect}
-            types={types}
-            activeSubtype={activeSubtype}
-            subtypeCounts={subtypeCounts}
-            onSubtypeSelect={handleSubtypeSelect}
+            types={mainTypes}
             showArchived={showArchived}
             onToggleArchived={() => setShowArchived(v => !v)}
             showGhost={showGhost}

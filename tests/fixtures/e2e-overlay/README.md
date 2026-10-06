@@ -13,6 +13,8 @@ The UI, however, has states the base vault cannot express:
 | `e2e-archived-note.md` | `e2e00001` | `state: archived` → the "archived" toggle in `VaultIndex.jsx` |
 | `e2e-asset-note.md` | `e2e00002` | `has_asset` → the asset block in `NodeDetail.jsx` |
 | `e2e-ghost-parent.md` | `e2e00003` | relation to a uid with **no file** → ghost node, "ghost" toggle |
+| `e2e-zz-recipe.md` | `e2e00005` | a user-defined type (`recipe` extends `procedure`) → the rail's "yours" group |
+| `meta/ontology-user.yaml` | — | defines `recipe`; conftest copies it to `vault/meta/` beside the packaged `ontology.yaml` |
 
 ## Ghost nodes
 
