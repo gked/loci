@@ -31,8 +31,8 @@ REFERENCES_DIR = Path(__file__).parent.parent / "skills" / "references"
 
 META_VERSION = 14
 
-# Records META_VERSION inside the vault. Only env-var mode (Docker) relies on
-# it; a config.yml install tracks the same number there.
+# Records META_VERSION inside the vault. Only env-var mode (LOCI_VAULT_ROOT)
+# relies on it; a config.yml install tracks the same number there.
 VERSION_MARKER = ".meta-version"
 
 VAULT_FOLDERS = [
@@ -202,9 +202,8 @@ def create_vault_structure(vault_root: Path, include_siblings: bool = True) -> l
     """Create vault folder structure, asset storage, and seed meta files.
 
     include_siblings=False skips the assets/ and loci-stage/ directories that
-    normally sit next to the vault. In env-var mode the vault is a bind mount
-    and its parent is the container root, so creating them there would write
-    outside the mount, where the contents vanish on the next container start.
+    normally sit next to the vault. In env-var mode (LOCI_VAULT_ROOT) the
+    operator owns the vault directory and its parent is not ours to populate.
 
     Returns the skill overlays moved out of meta/ by this call, for the upgrade
     paths to put in their notice. Everything this function prints is swallowed
@@ -459,98 +458,23 @@ def _meta_needs_upgrade(vault_root: Path) -> bool:
     return not _canonical_meta_complete(vault_root)
 
 
-def describe_vault_location(vault_root: Path) -> str:
-    """
-    Describe the vault path in terms the user can act on.
-
-    Inside a container, vault_root is the mount point, which tells the user
-    nothing about where their files actually live. /proc/self/mountinfo carries
-    the host directory backing that mount, so report both when they differ.
-    """
-    host_path = _host_path_for_mount(vault_root)
-    if host_path and host_path != str(vault_root):
-        return f"{host_path} (mounted in the container at {vault_root})"
-    return str(vault_root)
-
-
-# mountinfo escapes these four characters in its path fields.
-_MOUNTINFO_ESCAPES = {"040": " ", "011": "\t", "012": "\n", "134": "\\"}
-
-
-def _unescape_mountinfo(field: str) -> str:
-    """Decode the octal escapes mountinfo applies to whitespace and backslashes.
-
-    Without this a vault under `/Users/me/My Files/vault` reads back as
-    `/Users/me/My\\040Files/vault`, and a mount point containing a space never
-    matches the path we are looking for.
-    """
-    if "\\" not in field:
-        return field
-    out: list[str] = []
-    i = 0
-    while i < len(field):
-        code = field[i + 1:i + 4]
-        if field[i] == "\\" and code in _MOUNTINFO_ESCAPES:
-            out.append(_MOUNTINFO_ESCAPES[code])
-            i += 4
-        else:
-            out.append(field[i])
-            i += 1
-    return "".join(out)
-
-
-def _host_path_for_mount(vault_root: Path, mountinfo: Optional[Path] = None) -> Optional[str]:
-    """Resolve the host directory backing a bind mount, if discoverable.
-
-    Best-effort only: field 4 is the root *within the source filesystem*, so on
-    a host where the vault's parent is its own filesystem (a separate /home,
-    say) the path comes back without that prefix. Callers use it to point the
-    user in the right direction, never to open a file.
-    """
-    mountinfo = mountinfo or Path("/proc/self/mountinfo")
-    if not mountinfo.exists():
-        return None  # not Linux, or not containerized
-    try:
-        lines = mountinfo.read_text().splitlines()
-    except OSError:
-        return None
-
-    target = str(vault_root)
-    result = None
-    for line in lines:
-        # <id> <parent> <maj:min> <root> <mount point> ...
-        fields = line.split()
-        if len(fields) >= 5 and _unescape_mountinfo(fields[4]) == target:
-            source = _unescape_mountinfo(fields[3])
-            # Named volumes resolve under Docker's own storage — technically
-            # correct but not somewhere the user should go looking.
-            result = None if source.startswith("/var/lib/docker") else source
-            # Keep scanning: a later line for the same mount point overmounts
-            # the earlier one, and the last entry is what the path resolves to.
-    return result
-
-
 def ensure_env_vault(vault_root: Path) -> str | None:
     """
-    Seed and upgrade a vault addressed by LOCI_VAULT_ROOT (Docker).
+    Seed and upgrade a vault addressed by LOCI_VAULT_ROOT.
 
-    There is no config.yml to record meta_version against — the image's copy is
-    ephemeral — so the version marker lives in the vault itself, which is the
-    bind-mounted volume that survives container restarts.
+    There is no config.yml to record meta_version against, so the version
+    marker lives in the vault itself.
 
     Returns a notice string when something was seeded or upgraded, else None.
     """
     if not vault_root.is_dir():
-        # Creating it would succeed — and that is the problem. In Docker the
-        # missing directory means the volume was never mounted, so the seeded
-        # files would land in the container's writable layer and be discarded
-        # on the next `docker run`, having reported success.
+        # LOCI_VAULT_ROOT names a directory the operator is responsible for.
+        # Creating it would hide a typo in the path behind a fresh, empty vault.
         notice = (
             f"Vault path {vault_root} does not exist, so nothing was seeded. "
-            f"In Docker this usually means the volume was not mounted — re-run "
-            f"with -v /host/path/vault:{vault_root}. Otherwise create the "
-            f"directory and restart. Loci is running on its built-in meta files "
-            f"in the meantime; anything saved will not be kept."
+            f"Check the path in LOCI_VAULT_ROOT. If it is correct, create the "
+            f"directory and restart. Loci is running on its built-in meta "
+            f"files in the meantime, so nothing is saved to a vault."
         )
         print(notice, file=sys.stderr)
         return notice
@@ -563,7 +487,7 @@ def ensure_env_vault(vault_root: Path) -> str | None:
             create_vault_structure(vault_root, include_siblings=False)
             write_vault_meta_version(vault_root, META_VERSION)
             notice = (
-                f"Vault at {describe_vault_location(vault_root)} was empty and "
+                f"Vault at {vault_root} was empty and "
                 f"has been seeded with meta files at v{META_VERSION}."
             )
         else:
@@ -595,13 +519,13 @@ def ensure_env_vault(vault_root: Path) -> str | None:
             write_vault_meta_version(vault_root, META_VERSION)
             from_version = f"v{current}" if current is not None else "unversioned"
             notice = " ".join(filter(None, [
-                f"Vault meta files at {describe_vault_location(vault_root)} were "
+                f"Vault meta files at {vault_root} were "
                 f"automatically updated from {from_version} to v{META_VERSION}. "
                 f"No action needed.",
                 overlay_move_notice(moved),
             ]))
 
-    # stderr, not stdout: visible in `docker logs` without waiting for the
+    # stderr, not stdout: visible in the server log without waiting for the
     # _notice channel, which only reaches the user on the next list_vault.
     print(notice, file=sys.stderr)
     return notice
@@ -615,7 +539,7 @@ def check_meta_version() -> str | None:
     """
     # Both branches below print while they work, and this runs at server import
     # where stdout is the stdio transport's JSON-RPC channel. Swallow it here so
-    # the guard covers the config.yml path too, not just the Docker one.
+    # the guard covers the config.yml path too, not just the env-var one.
     with contextlib.redirect_stdout(io.StringIO()):
         return _check_meta_version()
 
@@ -664,9 +588,9 @@ def _check_meta_version() -> str | None:
         # that directory without creating it. This also backfills any
         # USER_META_FILES the vault predates and moves pre-v14 skill overlays
         # into skills/; reseed_meta only rewrites the canonical set. The siblings are built too, unlike ensure_env_vault
-        # below: that path skips them because a Docker vault's parent is the
-        # container root, outside the bind mount. Here the parent is an ordinary
-        # user directory, and init()/set_vault_root() seed it the same way —
+        # below: that path skips them because the operator owns the pinned
+        # vault's parent. Here the parent is an ordinary user directory, and
+        # init()/set_vault_root() seed it the same way —
         # skipping them would leave a vault whose meta/ is current but whose
         # loci-stage/ and assets/ never get built, and since config now reads as
         # current nothing seeds them later: the first scan_inbox fails with a
@@ -684,7 +608,7 @@ def _check_meta_version() -> str | None:
             overlay_move_notice(moved),
         ]))
     # Config mode tracks the version in config.yml, but the vault itself may
-    # later be addressed by LOCI_VAULT_ROOT (the same files, run under Docker).
+    # later be addressed by LOCI_VAULT_ROOT (the same files, pinned by the variable).
     # Keep the in-vault marker in step so that path doesn't read the vault as
     # unversioned and reseed over the user's dictionaries.
     if read_vault_meta_version(vault_root) != META_VERSION and (vault_root / "meta").is_dir():
@@ -743,8 +667,8 @@ def resolve_configured_root() -> tuple[Optional[Path], bool]:
     Resolve the vault root without touching the filesystem.
 
     Returns (root, pinned). `pinned` means the root came from LOCI_VAULT_ROOT —
-    a managed deployment (Docker), where the path is fixed by whoever wrote the
-    -v flag and must not be changed from chat.
+    a managed deployment, where the path is fixed by whoever set the variable
+    and must not be changed from chat.
     """
     pinned = _pinned_vault_root()
     if pinned:
@@ -796,9 +720,8 @@ def ensure_ready() -> Optional[str]:
                 VAULT_UNREACHABLE,
                 f"The configured vault path {root} does not exist inside this "
                 f"deployment. LOCI_VAULT_ROOT is set, so this is a managed "
-                f"install and the path cannot be changed from chat — it almost "
-                f"always means the volume was not mounted. Tell the user to "
-                f"re-run the container with -v /host/path/vault:{root}.",
+                f"install and the path cannot be changed from chat. Tell the "
+                f"user to create the directory or fix LOCI_VAULT_ROOT.",
             )
         raise VaultNotReady(
             VAULT_UNREACHABLE,
@@ -844,9 +767,8 @@ def set_vault_root(path: str, create: bool = True) -> dict:
             VAULT_UNREACHABLE,
             f"This deployment pins the vault to {pinned} through "
             f"LOCI_VAULT_ROOT, so it cannot be changed from chat. Whoever runs "
-            f"the container controls the path — a different one here would "
-            f"write to the container's own filesystem and be lost on the next "
-            f"restart. Tell the user to change the -v mount instead.",
+            f"the deployment controls the path. Tell the user to change "
+            f"LOCI_VAULT_ROOT instead.",
         )
 
     raw = (path or "").strip()

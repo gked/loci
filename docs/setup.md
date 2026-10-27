@@ -1,6 +1,6 @@
 # Setup
 
-Three ways to run Loci. The **released wheel** is the path for using it; **From a checkout** is what developing it needs; **Docker** is experimental.
+Two ways to run Loci. The **released wheel** is the path for using it; **From a checkout** is what developing it needs.
 
 ---
 
@@ -203,113 +203,10 @@ Save this to my loci vault as a note: Loci is now set up and working.
 
 ---
 
-## Docker (experimental)
-
-> **Lightly tested.** The released wheel is the path actually in daily use.
-> Docker works in principle and the compose file is kept current, but it
-> has not been exercised much, so expect rough edges. Nothing here is covered by
-> the test suite.
-
-Docker handles dependencies inside the container and adds an optional daily
-backup. See [sync and backup](#sync-and-backup) for what that does and does not
-cover.
-
-### 1. Clone the repo
-
-```bash
-git clone https://github.com/gked/loci.git
-cd loci
-```
-
-### 2. Run the setup script
-
-```bash
-uv run setup_docker.py
-```
-
-The script will:
-- Check for Docker or OrbStack, and offer to install one via Homebrew if neither is found
-- Ask where the vault should live — an absolute path, required, no default
-- Optionally point rclone at a remote for the daily backup (Nextcloud, Dropbox, Google Drive, S3, and more)
-- Build the image and start the container
-- Install the Loci skill stubs into `~/.claude/skills/`
-- Verify the server is responding
-
-### 3. Restart Claude Code
-
-The setup script installs the skills automatically. Restart Claude Code to pick them up.
-
-### 4. Test it
-
-Open Claude Code and say:
-
-```
-Save this to my loci vault as a note: Loci is now set up and working.
-```
-
-### How Docker and the vault interact
-
-The vault is **not inside the container**. Docker runs the MCP server process and, if configured, the daily backup loop. Your vault data lives on the host filesystem and is mounted into the container at `/knowledge-vault` at runtime. This means:
-
-- Vault data persists across container restarts and rebuilds
-- You can stop, update, or replace the container without touching your notes
-- The same vault can be used by the local stdio server (Claude Code / Claude Desktop) and the Docker SSE server simultaneously
-
-Your rclone config is mounted in read-only from the host, so credentials are never baked into the image.
-
-### First start seeds the vault
-
-On startup the server checks the mounted vault and seeds `meta/` — the ontology,
-the dictionaries, the ontology guide — if it isn't there yet. An existing vault
-is left alone unless its `meta/.meta-version` marker is behind the current
-version, in which case the canonical files are refreshed; the files you own
-(`ontology-user.yaml`, `tag-dictionary.md`, `foreign-definitions.md`, and the
-rest) are never overwritten. What happened is reported in the logs:
-
-```bash
-docker compose -f deploy/docker-compose.yml logs | grep -i vault
-```
-
-Two things worth knowing if you start the container by hand rather than through
-`setup_docker.py`, which creates the directory for you:
-
-- **The vault directory must exist and be writable.** If `/knowledge-vault`
-  isn't there, the server assumes you forgot the volume and seeds nothing —
-  creating it would put your notes inside the container, where they are
-  discarded on the next `docker run`. The log says so; fix it by passing
-  `-v /host/path/vault:/knowledge-vault`.
-- **A read-only mount still works, minus writes.** The server starts, says it
-  couldn't seed, and reads the ontology from the copies built into the image, so
-  queries behave normally. Saves will fail until the mount is writable.
-
-### Managing the container
-
-**Terminal:**
-
-```bash
-# Restart (no rebuild)
-docker compose -f deploy/docker-compose.yml restart
-
-# Rebuild after code changes
-VAULT_PATH=/absolute/path/to/knowledge-vault docker compose -f deploy/docker-compose.yml up -d --build
-
-# Stop
-docker compose -f deploy/docker-compose.yml down
-
-# View logs
-docker compose -f deploy/docker-compose.yml logs -f
-```
-
-**OrbStack:**
-
-Open the OrbStack app and the `loci` container appears in the sidebar. From there you can restart, stop, or view logs with a single click without needing the terminal.
-
----
-
 ## Sync and backup
 
 **There is no automatic sync.** What exists is a thin rclone wrapper you run
-yourself, plus an optional one-way backup loop in the Docker container. Treat
+yourself. Treat
 multi-device use as unfinished.
 
 `sync/sync.sh` takes a direction and shells out to rclone:
@@ -330,9 +227,6 @@ Things to know before trusting it:
   exercised path here.
 - **Nothing runs on a schedule locally.** No watcher, no daemon, no hook. If you
   don't run the script, nothing moves.
-- **The Docker container backs up, it does not sync.** With `BACKUP_REMOTE` set,
-  `deploy/entrypoint.sh` runs a one-way `rclone sync` from the vault to the
-  remote every `BACKUP_INTERVAL` seconds (default daily). It never pulls.
 - **The sync itself is not covered by tests.** The suite checks that `sync.sh`
   finds your config (`LOCI_CONFIG`, then `$XDG_CONFIG_HOME/loci/config.yml` or
   `~/.config/loci/config.yml`, then a project-root `config.yml`), but it never
@@ -344,30 +238,9 @@ is to put it inside a folder your existing sync client already manages
 
 ---
 
-## Remote Access (Claude.ai / mobile, unvalidated)
+## Server environment variables
 
-> **Never verified end to end.** This is a written-down plan, not a tested
-> procedure. The scripts and templates exist and the SSE transport is
-> implemented, but nobody has stood the whole thing up and confirmed a client
-> connects. It builds on the experimental Docker path and has no test coverage.
-> Expect to debug it.
-
-The intent: run the MCP server on a Linux home lab server and expose it via Cloudflare Tunnel, so Claude.ai, Claude Desktop, or mobile can reach it. No open ports, no domain required.
-
-```bash
-bash deploy/setup-homelab.sh
-```
-
-The script installs Docker, rclone, and cloudflared; creates a named tunnel; and starts the container. Once running:
-
-- **Claude Desktop / Claude Code:** `claude mcp add --transport sse loci <tunnel-url>/sse --scope user`
-- **Claude.ai / mobile:** Settings → Connectors → Add custom connector → `<tunnel-url>/sse`
-
-The vault lives on the server and is the single source of truth. All clients connect to the same endpoint. Nextcloud backup runs daily if `BACKUP_REMOTE` is configured in `deploy/.env`.
-
-**Authentication:** after setup, protect the tunnel with [Cloudflare Zero Trust Access](https://one.dash.cloudflare.com): Access → Applications → Add Self-hosted app → policy: your email. Without this the endpoint is open.
-
-Server env vars (`src/loci/mcp_server.py`):
+Read by `src/loci/mcp_server.py`:
 
 | Var | Meaning |
 |---|---|
@@ -376,3 +249,8 @@ Server env vars (`src/loci/mcp_server.py`):
 | `LOCI_CONFIG` | Path to the config file, overriding `~/.config/loci/config.yml` |
 | `LOCI_PORT` | SSE only, default `8000` |
 | `LOCI_TOKEN` | SSE only, optional bearer auth |
+
+> **Warning:** SSE listens on all interfaces over plain HTTP. Set `LOCI_TOKEN`
+> and put a TLS-terminating proxy in front before you expose it beyond your
+> own machine. Without a token, anyone who can reach the port can read and
+> write the vault.

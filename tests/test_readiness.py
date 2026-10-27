@@ -82,14 +82,14 @@ def test_configured_but_missing_directory_is_unreachable(monkeypatch, tmp_path):
     assert "do not silently create" in exc.value.message.lower()
 
 
-def test_pinned_missing_vault_blames_the_mount(monkeypatch, tmp_path):
+def test_pinned_missing_vault_names_the_variable(monkeypatch, tmp_path):
     """Under LOCI_VAULT_ROOT the path is the operator's, so say so."""
     monkeypatch.setenv("LOCI_VAULT_ROOT", str(tmp_path / "not-mounted"))
 
     with pytest.raises(VaultNotReady) as exc:
         ensure_ready()
     assert exc.value.code == VAULT_UNREACHABLE
-    assert "-v " in exc.value.message
+    assert "fix LOCI_VAULT_ROOT" in exc.value.message
     assert "cannot be changed from chat" in exc.value.message
 
 
@@ -240,8 +240,8 @@ def test_set_vault_root_keeps_the_rest_of_the_config(unconfigured, tmp_path, mon
 
 def test_set_vault_root_refuses_when_the_deployment_pins_the_root(monkeypatch, tmp_path):
     """
-    Docker. Writing to any other path succeeds inside the container and is
-    invisible on the host — the data is gone at the next `docker run`.
+    A managed deployment. The operator fixed the path, so the model must not
+    point the server at another one.
     """
     monkeypatch.setenv("LOCI_VAULT_ROOT", "/knowledge-vault")
 

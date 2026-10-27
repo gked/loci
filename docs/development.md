@@ -86,17 +86,9 @@ loci/
     release_notes.py                ← the "Upgrading" section of a release's notes
     run_preflight.py                ← config checks make run does before starting
 
-  deploy/
-    Dockerfile
-    docker-compose.yml
-    entrypoint.sh                   ← starts MCP server; optional daily backup to Nextcloud
-    setup-homelab.sh                ← one-shot setup script for Linux home lab server
-    loci-mcp.service                ← systemd service for always-on SSE server
-    nginx.conf.sample               ← nginx config for SSE + Cloudflare
-
   docs/
     problem.md                      ← why Loci exists
-    setup.md                        ← wheel, checkout, Docker; sync; remote access
+    setup.md                        ← wheel and checkout; sync
     usage.md                        ← mental model, scenarios, saving, querying, the UI
     examples.md                     ← one prompt per scenario
     ontology.md                     ← registries and schema versioning (repo side)
@@ -113,7 +105,6 @@ loci/
     sync.sh                         ← push/pull/bisync wrapper
 
   setup.py                          ← checkout setup wizard (the wheel uses `loci skills` + `claude mcp add`)
-  setup_docker.py                   ← Docker setup wizard
   run_server.sh
   config.sample.yml                 ← template for ~/.config/loci/config.yml
   dev-config.yml                    ← scratch config for `make dev` (gitignored)
@@ -160,7 +151,7 @@ loci                # the HTTP API (127.0.0.1:8765 by default; --host/--port to 
 
 `loci-mcp` takes no arguments: whichever client starts it owns the config file
 it is launched from, so there is nowhere for you to pass a flag. Transport comes
-from `LOCI_TRANSPORT` (`stdio`, or `sse` for the container).
+from `LOCI_TRANSPORT` (`stdio`, or `sse` for a remote server).
 
 `loci` mounts `/api/*` and, when a built bundle sits at `src/loci/static/`,
 serves the frontend from the same process — which is how an installed wheel has

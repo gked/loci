@@ -1,12 +1,12 @@
 """
 src/loci/mcp_server.py
-Loci MCP server — stdio (Claude Code / Claude Desktop) or SSE (Docker / remote).
+Loci MCP server — stdio (Claude Code / Claude Desktop) or SSE (remote).
 
 Thin wrapper over api.py. All vault logic lives there.
 
 Transport is selected by the LOCI_TRANSPORT environment variable:
   stdio (default) — spawned as a subprocess by Claude Code or Claude Desktop
-  sse             — long-running HTTP server (uvicorn, used in Docker)
+  sse             — long-running HTTP server (uvicorn)
 
 Claude Code registration (~/.claude.json, via CLI):
   claude mcp add --scope user loci uv -- run --directory /absolute/path/to/loci loci-mcp
@@ -132,9 +132,9 @@ def _check_ready() -> None:
     """
     Establish readiness, collecting anything the first call has to report.
 
-    Seeding writes to the vault, which may be read-only or owned by another uid
-    (a Docker mount, typically). That is a notice, not a failure: every read
-    still works off the built-in reference copies, so the tool proceeds.
+    Seeding writes to the vault, which may be read-only or owned by another
+    uid. That is a notice, not a failure: every read still works off the
+    built-in reference copies, so the tool proceeds.
     """
     global _startup_notice
     try:
@@ -216,8 +216,7 @@ def set_vault_root(path: str, create: bool = True) -> dict:
                 can confirm it with the user first.
 
     Fails when the deployment sets LOCI_VAULT_ROOT: that is a managed install
-    (typically Docker) where the operator fixed the path with a -v mount, and
-    it cannot be changed from chat.
+    where the operator fixed the path, and it cannot be changed from chat.
     """
     global _startup_notice, _first_ready_work_done
     try:

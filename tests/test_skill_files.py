@@ -38,13 +38,11 @@ SEARCHED_ROOTS = [
     REPO_ROOT / "docs",
     REPO_ROOT / "app" / "design",
     REPO_ROOT / "tests",
-    REPO_ROOT / "deploy",
 ]
 SEARCHED_TOP_LEVEL_FILES = [
     REPO_ROOT / "README.md",
     REPO_ROOT / "CLAUDE.md",
     REPO_ROOT / "setup.py",
-    REPO_ROOT / "setup_docker.py",
 ]
 
 # This file has to name the removed commands to test for them.
@@ -194,9 +192,6 @@ def test_the_removed_command_search_covers_something():
     assert (REPO_ROOT / "README.md") in SEARCHED_FILES
     # Naming the roots that carry prose, so dropping one fails here rather than
     # leaving the guard quietly green over a directory it no longer reads.
-    # (deploy/ holds only a Dockerfile, shell, and YAML, none of which the
-    # suffix filter picks up — it is in the list for the .md or .py that lands
-    # there next.)
     for root in (REPO_ROOT / "src", REPO_ROOT / "docs", REPO_ROOT / "tests",
                  REPO_ROOT / "app" / "design"):
         assert any(root in p.parents for p in SEARCHED_FILES), f"nothing searched under {root}"

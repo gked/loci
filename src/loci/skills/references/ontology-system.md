@@ -278,19 +278,18 @@ Recorded so the next person doesn't rediscover them the hard way.
   once per vault root — and overwrites every `META_FILES` entry when the vault
   is behind. `set_vault_root` does the same upgrade inline for the vault it
   adopts. Which version it compares against depends on the mode: a `config.yml` install
-  reads `meta_version` from the config, while `LOCI_VAULT_ROOT` (Docker) reads
-  `meta/.meta-version` inside the vault, since the image's `config.yml` does not
-  survive a restart. Both modes write the in-vault marker, so a vault can move
-  between them without being mistaken for stale.
+  reads `meta_version` from the config, while `LOCI_VAULT_ROOT` reads
+  `meta/.meta-version` inside the vault, since the variable pins the vault and
+  `config.yml` is not consulted. Both modes write the in-vault marker, so a
+  vault can move between them without being mistaken for stale.
 - **An unversioned vault with a complete `meta/` is adopted, not reseeded.**
   The marker did not always exist, so its absence is not evidence of staleness.
   A vault holding every `META_FILES` entry is taken as current and the marker is
   backfilled. The cost: a genuinely old vault that is merely file-complete never
   gets upgraded.
 - **Seeding is skipped when the vault directory is absent**, rather than
-  creating it. Under Docker a missing directory means the volume was not
-  mounted, and seeding into the container's own filesystem would report success
-  for files discarded on the next run. `http_server.py` has no `requires_vault`
+  creating it. With `LOCI_VAULT_ROOT` a missing directory is more likely a typo
+  than a new vault, and creating it would hide the mistake. `http_server.py` has no `requires_vault`
   guard and never calls `check_meta_version` at all, so an HTTP-only vault is
   never seeded — reads fall back to this directory, and `write_meta` creates
   `meta/` on demand. Every upgrade path (`ensure_env_vault`,

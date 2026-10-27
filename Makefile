@@ -71,10 +71,9 @@ $(DEV_CONFIG):
 	printf 'api_token: %s\n' "$$token" > $@.tmp && mv $@.tmp $@
 	@echo "created $@ (gitignored)"
 
-# ensure_env_vault() refuses to create a missing LOCI_VAULT_ROOT — under Docker
-# an absent directory means the mount is missing, and seeding it would write
-# into the container layer where the files vanish on restart. There is no mount
-# here, so the directory is ours to make; the server seeds it once it exists.
+# ensure_env_vault() refuses to create a missing LOCI_VAULT_ROOT, since an
+# absent directory is more likely a typo than a new vault. The directory is ours
+# to make here; the server seeds it once it exists.
 #
 # It is created populated: an empty vault renders a blank graph, which reads as
 # the app being broken. dev-vault-seed/ is 500 generated nodes, committed, and

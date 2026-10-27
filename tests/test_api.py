@@ -518,7 +518,7 @@ def test_read_meta_ontology_guide_from_vault(tmp_vault):
 
 
 def test_read_meta_ontology_guide_falls_back_to_references(tmp_vault):
-    # Unseeded vault (the Docker case): the canonical copy in references/ answers.
+    # Unseeded vault (a vault never opened by the server): the canonical copy in references/ answers.
     _make_meta_dir(tmp_vault)
     assert not (tmp_vault / "meta" / "ontology-guide.md").exists()
     result = api.read_meta("ontology-guide")
@@ -547,7 +547,7 @@ def test_read_meta_every_key_falls_back_to_references(tmp_vault, key):
     The registries already fall back to references/, so without this the model
     cannot read the ontology it is nonetheless validated against on write.
     """
-    # No meta/ at all — exactly what a fresh Docker bind mount looks like.
+    # No meta/ at all — a vault the server never seeded.
     assert not (tmp_vault / "meta").exists()
     assert api.read_meta(key).strip()
 
@@ -567,7 +567,7 @@ def test_write_meta_ontology_user(tmp_vault):
 
 def test_write_meta_creates_missing_meta_dir(tmp_vault):
     """read_meta answers from references/ for an unseeded vault, so the model
-    can reach the write with no meta/ on disk (the HTTP-only Docker case)."""
+    can reach the write with no meta/ on disk (an HTTP-only vault)."""
     assert not (tmp_vault / "meta").exists()
 
     path = api.write_meta("tag-dictionary", "# my tags\n")

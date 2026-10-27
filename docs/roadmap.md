@@ -15,8 +15,6 @@ uneven. What that means concretely:
 | Test suite (unit + browser e2e) | Runs on every push and PR |
 | Packaging and releases | `make release` cuts the tag; CI builds and publishes the wheel |
 | rclone sync | **Partial.** Manual script only, no scheduling or conflict handling, no tests |
-| Docker | **Experimental.** Builds and runs, but lightly exercised and not in CI |
-| Remote access (SSE + Cloudflare Tunnel) | **Unvalidated.** Written down, never stood up end to end |
 
 Nothing is deprecated or abandoned; the weak spots are just unfinished. Each is
 also flagged where it is documented, so you don't have to remember this table.
@@ -35,9 +33,8 @@ also flagged where it is documented, so you don't have to remember this table.
 - [x] Patch and delete operations
 - [x] Field dictionary: authoritative schema in vault meta, skill reads at runtime
 - [x] Schema versioning: seed files in `src/loci/skills/references/`, `meta_version` in `config.yml`
-- [~] rclone wrapper: manual `push` / `pull` / `bisync` script, plus a one-way daily backup in Docker. No scheduling, no conflict handling, no tests
+- [~] rclone wrapper: manual `push` / `pull` / `bisync` script. No scheduling, no conflict handling, no tests
 - [x] SSE transport: remote MCP server support (Claude.ai / mobile)
-- [~] `deploy/`: Docker image, systemd + nginx templates, home lab setup script. Builds and runs, but lightly tested and uncovered by CI
 - [x] Graph layer: NetworkX in-memory index for traversal and relationship queries
 - [x] `loci-save` and `loci-query` skills
 - [x] Type and relation registries: machine-readable ontology, validated on write, linted after
@@ -58,7 +55,6 @@ also flagged where it is documented, so you don't have to remember this table.
 - [ ] Retire the vestigial `asset-registry/` directory from `vault_init`
 - [ ] Editing from the UI (currently read-only)
 - [ ] Real sync: scheduling, conflict handling, and tests for the rclone layer
-- [ ] Exercise the Docker and home lab paths properly, then drop the experimental label
 
 ### Later
 - [ ] Vector DB: deferred until summaries exceed the context window. Revisit ChromaDB / LanceDB / Qdrant at that point

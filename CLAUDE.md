@@ -34,8 +34,8 @@ tests/                      Python test suite (outside the package — never shi
 Loci is an installable wheel, not just a checkout. Two consequences bind every
 change:
 
-- **Runtime files must live under `src/loci/`.** Only that tree is packaged, and
-  `deploy/Dockerfile` copies the same tree. Anything the code reads at runtime —
+- **Runtime files must live under `src/loci/`.** Only that tree is packaged.
+  Anything the code reads at runtime —
   above all `skills/references/`, which the registries load and `vault_init.py`
   seeds from — is missing on every installed machine if it sits outside.
   `test_ontology_guide_ships_inside_the_package` guards this.
@@ -132,8 +132,8 @@ When adding a new meta file:
 5. Update `mcp_server.py` docstring for `read_meta`
 6. Update any skill that should read the new file
 
-A seeded file must live under `src/loci/` — that is what the wheel packages and
-what `deploy/Dockerfile` copies, so anything sourced from `docs/` is missing on
+A seeded file must live under `src/loci/` — that is what the wheel packages,
+so anything sourced from `docs/` is missing on
 every installed machine and seeding fails. This is why the user's ontology guide
 sits in `references/` rather than `docs/`. See Packaging rules above.
 

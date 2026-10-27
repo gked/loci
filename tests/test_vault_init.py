@@ -164,10 +164,10 @@ def test_ontology_guide_is_refreshed_on_version_bump(tmp_path):
 
 
 def test_ontology_guide_ships_inside_the_package(tmp_path):
-    # Only src/loci/ is packaged into the wheel, and deploy/Dockerfile copies
-    # the same tree. A seed source outside it exists in a checkout and is
-    # missing everywhere Loci is actually installed, so seeding would fail for
-    # every user who did not clone the repo.
+    # Only src/loci/ is packaged into the wheel. A seed source outside it
+    # exists in a checkout and is missing everywhere Loci is actually
+    # installed, so seeding would fail for every user who did not clone the
+    # repo.
     import loci
 
     package_root = Path(loci.__file__).parent
@@ -177,11 +177,11 @@ def test_ontology_guide_ships_inside_the_package(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# ensure_env_vault — the LOCI_VAULT_ROOT (Docker) path
+# ensure_env_vault — the LOCI_VAULT_ROOT path
 # ---------------------------------------------------------------------------
 
 def test_ensure_env_vault_seeds_empty_vault(tmp_path):
-    """A bare bind mount is what Docker gives us on first run."""
+    """An empty directory named by LOCI_VAULT_ROOT gets seeded."""
     vault_root = tmp_path / "vault"
     vault_root.mkdir()
 
@@ -194,15 +194,15 @@ def test_ensure_env_vault_seeds_empty_vault(tmp_path):
 
 
 def test_ensure_env_vault_does_not_seed_a_missing_vault_dir(tmp_path):
-    """No directory means no mount: seeding it would write to the container's
-    own layer and report success for files that vanish on the next run."""
+    """A missing directory is more likely a typo than a new vault: creating
+    it would hide the mistake behind a fresh, empty vault."""
     vault_root = tmp_path / "not-yet-there"
 
     notice = ensure_env_vault(vault_root)
 
     assert not vault_root.exists()
     assert notice is not None
-    assert "not mounted" in notice or "does not exist" in notice
+    assert "does not exist" in notice
 
 
 def test_ensure_env_vault_missing_dir_notice_names_the_path(tmp_path, capsys):
@@ -216,7 +216,7 @@ def test_ensure_env_vault_missing_dir_notice_names_the_path(tmp_path, capsys):
 
 
 def test_ensure_env_vault_does_not_create_siblings(tmp_path):
-    """Siblings would land outside the bind mount and vanish on restart."""
+    """The operator owns the parent of LOCI_VAULT_ROOT, so Loci creates nothing beside it."""
     vault_root = tmp_path / "parent" / "vault"
     vault_root.mkdir(parents=True)
 
@@ -309,75 +309,6 @@ def test_ensure_env_vault_writes_nothing_to_stdout(tmp_path, capsys):
     assert "seeded" in captured.err
 
 
-def test_describe_vault_location_plain_path_when_not_a_mount(tmp_path):
-    """A normal directory is not a mount point, so report it as-is."""
-    assert vault_init.describe_vault_location(tmp_path) == str(tmp_path)
-
-
-def test_describe_vault_location_reports_host_path(tmp_path, monkeypatch):
-    """In a container the mount point alone doesn't tell the user where to look."""
-    monkeypatch.setattr(
-        vault_init,
-        "_host_path_for_mount",
-        lambda _root: "/Users/someone/loci/vault",
-    )
-    result = vault_init.describe_vault_location(Path("/knowledge-vault"))
-    assert "/Users/someone/loci/vault" in result
-    assert "/knowledge-vault" in result
-
-
-def test_host_path_for_mount_reads_bind_mount_source(tmp_path):
-    """The real format, as produced by the container during verification."""
-    mountinfo = tmp_path / "mountinfo"
-    mountinfo.write_text(
-        "433 424 0:37 /Users/you/loci/vault /knowledge-vault "
-        "rw,relatime - virtiofs mac rw\n"
-    )
-    result = vault_init._host_path_for_mount(Path("/knowledge-vault"), mountinfo)
-    assert result == "/Users/you/loci/vault"
-
-
-def test_host_path_for_mount_ignores_docker_named_volumes(tmp_path):
-    mountinfo = tmp_path / "mountinfo"
-    mountinfo.write_text(
-        "433 424 0:37 /var/lib/docker/volumes/loci/_data /vault rw - ext4 x rw\n"
-    )
-    assert vault_init._host_path_for_mount(Path("/vault"), mountinfo) is None
-
-
-def test_host_path_for_mount_returns_none_when_unmounted(tmp_path):
-    mountinfo = tmp_path / "mountinfo"
-    mountinfo.write_text("433 424 0:37 /elsewhere /other rw - ext4 x rw\n")
-    assert vault_init._host_path_for_mount(Path("/vault"), mountinfo) is None
-
-
-def test_host_path_for_mount_matches_mount_point_containing_a_space(tmp_path):
-    """mountinfo octal-escapes whitespace; an unescaped compare never matches."""
-    mountinfo = tmp_path / "mountinfo"
-    mountinfo.write_text(
-        "433 424 0:37 /Users/me/My\\040Files/vault /knowledge\\040vault "
-        "rw,relatime - virtiofs mac rw\n"
-    )
-    result = vault_init._host_path_for_mount(Path("/knowledge vault"), mountinfo)
-    assert result == "/Users/me/My Files/vault"
-
-
-def test_host_path_for_mount_leaves_literal_backslash_alone(tmp_path):
-    mountinfo = tmp_path / "mountinfo"
-    mountinfo.write_text("433 424 0:37 /srv/a\\134b /vault rw - ext4 x rw\n")
-    assert vault_init._host_path_for_mount(Path("/vault"), mountinfo) == "/srv/a\\b"
-
-
-def test_host_path_for_mount_takes_the_last_matching_line(tmp_path):
-    """A later entry for the same mount point overmounts the earlier one."""
-    mountinfo = tmp_path / "mountinfo"
-    mountinfo.write_text(
-        "433 424 0:37 /host/old /vault rw - ext4 x rw\n"
-        "440 424 0:38 /host/new /vault rw - ext4 x rw\n"
-    )
-    assert vault_init._host_path_for_mount(Path("/vault"), mountinfo) == "/host/new"
-
-
 def test_read_vault_meta_version_handles_corrupt_marker(tmp_path):
     vault_root = tmp_path / "vault"
     vault_root.mkdir()
@@ -392,7 +323,7 @@ def test_read_vault_meta_version_handles_corrupt_marker(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_check_meta_version_seeds_env_vault(monkeypatch, fake_config_path, tmp_path):
-    """Docker mounts an empty vault: startup must seed it rather than skip."""
+    """An empty vault under LOCI_VAULT_ROOT: startup must seed it rather than skip."""
     vault_root = tmp_path / "vault"
     vault_root.mkdir()
     monkeypatch.setenv("LOCI_VAULT_ROOT", str(vault_root))
@@ -445,7 +376,7 @@ def test_check_meta_version_reseeds_when_outdated(tmp_path, fake_config_path, mo
 
 
 def test_check_meta_version_records_marker_in_vault_on_reseed(tmp_path, fake_config_path):
-    """Config mode must leave the same marker the Docker path reads, or that
+    """Config mode must leave the same marker the env-var path reads, or that
     path sees the vault as unversioned and reseeds over the user's files."""
     vault_root = tmp_path / "vault"
     create_vault_structure(vault_root)
@@ -473,7 +404,7 @@ def test_check_meta_version_records_marker_when_already_current(tmp_path, fake_c
 
 def test_check_meta_version_config_branch_writes_nothing_to_stdout(tmp_path, fake_config_path, capsys):
     """reseed_meta and save_config both print — and stdout is the JSON-RPC
-    channel under stdio transport, in config mode just as much as in Docker."""
+    channel under stdio transport, in config mode just as much as in env-var mode."""
     vault_root = tmp_path / "vault"
     create_vault_structure(vault_root)
     fake_config_path.write_text(
@@ -507,8 +438,8 @@ def test_check_meta_version_reseeds_when_unversioned(tmp_path, fake_config_path)
 def test_check_meta_version_upgrade_builds_the_sibling_directories(tmp_path, fake_config_path):
     """
     The upgrade seeds a vault that may never have been through init(), and in
-    config mode the siblings live in an ordinary user directory (unlike Docker,
-    where they would fall outside the bind mount). Skipping them leaves a vault
+    config mode the siblings live in an ordinary user directory (unlike env-var
+    mode, where the operator owns the vault's parent). Skipping them leaves a vault
     whose meta/ reads as current while scan_inbox fails on a missing
     loci-stage/, and nothing seeds them later.
     """
@@ -689,7 +620,7 @@ def test_version_bump_seeds_a_vault_that_has_no_meta_dir(tmp_path, fake_config_p
 
 @pytest.mark.parametrize("fname", RUNTIME_WRITABLE)
 def test_env_mode_version_bump_keeps_the_users_dictionaries(tmp_path, monkeypatch, fname):
-    """Docker tracks the version in the vault marker rather than a config, so
+    """Env-var mode tracks the version in the vault marker rather than a config, so
     it reaches reseed_meta by its own path — it must be just as safe."""
     vault_root = tmp_path / "vault"
     create_vault_structure(vault_root, include_siblings=False)
@@ -1289,7 +1220,7 @@ def test_an_upgrade_that_moved_nothing_says_nothing_about_it(tmp_path, monkeypat
 
 
 def test_env_vault_upgrade_announces_the_move(tmp_path):
-    """Same for the Docker path, which builds its own notice."""
+    """Same for the env-var path, which builds its own notice."""
     vault = tmp_path / "vault"
     (vault / "meta").mkdir(parents=True)
     (vault / "meta" / "loci-query-user.md").write_text("# mine\n", encoding="utf-8")

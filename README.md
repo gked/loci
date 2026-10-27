@@ -111,7 +111,7 @@ The wheel installs two console scripts, and they are separate processes:
 `loci` needs a vault and exits with an error if none is configured yet (step 3
 sets one). To use a specific vault for one run: `LOCI_VAULT_ROOT=~/vault loci`.
 
-Upgrading, running from a checkout, Docker, sync, and remote access are all in
+Upgrading, running from a checkout, and sync are all in
 [docs/setup.md](docs/setup.md).
 
 ---
@@ -121,7 +121,7 @@ Upgrading, running from a checkout, Docker, sync, and remote access are all in
 | | |
 |---|---|
 | [The problem](docs/problem.md) | Why Loci exists, and why a Markdown folder or a PKM app alone doesn't cover it |
-| [Setup](docs/setup.md) | Wheel, checkout, and Docker installs; upgrading; sync and backup; remote access |
+| [Setup](docs/setup.md) | Wheel and checkout installs; upgrading; sync and backup |
 | [Examples](docs/examples.md) | One prompt per scenario: saving each kind of thing, retrieving, updating, extending the ontology |
 | [Using Loci](docs/usage.md) | How to think about it as a system, the scenarios it's built for, saving, querying, the UI, the vault layout |
 | [The ontology](docs/ontology.md) | Types, relations, schemes, and how the registries are versioned |
