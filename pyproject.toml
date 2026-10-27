@@ -1,6 +1,6 @@
 [project]
 name = "loci"
-version = "0.4.2"
+version = "0.5.0"
 # Source-available, not open source: noncommercial use is free, commercial use
 # needs a separate licence. See LICENSE and CONTRIBUTING.md.
 license = "PolyForm-Noncommercial-1.0.0"
