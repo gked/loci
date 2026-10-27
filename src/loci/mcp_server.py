@@ -354,6 +354,11 @@ def patch_vault(path: str, updates: dict, body: str = None) -> dict:
     Returns {uid, path, type, title, ...}, plus tag_warnings when a tag names a
     project/entity/topic (belongs as a relation) or repeats the node's own type
     or subtype. The patch has already happened; surface the warning and offer the fix.
+    Other warnings, all of which also arrive after the write: relation_warnings
+    (unknown relation type), has_asset_warnings (unknown scheme or a missing
+    scheme field in has_asset), and field_warnings (a field the patch touched
+    now breaks its type's required fields or enum; a change to type or subtype
+    checks the whole node).
     """
     try:
         return vault.patch(path, updates, body)
@@ -579,6 +584,7 @@ def define_relation(
     description: str,
     group: str = "",
     inverse_of: str = None,
+    symmetric: bool = False,
 ) -> dict:
     """
     Define a new user relation and append it to relation-dictionary-user.yaml.
@@ -591,14 +597,19 @@ def define_relation(
     If inverse_of is provided and names an unknown relation, a warning is returned
     (not an error) — the inverse may be defined in a subsequent call.
 
+    Every relation needs an inverse or must be symmetric, or lint_vault warns. If
+    inverse_of names a user relation with no inverse, that relation is updated to name
+    this one back. A relation cannot be both symmetric and have inverse_of.
+
     Args:
         name:        New relation name (lowercase, hyphenated)
         description: What this relation means; include directionality in the wording
         group:       Optional group label (e.g. "entity", "semantic", "custom")
         inverse_of:  Optional name of the inverse relation
+        symmetric:   True when the relation is its own inverse (A relates B means B relates A)
     """
     try:
-        return vault.define_relation(name, description, group, inverse_of)
+        return vault.define_relation(name, description, group, inverse_of, symmetric)
     except (FileNotFoundError, ValueError) as e:
         return {"defined": False, "errors": [str(e)], "warnings": []}
 

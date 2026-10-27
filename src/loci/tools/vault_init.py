@@ -29,7 +29,7 @@ from loci import skill_assembly
 LEGACY_CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "skills" / "references"
 
-META_VERSION = 14
+META_VERSION = 15
 
 # Records META_VERSION inside the vault. Only env-var mode (LOCI_VAULT_ROOT)
 # relies on it; a config.yml install tracks the same number there.

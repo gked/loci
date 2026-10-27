@@ -29,6 +29,7 @@ from loci.tools.slug import filename as make_filename
 from loci.tools.vault_init import NON_NODE_DIRS, NOT_CONFIGURED_MESSAGE, load_config
 from loci.tools.type_registry import get_registry
 from loci.tools.relation_registry import get_relation_registry
+from loci.tools.scheme_registry import get_scheme_registry, has_asset_issues
 from loci.tools.frontmatter import load_frontmatter, split_frontmatter
 from loci.tools.tag_hygiene import as_tag_list
 
@@ -137,6 +138,26 @@ def free_filename(vault_root: Path, title: str) -> str:
     return f"{stem}-{n}.{ext}"
 
 
+def field_problems(type_def, fields: dict, subtype: Optional[str] = None) -> list[tuple[str, str]]:
+    """(field_name, message) for each required field that is missing or null and
+    each enum field holding a value outside its set."""
+    problems: list[tuple[str, str]] = []
+
+    for field_name in sorted(type_def.required_names()):
+        if field_name not in fields or fields[field_name] is None:
+            problems.append((field_name,
+                f"Required field '{field_name}' is missing or null for type '{type_def.name}'"))
+
+    for field_name, valid_values in type_def.enum_constraints(subtype=subtype).items():
+        if field_name in fields and fields[field_name] is not None:
+            if fields[field_name] not in valid_values:
+                problems.append((field_name,
+                    f"Invalid value '{fields[field_name]}' for field '{field_name}'. "
+                    f"Must be one of: {sorted(valid_values)}"))
+
+    return problems
+
+
 def validate_required_fields(type_def, extra_fields: dict, subtype: Optional[str] = None) -> list[str]:
     """
     Validate type-specific required fields and enum constraints.
@@ -152,22 +173,7 @@ def validate_required_fields(type_def, extra_fields: dict, subtype: Optional[str
     Returns:
         List of error strings; empty list means valid.
     """
-    ef = extra_fields or {}
-    errors: list[str] = []
-
-    for field_name in type_def.required_names():
-        if field_name not in ef or ef[field_name] is None:
-            errors.append(f"Required field '{field_name}' is missing or null for type '{type_def.name}'")
-
-    for field_name, valid_values in type_def.enum_constraints(subtype=subtype).items():
-        if field_name in ef and ef[field_name] is not None:
-            if ef[field_name] not in valid_values:
-                errors.append(
-                    f"Invalid value '{ef[field_name]}' for field '{field_name}'. "
-                    f"Must be one of: {sorted(valid_values)}"
-                )
-
-    return errors
+    return [message for _, message in field_problems(type_def, extra_fields or {}, subtype=subtype)]
 
 
 def write_item(
@@ -250,9 +256,13 @@ def write_item(
     if relation_errors:
         return {"errors": relation_errors}
 
-    # TODO Phase 5: validate has_asset list structure against SchemeRegistry here
-    # (block on write for unknown schemes / missing required fields, matching
-    # the relation validation pattern above).
+    asset_issues = has_asset_issues(
+        (extra_fields or {}).get("has_asset"), get_scheme_registry(vault_root)
+    )
+    asset_errors = [m for severity, _, m in asset_issues if severity == "error"]
+    if asset_errors:
+        return {"errors": asset_errors}
+    asset_warnings = [m for severity, _, m in asset_issues if severity == "warning"]
 
     vault_root.mkdir(parents=True, exist_ok=True)
 
@@ -315,6 +325,10 @@ def write_item(
         "relations": relations or [],
         "references": references or [],
     }
+    # A base field the ontology declares but this literal does not list is
+    # written empty, not left out: the linter reads the same list.
+    for base_name in registry.base_required:
+        frontmatter.setdefault(base_name, None)
 
     # Merge type-specific fields. The uid was resolved above; a None or empty
     # uid in extra_fields must not land in the file over the generated one.
@@ -335,6 +349,8 @@ def write_item(
     }
     if body_warnings:
         result["body_warnings"] = body_warnings
+    if asset_warnings:
+        result["has_asset_warnings"] = asset_warnings
 
     print(f"\nSaved: {file_path}")
     print(f"UID:   {uid}")
@@ -342,6 +358,25 @@ def write_item(
     print(f"Links: {len(relations or [])}")
 
     return result
+
+
+def _patch_field_warnings(merged: dict, updates: dict) -> list[str]:
+    """Required-field and enum problems the patch itself introduced.
+
+    The merged frontmatter is checked against its type. Only a problem on a
+    field the patch touched is reported, unless it changed `type` or `subtype`,
+    which can leave any field wrong. A node that already had a gap elsewhere is
+    the linter's to report, not every patch's.
+    """
+    type_def = get_registry(resolve_vault_root()).get(merged.get("type"))
+    if type_def is None:
+        return []
+    whole_node = "type" in updates or "subtype" in updates
+    return [
+        message
+        for name, message in field_problems(type_def, merged, subtype=merged.get("subtype"))
+        if whole_node or name in updates
+    ]
 
 
 def patch_item(path: str, updates: dict, body: str = None) -> dict:
@@ -405,8 +440,14 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
                     f"Call read_meta(file='relation-dictionary') to see valid types."
                 )
 
-    # TODO Phase 5: validate has_asset list structure in updates against SchemeRegistry
-    # (warn on patch for unknown schemes / missing required fields).
+    asset_warnings: list[str] = []
+    if "has_asset" in updates:
+        asset_warnings = [
+            message
+            for _, _, message in has_asset_issues(
+                updates.get("has_asset"), get_scheme_registry(resolve_vault_root())
+            )
+        ]
 
     raw = p.read_text(encoding="utf-8")
 
@@ -444,6 +485,8 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
         if isinstance(val, datetime):
             fm[key] = val.strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    field_warnings = _patch_field_warnings(fm, updates)
+
     final_body = body if body is not None else existing_body
     content = serialize_frontmatter(fm) + "\n" + final_body
     p.write_text(content, encoding="utf-8")
@@ -465,6 +508,10 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
     }
     if relation_warnings:
         result["relation_warnings"] = relation_warnings
+    if asset_warnings:
+        result["has_asset_warnings"] = asset_warnings
+    if field_warnings:
+        result["field_warnings"] = field_warnings
     if body_warnings:
         result["body_warnings"] = body_warnings
     return result

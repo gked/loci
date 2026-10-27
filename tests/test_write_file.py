@@ -952,3 +952,114 @@ def test_write_item_scans_the_vault_for_a_taken_uid_only_when_one_was_given(tmp_
         skip_duplicate_check=True,
     )
     assert calls == ["feed0004"]
+
+
+# ---------------------------------------------------------------------------
+# has_asset validation — block on write, warn on patch
+# ---------------------------------------------------------------------------
+
+def _asset(scheme="local", **loc):
+    return [{"format": "pdf", "locations": [{"scheme": scheme, **loc}]}]
+
+
+def test_write_item_blocks_an_unknown_asset_scheme(tmp_vault):
+    result = write_item(
+        type="document", title="Bad scheme", body="b", skip_duplicate_check=True,
+        extra_fields={"subtype": "note", "status": "draft", "has_asset": _asset("no-such-scheme", path="x")},
+    )
+    assert "uses unknown scheme 'no-such-scheme'" in result["errors"][0]
+    assert not list(tmp_vault.glob("bad-scheme*.md"))
+
+
+def test_write_item_blocks_a_missing_scheme_field(tmp_vault):
+    result = write_item(
+        type="document", title="No path", body="b", skip_duplicate_check=True,
+        extra_fields={"subtype": "note", "status": "draft", "has_asset": _asset("local")},
+    )
+    assert "requires field 'path'" in result["errors"][0]
+
+
+def test_write_item_accepts_a_valid_asset_and_the_legacy_boolean(tmp_vault):
+    ok = write_item(
+        type="document", title="Good asset", body="b", skip_duplicate_check=True,
+        extra_fields={"subtype": "note", "status": "draft", "has_asset": _asset("local", path="assets/a.pdf")},
+    )
+    legacy = write_item(
+        type="document", title="Legacy asset", body="b", skip_duplicate_check=True,
+        extra_fields={"subtype": "note", "status": "draft", "has_asset": True},
+    )
+    assert "errors" not in ok and "errors" not in legacy
+
+
+def test_patch_item_warns_but_still_writes_a_bad_asset(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"has_asset": _asset("no-such-scheme", path="x")})
+    assert "unknown scheme 'no-such-scheme'" in result["has_asset_warnings"][0]
+    assert yaml.safe_load(p.read_text(encoding="utf-8").split("---", 2)[1])["has_asset"]
+
+
+def test_patch_item_warns_on_a_has_asset_of_the_wrong_type(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"has_asset": "yes"})
+    assert "should be a list" in result["has_asset_warnings"][0]
+
+
+def test_write_item_warns_on_a_has_asset_of_the_wrong_type(tmp_vault):
+    result = write_item(
+        type="document", title="Odd asset", body="b", skip_duplicate_check=True,
+        extra_fields={"subtype": "note", "status": "draft", "has_asset": 5},
+    )
+    assert "errors" not in result
+    assert "should be a list" in result["has_asset_warnings"][0]
+
+
+def test_patch_item_has_no_asset_warning_for_a_valid_asset(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"has_asset": _asset("local", path="assets/a.pdf")})
+    assert "has_asset_warnings" not in result
+
+
+# ---------------------------------------------------------------------------
+# patch_item re-checks the type's fields
+# ---------------------------------------------------------------------------
+
+def test_patch_item_warns_when_an_enum_value_leaves_its_set(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"status": "finished"})
+    assert any("Invalid value 'finished' for field 'status'" in w for w in result["field_warnings"])
+    assert yaml.safe_load(p.read_text(encoding="utf-8").split("---", 2)[1])["status"] == "finished"
+
+
+def test_patch_item_warns_when_a_required_field_is_nulled(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"status": None})
+    assert any("Required field 'status'" in w for w in result["field_warnings"])
+
+
+def test_patch_item_does_not_report_a_gap_the_patch_did_not_touch(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    patch_item(str(p), {"status": None})          # leaves the node with a gap
+    result = patch_item(str(p), {"tags": ["x"]})   # unrelated patch
+    assert "field_warnings" not in result
+
+
+def test_patch_item_reports_the_whole_node_when_the_subtype_changes(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"subtype": "not-a-subtype"})
+    assert any("Invalid value 'not-a-subtype' for field 'subtype'" in w for w in result["field_warnings"])
+
+
+def test_a_clean_patch_adds_no_field_warnings(tmp_vault):
+    p = _make_vault_file(tmp_vault)
+    result = patch_item(str(p), {"status": "evergreen"})
+    assert "field_warnings" not in result
+
+
+def test_write_item_writes_every_base_field_the_ontology_declares(tmp_vault):
+    from loci.tools.type_registry import get_registry
+    result = write_item(
+        type="document", title="Base fields", body="b", skip_duplicate_check=True,
+        extra_fields={"subtype": "note", "status": "draft"},
+    )
+    fm = yaml.safe_load(Path(result["path"]).read_text(encoding="utf-8").split("---", 2)[1])
+    assert set(get_registry(tmp_vault).base_required) <= set(fm)

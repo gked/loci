@@ -15,7 +15,7 @@ from loci.tools.relation_registry import (
 
 CANONICAL_PATH = REFERENCES_DIR / "relation-dictionary.yaml"
 
-CANONICAL_COUNT = 27
+CANONICAL_COUNT = 41
 
 
 @pytest.fixture(autouse=True)
@@ -167,3 +167,57 @@ def test_singleton_with_vault_root_no_meta(tmp_path):
     reg = get_relation_registry(tmp_path)
     assert reg.is_valid("relates-to")
     assert len(reg.relation_names()) == CANONICAL_COUNT
+
+
+# ---------------------------------------------------------------------------
+# Inverses — every relation settles its reverse reading
+# ---------------------------------------------------------------------------
+
+def test_every_canonical_relation_names_an_inverse_or_is_symmetric():
+    reg = RelationRegistry.load(CANONICAL_PATH)
+    assert reg.inverse_problems() == []
+
+
+def test_reverse_of_reads_the_declared_inverse():
+    reg = RelationRegistry.load(CANONICAL_PATH)
+    assert reg.reverse_of("supersedes") == "superseded-by"
+    assert reg.reverse_of("superseded-by") == "supersedes"
+    assert reg.reverse_of("works-at") == "employs"
+
+
+def test_reverse_of_a_symmetric_relation_is_itself():
+    reg = RelationRegistry.load(CANONICAL_PATH)
+    for name in ("relates-to", "same-work-as", "contradicts"):
+        assert reg.reverse_of(name) == name
+
+
+def test_reverse_of_an_unknown_relation_is_none():
+    assert RelationRegistry.load(CANONICAL_PATH).reverse_of("no-such-relation") is None
+
+
+def _user_registry(tmp_path, body: str) -> RelationRegistry:
+    user_yaml = tmp_path / "user.yaml"
+    user_yaml.write_text("relations:\n" + body, encoding="utf-8")
+    return RelationRegistry.load(CANONICAL_PATH, user_yaml)
+
+
+def test_a_user_relation_with_neither_inverse_nor_symmetric_is_reported(tmp_path):
+    reg = _user_registry(tmp_path, "  - name: assigned-to\n    description: x\n")
+    assert [(n, c) for n, c, _ in reg.inverse_problems()] == [("assigned-to", "relation-no-inverse")]
+
+
+def test_a_symmetric_user_relation_is_not_reported(tmp_path):
+    reg = _user_registry(tmp_path, "  - name: friends-with\n    description: x\n    symmetric: true\n")
+    assert reg.inverse_problems() == []
+
+
+def test_an_inverse_that_does_not_name_back_is_reported(tmp_path):
+    reg = _user_registry(tmp_path, "  - name: blocks\n    description: x\n    inverse_of: depends-on\n")
+    codes = {(n, c) for n, c, _ in reg.inverse_problems()}
+    assert ("blocks", "relation-inverse-asymmetric") in codes
+
+
+def test_an_inverse_naming_an_undefined_relation_is_reported(tmp_path):
+    reg = _user_registry(tmp_path, "  - name: blocks\n    description: x\n    inverse_of: nothing\n")
+    codes = {(n, c) for n, c, _ in reg.inverse_problems()}
+    assert ("blocks", "relation-inverse-unknown") in codes

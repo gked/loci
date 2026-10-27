@@ -919,8 +919,9 @@ def list_items(type: str = None) -> dict:
     return result
 
 
-def _append_yaml_entry(path: Path, list_key: str, entry: dict) -> None:
-    """Append an entry to a YAML list file, preserving the comment header.
+def _rewrite_yaml_entries(path: Path, list_key: str, change) -> None:
+    """Rewrite a YAML list file, preserving the comment header.
+    `change` receives the entry list and returns the new one.
     Assumes all leading comment/blank lines form the header; inline comments are not preserved."""
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
@@ -932,8 +933,7 @@ def _append_yaml_entry(path: Path, list_key: str, entry: dict) -> None:
             break
     header = "".join(lines[:header_end])
     data = yaml.safe_load(text) or {list_key: []}
-    entries = list(data.get(list_key) or [])
-    entries.append(entry)
+    entries = change(list(data.get(list_key) or []))
     dumped = yaml.dump(
         {list_key: entries},
         default_flow_style=False,
@@ -941,6 +941,11 @@ def _append_yaml_entry(path: Path, list_key: str, entry: dict) -> None:
         sort_keys=False,
     )
     path.write_text(header + dumped, encoding="utf-8")
+
+
+def _append_yaml_entry(path: Path, list_key: str, entry: dict) -> None:
+    """Append an entry to a YAML list file, preserving the comment header."""
+    _rewrite_yaml_entries(path, list_key, lambda entries: entries + [entry])
 
 
 def define_type(
@@ -987,17 +992,24 @@ def define_relation(
     description: str,
     group: str = "",
     inverse_of: str = None,
+    symmetric: bool = False,
 ) -> dict:
     """
     Validate and append a new user-defined relation to relation-dictionary-user.yaml.
+    A relation must name an inverse or be symmetric (lint checks this). When inverse_of
+    names a user relation that has neither, that relation is updated to name this one back.
     Returns {"defined": True, "name": str, "warnings": [...]} on success,
     or {"defined": False, "errors": [...], "warnings": [...]} on failure.
     """
     from loci.tools.relation_registry import reset_relation_registry
     vault_root = _vault_root()
-    result = get_relation_registry(vault_root).validate_user_relation(
+    registry = get_relation_registry(vault_root)
+    result = registry.validate_user_relation(
         name, group=group, description=description, inverse_of=inverse_of
     )
+    if symmetric and inverse_of:
+        result["errors"].append("a relation cannot be both 'symmetric' and have 'inverse_of'")
+        result["valid"] = False
     if not result["valid"]:
         return {"defined": False, "errors": result["errors"], "warnings": result["warnings"]}
 
@@ -1010,8 +1022,26 @@ def define_relation(
         entry["group"] = group
     if inverse_of:
         entry["inverse_of"] = inverse_of
+    if symmetric:
+        entry["symmetric"] = True
 
-    _append_yaml_entry(user_path, "relations", entry)
+    # Name this relation on its inverse when that is a user relation with no inverse yet.
+    other = registry.get(inverse_of) if inverse_of else None
+    back_ref = (
+        other is not None
+        and not other.inverse_of
+        and not other.symmetric
+        and not registry.is_canonical(inverse_of)
+    )
+
+    def add_entry(entries: list) -> list:
+        if back_ref:
+            for e in entries:
+                if e.get("name") == inverse_of:
+                    e["inverse_of"] = name
+        return entries + [entry]
+
+    _rewrite_yaml_entries(user_path, "relations", add_entry)
     reset_relation_registry()
     return {"defined": True, "name": name, "warnings": result["warnings"]}
 

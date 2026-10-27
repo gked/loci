@@ -364,3 +364,39 @@ def test_subtype_fields_parsed_from_yaml(tmp_path):
     assert "book" in asset.subtype_fields
     enums = asset.enum_constraints(subtype="book")
     assert enums["genre"] == {"fiction", "non-fiction"}
+
+
+# ---------------------------------------------------------------------------
+# base_fields and is_canonical
+# ---------------------------------------------------------------------------
+
+def test_base_fields_come_from_the_ontology_file():
+    registry = TypeRegistry.load(_canonical_ontology())
+    declared = yaml.safe_load(_canonical_ontology().read_text(encoding="utf-8"))["base_fields"]
+    assert registry.base_required == declared["required"]
+    assert registry.base_optional == declared["optional"]
+    assert "uid" in registry.base_required
+
+
+def test_base_fields_follow_the_file_not_a_hardcoded_list(tmp_path):
+    path = tmp_path / "ontology.yaml"
+    _write_ontology(path, [{"name": "note", "extends": None, "description": "n"}],
+                    base_fields={"required": ["uid", "colour"], "optional": []})
+    assert TypeRegistry.load(path).base_required == ["uid", "colour"]
+
+
+def test_a_vault_copy_without_base_fields_falls_back_to_the_packaged_list(tmp_path):
+    path = tmp_path / "ontology.yaml"
+    _write_ontology(path, [{"name": "note", "extends": None, "description": "n"}])
+    registry = TypeRegistry.load(path)
+    assert "uid" in registry.base_required
+    assert registry.base_required == TypeRegistry.load(_canonical_ontology()).base_required
+
+
+def test_is_canonical_means_defined_in_the_canonical_file(tmp_path):
+    user_file = tmp_path / "ontology-user.yaml"
+    _write_ontology(user_file, [{"name": "recipe", "extends": "procedure", "description": "r"}])
+    registry = TypeRegistry.load(_canonical_ontology(), user_file)
+    assert registry.is_canonical("procedure")
+    assert not registry.is_canonical("recipe")
+    assert not registry.is_canonical("no-such-type")

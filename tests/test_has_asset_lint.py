@@ -186,6 +186,16 @@ def test_variant_empty_locations(tmp_path, registry, relation_registry, scheme_r
     assert "has-asset-missing-locations" in _codes(issues)
 
 
+def test_variant_mapping_locations_is_invalid_not_missing(tmp_path, registry, relation_registry, scheme_reg):
+    for locations in ({}, {"scheme": "local"}):
+        fm = _base_doc()
+        fm["has_asset"] = [{"format": "pdf", "locations": locations}]
+        p = _write(tmp_path, "f.md", fm)
+        issues = lint_file(p, ALL_UIDS, registry, relation_registry, scheme_reg)
+        assert "has-asset-invalid-locations" in _codes(issues)
+        assert "has-asset-missing-locations" not in _codes(issues)
+
+
 def test_location_missing_scheme(tmp_path, registry, relation_registry, scheme_reg):
     fm = _base_doc()
     fm["has_asset"] = [{"format": "pdf", "locations": [{"path": "assets/x.pdf"}]}]

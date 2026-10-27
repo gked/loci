@@ -130,7 +130,8 @@ canonical type it extends, confirm the description, and call
 
 **User-defined relations:** if the relation name is in neither dictionary, confirm the
 description (optionally a group and inverse) and call `loci__define_relation(name=, description=)`
-with `group` / `inverse_of` if given. Use it immediately on success; treat warnings as
+with `group` / `inverse_of` if given. Every relation needs an inverse or `symmetric=true`
+(its own inverse); lint warns otherwise. Use it immediately on success; treat warnings as
 informational.
 
 **Language and aliases:**
@@ -232,7 +233,8 @@ Every save ends here, whichever path it took.
    Type: <type>
    Links: <count>
    ```
-2. Surface anything the tools returned that the user should know — `body_warnings`, lint notices,
+2. Surface anything the tools returned that the user should know — `body_warnings`,
+   `relation_warnings`, `has_asset_warnings`, `field_warnings` (from a patch), lint notices,
    a `_notice` deferred from Step 0 — in one line each. Don't act on them unasked.
 3. `tag_warnings` is the exception: the write went through, but a tag has a better home — it
    names a project, entity, or topic (should be a relation) or repeats the node's own type or

@@ -148,3 +148,65 @@ def reset_scheme_registry() -> None:
     global _registry, _registry_vault
     _registry = None
     _registry_vault = None
+
+
+# ---------------------------------------------------------------------------
+# has_asset validation
+# ---------------------------------------------------------------------------
+
+def has_asset_issues(
+    has_asset,
+    scheme_registry: Optional["SchemeRegistry"] = None,
+) -> list[tuple[str, str, str]]:
+    """Check a node's `has_asset` value, returning (severity, code, message) triples.
+
+    One definition for every caller: lint_vault reports these, write_item blocks
+    on the errors, and patch_item returns them as warnings. The legacy boolean
+    `true` is accepted and says nothing.
+    """
+    issues: list[tuple[str, str, str]] = []
+    if has_asset is None or isinstance(has_asset, bool):
+        return issues
+    if not isinstance(has_asset, list):
+        issues.append(("warning", "has-asset-unexpected-type",
+            f"has_asset should be a list or legacy boolean true (got {type(has_asset).__name__})"))
+        return issues
+    for i, variant in enumerate(has_asset):
+        if not isinstance(variant, dict):
+            issues.append(("error", "has-asset-invalid-variant",
+                f"has_asset[{i}] must be a mapping (got {type(variant).__name__})"))
+            continue
+        if not variant.get("format"):
+            issues.append(("error", "has-asset-missing-format",
+                f"has_asset[{i}] is missing required 'format' field"))
+        locations = variant.get("locations")
+        if locations is None or locations == []:
+            issues.append(("error", "has-asset-missing-locations",
+                f"has_asset[{i}] must have at least one location"))
+            continue
+        if not isinstance(locations, list):
+            issues.append(("error", "has-asset-invalid-locations",
+                f"has_asset[{i}].locations must be a list"))
+            continue
+        for j, loc in enumerate(locations):
+            if not isinstance(loc, dict):
+                issues.append(("error", "has-asset-invalid-location",
+                    f"has_asset[{i}].locations[{j}] must be a mapping"))
+                continue
+            scheme = loc.get("scheme")
+            if not scheme:
+                issues.append(("error", "has-asset-missing-scheme",
+                    f"has_asset[{i}].locations[{j}] is missing 'scheme'"))
+                continue
+            if scheme_registry is None:
+                continue
+            if not scheme_registry.is_valid(scheme):
+                issues.append(("error", "has-asset-unknown-scheme",
+                    f"has_asset[{i}].locations[{j}] uses unknown scheme '{scheme}'"))
+                continue
+            for req_field in scheme_registry.get(scheme).required_fields:
+                if req_field not in loc:
+                    issues.append(("error", "has-asset-missing-scheme-field",
+                        f"has_asset[{i}].locations[{j}] scheme '{scheme}' "
+                        f"requires field '{req_field}'"))
+    return issues

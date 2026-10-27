@@ -60,29 +60,62 @@ relations:
     description: >
       This item was derived from or builds directly on another (a note
       summarising an article; a draft based on a source).
+    inverse_of: basis-of
+
+  - name: basis-of
+    group: provenance-derivation
+    description: >
+      Inverse of is-based-on; other nodes were derived from or build
+      directly on this one.
+    inverse_of: is-based-on
 
   - name: same-work-as
     group: provenance-derivation
     description: >
       Both nodes are different manifestations of the same underlying work
       (preprint + published version, original + translation).
+    symmetric: true
 
   - name: supersedes
     group: provenance-derivation
     description: >
       This item replaces or updates an older node; the older node remains
       but is deprecated.
+    inverse_of: superseded-by
+
+  - name: superseded-by
+    group: provenance-derivation
+    description: >
+      Inverse of supersedes; a newer node has replaced this one, which
+      remains but is deprecated.
+    inverse_of: supersedes
 
   - name: version-of
     group: provenance-derivation
     description: >
       This item is a revision or variant of another without fully replacing it.
+    inverse_of: has-version
+
+  - name: has-version
+    group: provenance-derivation
+    description: >
+      Inverse of version-of; the linked node is a revision or variant of
+      this one.
+    inverse_of: version-of
 
   - name: implements
     group: provenance-derivation
     description: >
       This item is a concrete implementation of a design, specification, or
       plan described in the linked node.
+    inverse_of: implemented-by
+
+  - name: implemented-by
+    group: provenance-derivation
+    description: >
+      Inverse of implements; the linked node is a concrete implementation of
+      the design, specification, or plan described here.
+    inverse_of: implements
 
   # Semantic
 
@@ -91,32 +124,72 @@ relations:
     description: >
       This node is primarily about another node (especially: article or
       note → topic node).
+    inverse_of: subject-of
+
+  - name: subject-of
+    group: semantic
+    description: >
+      Inverse of about; the linked node is primarily about this one (a topic
+      node's articles and notes).
+    inverse_of: about
 
   - name: mentions
     group: semantic
     description: >
       This node references another in passing, without being primarily about
       it; lighter than about.
+    inverse_of: mentioned-in
+
+  - name: mentioned-in
+    group: semantic
+    description: >
+      Inverse of mentions; the linked node refers to this one in passing.
+    inverse_of: mentions
 
   - name: influences
     group: semantic
     description: >
       One node shapes, informs, or has affected the direction of another.
+    inverse_of: influenced-by
+
+  - name: influenced-by
+    group: semantic
+    description: >
+      Inverse of influences; the linked node shaped or affected the
+      direction of this one.
+    inverse_of: influences
 
   - name: supports
     group: semantic
     description: >
       Provides evidence, reasoning, or examples for a claim in another node.
+    inverse_of: supported-by
+
+  - name: supported-by
+    group: semantic
+    description: >
+      Inverse of supports; the linked node provides evidence, reasoning, or
+      examples for a claim here.
+    inverse_of: supports
 
   - name: contradicts
     group: semantic
     description: >
       Challenges, refutes, or conflicts with the content of another node.
+    symmetric: true
 
   - name: inspired-by
     group: semantic
     description: >
       Conceptually sparked by another node, but not a direct derivation.
+    inverse_of: inspires
+
+  - name: inspires
+    group: semantic
+    description: >
+      Inverse of inspired-by; this node conceptually sparked the linked
+      node, without a direct derivation.
+    inverse_of: inspired-by
 
   - name: informs
     group: semantic
@@ -137,18 +210,42 @@ relations:
     description: >
       This node explicitly cites or links to the linked node as a source or
       further reading; stronger than mentions, does not imply derivation.
+    inverse_of: referenced-by
+
+  - name: referenced-by
+    group: semantic
+    description: >
+      Inverse of references; the linked node cites or links to this one as a
+      source or further reading.
+    inverse_of: references
 
   - name: involves
     group: semantic
     description: >
       This node (typically a conversation, event, or project) includes or
       concerns the linked entity or node as a participant or subject.
+    inverse_of: involved-in
+
+  - name: involved-in
+    group: semantic
+    description: >
+      Inverse of involves; this node (typically an entity) is a participant
+      in or subject of the linked conversation, event, or project.
+    inverse_of: involves
 
   - name: instance-of
     group: semantic
     description: >
       This node is a specific occurrence or example of the concept, type, or
       template described in the linked node.
+    inverse_of: has-instance
+
+  - name: has-instance
+    group: semantic
+    description: >
+      Inverse of instance-of; the linked node is a specific occurrence or
+      example of the concept, type, or template described here.
+    inverse_of: instance-of
 
   - name: used-in
     group: semantic
@@ -171,12 +268,28 @@ relations:
     description: >
       This entity node is affiliated with or employed by the linked
       organisation or project node.
+    inverse_of: employs
+
+  - name: employs
+    group: entity
+    description: >
+      Inverse of works-at; the linked entity is affiliated with or employed
+      by this organisation or project node.
+    inverse_of: works-at
 
   - name: follows
     group: entity
     description: >
       This entity node follows the linked person or organisation
       (social or professional following).
+    inverse_of: followed-by
+
+  - name: followed-by
+    group: entity
+    description: >
+      Inverse of follows; the linked person or organisation follows this
+      entity node.
+    inverse_of: follows
 
   # Generic
 
@@ -184,3 +297,5 @@ relations:
     group: generic
     description: >
       Unspecified bidirectional connection; use only when no other type fits.
+    symmetric: true
+

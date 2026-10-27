@@ -495,3 +495,39 @@ def test_log_invalid_log_status(tmp_path, registry):
     p = _write(tmp_path, "log.md", fm)
     issues = lint_file(p, {"aabb1122", "deadbeef"}, registry)
     assert "invalid-enum" in _codes(issues)
+
+
+# ---------------------------------------------------------------------------
+# Relation vocabulary and base fields
+# ---------------------------------------------------------------------------
+
+def test_lint_vault_warns_about_a_user_relation_with_no_inverse(tmp_vault):
+    meta = tmp_vault / "meta"
+    meta.mkdir(exist_ok=True)
+    # The user file is only read next to a vault copy of the canonical one.
+    (meta / "relation-dictionary.yaml").write_text(
+        (REFERENCES_DIR / "relation-dictionary.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+    (meta / "relation-dictionary-user.yaml").write_text(
+        "relations:\n  - name: assigned-to\n    description: x\n", encoding="utf-8")
+    from loci.tools.relation_registry import reset_relation_registry
+    reset_relation_registry()
+
+    result = lint_vault(tmp_vault)
+
+    hits = [w for w in result["warnings"] if w["code"] == "relation-no-inverse"]
+    assert [w["path"] for w in hits] == ["meta/relation-dictionary-user.yaml"]
+    assert "assigned-to" in hits[0]["message"]
+    reset_relation_registry()
+
+
+def test_lint_vault_is_quiet_about_the_canonical_relations(tmp_vault):
+    result = lint_vault(tmp_vault)
+    assert not [w for w in result["warnings"] if w["code"].startswith("relation-")]
+
+
+def test_missing_base_field_is_read_from_the_registry(registry, relation_registry, tmp_path):
+    fm = _valid_task()
+    del fm["domains"]
+    path = _write(tmp_path, "t.md", fm)
+    issues = lint_file(path, {fm["uid"]}, registry, relation_registry)
+    assert any(i.code == "missing-field" and "'domains'" in i.message for i in issues)

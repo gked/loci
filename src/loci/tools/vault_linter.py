@@ -39,17 +39,8 @@ from loci.tools.vault_init import NOT_CONFIGURED_MESSAGE, load_config
 from loci.tools.frontmatter import split_frontmatter
 from loci.tools.type_registry import TypeRegistry, get_registry, REFERENCES_DIR
 from loci.tools.relation_registry import RelationRegistry, get_relation_registry
-from loci.tools.scheme_registry import SchemeRegistry, get_scheme_registry
+from loci.tools.scheme_registry import SchemeRegistry, get_scheme_registry, has_asset_issues
 from loci.tools import tag_hygiene
-
-BASE_REQUIRED = [
-    "uid", "type", "title", "author",
-    "state",
-    "created_at", "updated_at",
-    "archived_at",
-    "tags", "domains", "summary",
-    "relations", "references",
-]
 
 # TODO: derive BASE_STATE_VALUES from ontology.yaml once the loader supports enum extraction
 BASE_STATE_VALUES = {"active", "archived"}
@@ -128,7 +119,7 @@ def lint_file(
             f"'uid' value '{uid}' is not 8-character lowercase hex"))
 
     # required base fields — presence check only (some fields like archived_at are validly null)
-    for f in BASE_REQUIRED:
+    for f in registry.base_required:
         if f == "uid":
             continue  # already checked above
         if f not in fm:
@@ -186,50 +177,9 @@ def lint_file(
     if not summary or not str(summary).strip():
         issues.append(LintIssue(name, "warning", "empty-summary", "Summary is empty"))
 
-    # has_asset structure — only validate when it's the new list form
-    has_asset = fm.get("has_asset")
-    if has_asset is not None and not isinstance(has_asset, (bool, list)):
-        issues.append(LintIssue(name, "warning", "has-asset-unexpected-type",
-            f"has_asset should be a list or legacy boolean true (got {type(has_asset).__name__})"))
-    if isinstance(has_asset, list):
-        for i, variant in enumerate(has_asset):
-            if not isinstance(variant, dict):
-                issues.append(LintIssue(name, "error", "has-asset-invalid-variant",
-                    f"has_asset[{i}] must be a mapping (got {type(variant).__name__})"))
-                continue
-            if not variant.get("format"):
-                issues.append(LintIssue(name, "error", "has-asset-missing-format",
-                    f"has_asset[{i}] is missing required 'format' field"))
-            locations = variant.get("locations")
-            if not locations:
-                issues.append(LintIssue(name, "error", "has-asset-missing-locations",
-                    f"has_asset[{i}] must have at least one location"))
-                continue
-            if not isinstance(locations, list):
-                issues.append(LintIssue(name, "error", "has-asset-invalid-locations",
-                    f"has_asset[{i}].locations must be a list"))
-                continue
-            for j, loc in enumerate(locations):
-                if not isinstance(loc, dict):
-                    issues.append(LintIssue(name, "error", "has-asset-invalid-location",
-                        f"has_asset[{i}].locations[{j}] must be a mapping"))
-                    continue
-                scheme = loc.get("scheme")
-                if not scheme:
-                    issues.append(LintIssue(name, "error", "has-asset-missing-scheme",
-                        f"has_asset[{i}].locations[{j}] is missing 'scheme'"))
-                    continue
-                if scheme_registry and not scheme_registry.is_valid(scheme):
-                    issues.append(LintIssue(name, "error", "has-asset-unknown-scheme",
-                        f"has_asset[{i}].locations[{j}] uses unknown scheme '{scheme}'"))
-                    continue
-                if scheme_registry:
-                    scheme_def = scheme_registry.get(scheme)
-                    for req_field in scheme_def.required_fields:
-                        if req_field not in loc:
-                            issues.append(LintIssue(name, "error", "has-asset-missing-scheme-field",
-                                f"has_asset[{i}].locations[{j}] scheme '{scheme}' "
-                                f"requires field '{req_field}'"))
+    # has_asset structure — the legacy boolean is accepted, the list form is checked
+    for severity, code, message in has_asset_issues(fm.get("has_asset"), scheme_registry):
+        issues.append(LintIssue(name, severity, code, message))
 
     return issues
 
@@ -294,6 +244,12 @@ def lint_vault(vault_root: Path) -> dict:
     for group in near_dupes:
         all_issues.append(LintIssue("(vault)", "warning", "tag-near-duplicate",
             f"tags {group} look like spellings of one tag — if so, keep '{group[0]}' and rename the rest"))
+
+    # Pass 4: the relation vocabulary itself. A relation with no settled
+    # reverse cannot be read from the other end of its edge.
+    for rel_name, code, message in relation_registry.inverse_problems():
+        source = "relation-dictionary.yaml" if relation_registry.is_canonical(rel_name) else "relation-dictionary-user.yaml"
+        all_issues.append(LintIssue(f"meta/{source}", "warning", code, message))
 
     errors = [i for i in all_issues if i.severity == "error"]
     warnings = [i for i in all_issues if i.severity == "warning"]

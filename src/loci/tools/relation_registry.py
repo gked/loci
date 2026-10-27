@@ -34,6 +34,7 @@ class RelationDef:
     description: str
     group: str = ""
     inverse_of: Optional[str] = None  # name of the inverse relation, if any
+    symmetric: bool = False           # its own inverse: A relates B means B relates A
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +95,7 @@ class RelationRegistry:
             description=entry.get("description", "").strip(),
             group=entry.get("group", ""),
             inverse_of=entry.get("inverse_of"),
+            symmetric=bool(entry.get("symmetric", False)),
         )
 
     # ------------------------------------------------------------------
@@ -111,6 +113,39 @@ class RelationRegistry:
     def is_canonical(self, name: str) -> bool:
         """True if name is a canonical (non-user-defined) relation."""
         return name in self._relations and name not in self._user_names()
+
+    def reverse_of(self, name: str) -> Optional[str]:
+        """The relation name an edge reads as from its target's side: the declared
+        inverse, the relation itself when symmetric, else None."""
+        rd = self._relations.get(name)
+        if rd is None:
+            return None
+        return name if rd.symmetric else rd.inverse_of
+
+    def inverse_problems(self) -> list[tuple[str, str, str]]:
+        """(relation, code, message) for each relation whose reverse is not settled.
+
+        A relation must name an inverse or declare itself symmetric, and a named
+        inverse must exist and name it back. Edges are stored in one direction
+        only, so the reverse reading is only derivable when this holds.
+        """
+        problems: list[tuple[str, str, str]] = []
+        for name, rd in sorted(self._relations.items()):
+            if rd.symmetric:
+                continue
+            if not rd.inverse_of:
+                problems.append((name, "relation-no-inverse",
+                    f"relation '{name}' declares neither inverse_of nor symmetric: true"))
+                continue
+            other = self._relations.get(rd.inverse_of)
+            if other is None:
+                problems.append((name, "relation-inverse-unknown",
+                    f"relation '{name}' names inverse_of '{rd.inverse_of}', which is not defined"))
+            elif other.inverse_of != name:
+                problems.append((name, "relation-inverse-asymmetric",
+                    f"relation '{name}' names inverse_of '{rd.inverse_of}', "
+                    f"which does not name '{name}' back"))
+        return problems
 
     def is_valid(self, name: str) -> bool:
         """True if name is a recognised relation type (canonical or user-defined)."""
@@ -151,7 +186,12 @@ class RelationRegistry:
                 )
             else:
                 inv_def = self._relations[inverse_of]
-                if inv_def.inverse_of and inv_def.inverse_of != name:
+                if inv_def.symmetric:
+                    warnings.append(
+                        f"'{inverse_of}' is symmetric — it is its own inverse and cannot "
+                        f"name '{name}' back; set symmetric instead of inverse_of"
+                    )
+                elif inv_def.inverse_of and inv_def.inverse_of != name:
                     warnings.append(
                         f"'{inverse_of}' declares inverse_of='{inv_def.inverse_of}', "
                         f"not '{name}' — inverse pair is asymmetric"

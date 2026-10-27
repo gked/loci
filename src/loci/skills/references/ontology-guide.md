@@ -147,9 +147,13 @@ Prefer the most specific type that's true. `relates-to` everywhere gives you a
 graph that can't answer questions; `contradicts` and `supersedes` give you one
 that can.
 
-Many relations come in inverse pairs (`belongs-to` / `parent-of`). One
-exception worth knowing: for `depends-on` / `enables`, record only one
-direction — put `depends-on` on the note that's blocked.
+Every relation has a reverse reading: an inverse (`belongs-to` / `parent-of`,
+`supersedes` / `superseded-by`, `about` / `subject-of`) or, for a few, itself
+(`relates-to`, `contradicts`, `same-work-as` are symmetric). Record only one
+direction. The node at the other end sees the edge as incoming, so there is no
+second edge to write — for `depends-on` / `enables`, put `depends-on` on the
+note that's blocked. `lint_vault` warns about a relation of yours that names no
+inverse and is not symmetric.
 
 ### 3. Schemes — where a file actually lives
 

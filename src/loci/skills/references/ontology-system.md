@@ -108,6 +108,14 @@ collision with a canonical one. `validate_user_relation` additionally *warns*
 (does not reject) when `inverse_of` names an unknown relation or when the named
 inverse points somewhere else, i.e. an asymmetric pair.
 
+Every canonical relation either names an `inverse_of` (and its inverse names it
+back) or sets `symmetric: true`. `RelationRegistry.inverse_problems()` lists the
+ones that do not, user relations included, and `lint_vault` reports them as
+`relation-no-inverse`, `relation-inverse-unknown` and
+`relation-inverse-asymmetric` against `meta/relation-dictionary*.yaml`.
+`reverse_of(name)` answers the reverse reading. Edges are stored in one
+direction only, and no code writes or presents the reverse edge yet.
+
 ---
 
 ## 4. Loading, singletons, and the references fallback
@@ -158,8 +166,8 @@ Three enforcement points, with deliberately different strictness:
 
 | Point | Module | Types | Relations | Schemes |
 |---|---|---|---|---|
-| `write_vault` | `tools/write_file.py::write_item` | **blocks** — unknown type raises; missing required field or bad enum returns `{"errors": [...]}` | **blocks** — returns `{"errors": [...]}` | *not yet* (TODO, Phase 5) |
-| `patch_vault` | `tools/write_file.py::patch_item` | not re-validated | **warns** — `relation_warnings` in the result | *not yet* (TODO, Phase 5) |
+| `write_vault` | `tools/write_file.py::write_item` | **blocks** — unknown type raises; missing required field or bad enum returns `{"errors": [...]}` | **blocks** — returns `{"errors": [...]}` | **blocks** — an unknown scheme or a missing scheme field returns `{"errors": [...]}` |
+| `patch_vault` | `tools/write_file.py::patch_item` | **warns** — `field_warnings` for a required field or enum the patch broke (the whole node when `type` or `subtype` changed) | **warns** — `relation_warnings` in the result | **warns** — `has_asset_warnings` in the result |
 | `lint_vault` | `tools/vault_linter.py::lint_file` | **error** on unknown type, missing required field, bad enum | **warning** on unknown relation type, dangling uid | **error** on missing/unknown scheme and missing scheme-required fields |
 
 The philosophy: creation is strict, mutation is permissive, and the linter is
@@ -187,12 +195,13 @@ A node's legal frontmatter is the union of three layers:
    when the node's `subtype` matches. Currently only `asset/book` uses this, and
    it also carries a `body_template`.
 
-⚠️ **Base fields are declared in `ontology.yaml` but nothing loads them.**
-`TypeRegistry` only parses the `types:` key. The base list is duplicated as
-`BASE_REQUIRED` in `vault_linter.py` and again as the literal frontmatter dict
-in `write_file.py::write_item`, and `BASE_STATE_VALUES` is hardcoded in the
-linter with a standing TODO. **Changing `base_fields:` in the YAML alone changes
-nothing at runtime** — you must edit all three places. Same for `state`'s enum.
+**Base fields** are loaded from `base_fields:` in `ontology.yaml` and exposed as
+`TypeRegistry.base_required` / `base_optional`. The linter checks every name in
+`base_required`, and `write_item` writes each one it does not set itself as
+`null`. A vault copy of the file that predates `base_fields:` falls back to the
+packaged list. **Still hardcoded:** `write_item`'s literal frontmatter dict (it
+supplies the values) and `BASE_STATE_VALUES` in the linter, so a new base field
+needs a value there, and a change to `state`'s enum needs both edited.
 
 ---
 
@@ -261,14 +270,15 @@ Recorded so the next person doesn't rediscover them the hard way.
 - **The UI's type list is hardcoded.** `app/src/constants.js` `TYPES` does not
   come from the ontology. The `log` type is in `ontology.yaml` but not in
   `TYPES`. Any type added to one and not the other drifts.
-- **`has_asset` is not validated on write or patch.** Both paths carry an
-  explicit `TODO Phase 5` comment; only `lint_vault` checks scheme validity
-  today. A node with an unknown scheme can be written and only surfaces at lint.
-- **`patch_item` does not re-validate type fields.** You can patch a node into
-  violating its own type's required fields; the linter is the only backstop.
-- **`is_canonical` differs between registries.** `TypeRegistry.is_canonical`
-  means `extends is None`; `RelationRegistry.is_canonical` means "came from the
-  canonical file". They are not the same predicate.
+- **`has_asset` checks live in one place.** `scheme_registry.has_asset_issues`
+  returns (severity, code, message) triples; the linter reports them,
+  `write_item` blocks on the errors, `patch_item` returns them as warnings.
+- **`patch_item` reports only what the patch broke.** `field_warnings` covers the
+  fields in `updates`, or the whole node when `type` or `subtype` changed. A gap
+  that was already there is the linter's to report, so an unrelated patch stays
+  quiet.
+- **`is_canonical` means the same in both registries:** the name came from the
+  canonical file, not a user one.
 - **`yaml.safe_load` eats datetime strings.** `patch_item` explicitly converts
   `datetime` objects back to `YYYY-MM-DDTHH:MM:SSZ` strings before dumping.
   Any new code that round-trips frontmatter must do the same or it will rewrite

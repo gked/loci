@@ -21,6 +21,7 @@ continues with whatever is valid.
 """
 
 import re
+from functools import lru_cache
 import sys
 import yaml
 from dataclasses import dataclass, field
@@ -75,9 +76,20 @@ class TypeDef:
 # Registry
 # ---------------------------------------------------------------------------
 
+@lru_cache(maxsize=1)
+def _packaged_base_fields() -> dict:
+    packaged = yaml.safe_load(
+        (REFERENCES_DIR / "ontology.yaml").read_text(encoding="utf-8")
+    ) or {}
+    return packaged.get("base_fields") or {}
+
+
 class TypeRegistry:
     def __init__(self):
         self._types: dict[str, TypeDef] = {}
+        self._canonical_names: set[str] = set()
+        self._base_required: list[str] = []
+        self._base_optional: list[str] = []
         self._warnings: list[str] = []
 
     # ------------------------------------------------------------------
@@ -101,6 +113,16 @@ class TypeRegistry:
         for entry in raw.get("types", []):
             td = self._parse_type(entry)
             self._types[td.name] = td
+            self._canonical_names.add(td.name)
+
+        base = raw.get("base_fields")
+        if not base and path != REFERENCES_DIR / "ontology.yaml":
+            # A vault copy from before base_fields existed: the packaged file
+            # is the source of truth for what every node carries.
+            base = _packaged_base_fields()
+        base = base or {}
+        self._base_required = [str(n) for n in (base.get("required") or [])]
+        self._base_optional = [str(n) for n in (base.get("optional") or [])]
 
     def _load_user(self, path: Path) -> None:
         canonical_names = set(self._types.keys())
@@ -198,8 +220,17 @@ class TypeRegistry:
         return self._types.get(name)
 
     def is_canonical(self, name: str) -> bool:
-        td = self._types.get(name)
-        return td is not None and td.extends is None
+        """True if name came from the canonical ontology file, not a user one."""
+        return name in self._canonical_names
+
+    @property
+    def base_required(self) -> list[str]:
+        """Frontmatter fields every node carries, from `base_fields:` in ontology.yaml."""
+        return list(self._base_required)
+
+    @property
+    def base_optional(self) -> list[str]:
+        return list(self._base_optional)
 
     @property
     def warnings(self) -> list[str]:
@@ -220,7 +251,7 @@ class TypeRegistry:
         Call this before writing to ontology-user.yaml.
         """
         errors: list[str] = []
-        canonical_names = {n for n, td in self._types.items() if td.extends is None}
+        canonical_names = set(self._canonical_names)
 
         name = (name or "").strip()
         if not name:

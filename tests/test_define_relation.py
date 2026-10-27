@@ -73,21 +73,32 @@ def test_define_relation_with_group(vault_with_meta):
 
 
 def test_define_relation_with_inverse_of_known(vault_with_meta):
-    """inverse_of pointing to an existing canonical relation — no warning."""
+    """inverse_of pointing to a user relation that has no inverse — no warning."""
     from loci import api
-    # "relates-to" is a canonical relation with no inverse_of — using it is valid
+    user_path = vault_with_meta / "meta" / "relation-dictionary-user.yaml"
+    api._append_yaml_entry(user_path, "relations", {"name": "has-assignee", "description": "Has."})
+    reset_relation_registry()
     result = api.define_relation(
         name="assigned-to",
         description="This task is assigned to the linked entity.",
-        inverse_of="relates-to",
+        inverse_of="has-assignee",
     )
     assert result["defined"] is True
-    # "relates-to" has no inverse_of, so no asymmetry warning
     assert result["warnings"] == []
 
-    raw = yaml.safe_load((vault_with_meta / "meta" / "relation-dictionary-user.yaml").read_text())
+    raw = yaml.safe_load(user_path.read_text())
     entry = next(r for r in raw["relations"] if r["name"] == "assigned-to")
-    assert entry["inverse_of"] == "relates-to"
+    assert entry["inverse_of"] == "has-assignee"
+
+
+def test_define_relation_inverse_of_symmetric_relation_gives_warning(vault_with_meta):
+    """A symmetric relation is its own inverse, so it cannot name a new relation back."""
+    from loci import api
+    result = api.define_relation(
+        name="assigned-to", description="Assigned.", inverse_of="relates-to"
+    )
+    assert result["defined"] is True
+    assert any("symmetric" in w for w in result["warnings"])
 
 
 def test_define_relation_inverse_of_unknown_gives_warning(vault_with_meta):
@@ -164,3 +175,58 @@ def test_define_relation_no_file_raises(tmp_path):
     finally:
         del os.environ["LOCI_VAULT_ROOT"]
         reset_relation_registry()
+
+
+# ---------------------------------------------------------------------------
+# symmetric and back-reference
+# ---------------------------------------------------------------------------
+
+def _user_relations(vault):
+    raw = yaml.safe_load((vault / "meta" / "relation-dictionary-user.yaml").read_text())
+    return {r["name"]: r for r in raw["relations"]}
+
+
+def test_define_relation_symmetric_is_written(vault_with_meta):
+    from loci import api
+    result = api.define_relation(
+        name="collaborates-with", description="Works with the linked entity.", symmetric=True
+    )
+    assert result["defined"] is True
+    assert _user_relations(vault_with_meta)["collaborates-with"]["symmetric"] is True
+
+
+def test_define_relation_symmetric_with_inverse_of_is_refused(vault_with_meta):
+    from loci import api
+    result = api.define_relation(
+        name="collaborates-with", description="Works with.", inverse_of="depends-on", symmetric=True
+    )
+    assert result["defined"] is False
+    assert any("symmetric" in e for e in result["errors"])
+    assert _user_relations(vault_with_meta) == {}
+
+
+def test_define_relation_names_itself_on_a_user_inverse(vault_with_meta):
+    """Defining B with inverse_of=A writes inverse_of=B onto A when A has no inverse."""
+    from loci import api
+    user_path = vault_with_meta / "meta" / "relation-dictionary-user.yaml"
+    api._append_yaml_entry(user_path, "relations", {"name": "assigned-to", "description": "Assigned."})
+    reset_relation_registry()
+
+    result = api.define_relation(
+        name="has-assignee", description="Has the linked assignee.", inverse_of="assigned-to"
+    )
+    assert result["defined"] is True
+    rels = _user_relations(vault_with_meta)
+    assert rels["assigned-to"]["inverse_of"] == "has-assignee"
+    assert rels["has-assignee"]["inverse_of"] == "assigned-to"
+
+    from loci.tools.relation_registry import get_relation_registry
+    assert get_relation_registry(vault_with_meta).inverse_problems() == []
+
+
+def test_define_relation_leaves_a_canonical_inverse_alone(vault_with_meta):
+    from loci import api
+    canonical = (vault_with_meta / "meta" / "relation-dictionary.yaml").read_text()
+    api.define_relation(name="needs", description="Needs.", inverse_of="depends-on")
+    assert (vault_with_meta / "meta" / "relation-dictionary.yaml").read_text() == canonical
+    assert "inverse_of" not in _user_relations(vault_with_meta).get("depends-on", {})
