@@ -271,7 +271,7 @@ def write_vault(
     anyway, and in the latter case call again with allow_duplicate=true.
 
     Args:
-        type: document | article | bookmark | conversation | project | task | event | entity | procedure | topic
+        type: document | article | bookmark | conversation | project | task | event | entity | procedure | skill | topic | asset | log
         title: Concise descriptive title
         body: Main content body (markdown)
         tags: 3-6 freeform lowercase hyphenated tags
@@ -560,13 +560,13 @@ def define_type(
 
     Rules enforced before writing:
       - name must not collide with any canonical or existing user type
-      - extends must name a canonical type (one level only — no extending user types)
+      - extends must name a canonical root type (not a user type, and not `skill`, which extends `procedure`)
       - all user-defined fields are optional; inherited fields cannot be redefined
       - field type must be one of: string | array | datetime | enum | boolean
 
     Args:
         name:        New type name (lowercase, hyphenated)
-        extends:     Canonical parent type (document, article, task, procedure, etc.)
+        extends:     Canonical root parent type (document, article, task, procedure, etc.)
         description: Short description of what this type represents
         fields:      Optional extra fields: [{name, type, values?}].
                      Omit 'values' for non-enum fields.

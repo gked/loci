@@ -31,7 +31,8 @@ A citable source means: a URL where it was published, an identifiable author, or
 → No: `document`
 
 **4. Is the content a structured sequence of steps with an expected outcome?**
-→ `procedure`
+→ An agent skill (a SKILL.md-style workflow with triggers or bundled resources): `skill`
+→ Any other process: `procedure`
 
 **5. Is the content about a real-world actor — a person, organization, or place?**
 → `entity` — set the `subtype` field (person | organization | place); do NOT add subtype as a tag
@@ -70,6 +71,7 @@ that type picks exactly one, and the linter rejects anything outside the list.
 | `entity` | `person` · `organization` · `place` |
 | `asset` | `book` · `video` · `music` · `podcast` · `presentation` · `visual` · `physical` |
 | `procedure` | none yet — use a tag for the category: #recipe, #workout, #protocol, #playbook, #tutorial |
+| `skill` | none (extends `procedure`) |
 | all others | none |
 
 **essay vs note** — the one fuzzy pair. An *essay* is written for a reader

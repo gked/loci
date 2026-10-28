@@ -60,7 +60,7 @@ there are only four sorts of something a note can stand for:
 | Kind | What it is | Types |
 |---|---|---|
 | **object** | Exists on its own, persists through time — a person, a company, a place, a copy you own | `entity`, `asset` |
-| **information** | Content *about* something, carried by text or a file — written by you or someone else | `document`, `article`, `bookmark`, `conversation`, `procedure`, `log` |
+| **information** | Content *about* something, carried by text or a file — written by you or someone else | `document`, `article`, `bookmark`, `conversation`, `procedure`, `skill`, `log` |
 | **occurrent** | Unfolds in time, has a start and an end — happened, or meant to happen | `event`, `task`, `project` |
 | **concept** | Has no place or time; exists only to be pointed at | `topic` |
 
@@ -87,7 +87,7 @@ The ontology is three separate lists, each doing one job.
 
 ### 1. Types — what a note *is*
 
-Every note has exactly one `type`. There are twelve:
+Every note has exactly one `type`. There are twelve base types, plus `skill`, which extends `procedure`:
 
 | Type | Use it for |
 |---|---|
@@ -100,6 +100,7 @@ Every note has exactly one `type`. There are twelve:
 | `event` | Something that happened, or will, at a point in time |
 | `entity` | A real-world actor — a person, an organisation, or a place |
 | `procedure` | A repeatable process with steps and an expected outcome |
+| `skill` | A reusable agent skill — a `procedure` with triggers and bundled resources |
 | `topic` | A hub for a subject area, so you can navigate *to* it |
 | `asset` | Something you own — a file, a physical object, or both |
 | `log` | A record of engaging with something over time — a reading, a course |
@@ -188,7 +189,7 @@ Regardless of type:
 | Field | Meaning |
 |---|---|
 | `uid` | 8-character hex identifier. Permanent. This is how links work. |
-| `type` | One of the twelve above |
+| `type` | One of the types above |
 | `title` | In the content's original language |
 | `author` | `self` for your own writing, otherwise the source's author |
 | `state` | `active` or `archived` — controls whether it shows up in searches |
@@ -303,9 +304,10 @@ and `cuisine` fields."* It'll validate and register it.
 
 Three rules constrain what you can define:
 
-1. **Your type must extend a canonical one.** No brand-new roots. This keeps the
-   hierarchy exactly one level deep, so every note remains recognisable as one
-   of the twelve base types.
+1. **Your type must extend a canonical root type.** No brand-new roots, and no
+   extending `skill` (itself an extension of `procedure`). This keeps the
+   hierarchy shallow, so every note remains recognisable as one of the twelve
+   base types.
 2. **The name must not collide** with a canonical type.
 3. **Additive only** — you can add fields, never redefine or remove inherited
    ones.

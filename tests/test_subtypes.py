@@ -283,6 +283,18 @@ def test_http_types_endpoint_picks_up_a_type_defined_by_another_process(tmp_vaul
     assert rows["procedure"] is None
 
 
+def test_http_types_endpoint_nests_the_canonical_skill_type_under_procedure(tmp_vault, monkeypatch):
+    from fastapi.testclient import TestClient
+    from loci import http_server
+
+    monkeypatch.setattr(http_server, "_API_TOKEN", "t")
+    monkeypatch.setattr(http_server, "_allowed_origins", lambda: [])
+    client = TestClient(http_server.app)
+    rows = {r["name"]: r["extends"] for r in client.get("/api/types", headers={"Authorization": "Bearer t"}).json()}
+    assert rows["skill"] == "procedure"
+    assert rows["procedure"] is None
+
+
 # ---------------------------------------------------------------------------
 # Migration script
 # ---------------------------------------------------------------------------

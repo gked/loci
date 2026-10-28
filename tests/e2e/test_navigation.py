@@ -147,3 +147,8 @@ def test_palette_result_opens_node(app_page):
     expect(app_page.locator("[data-testid='node-detail']")).to_have_attribute(
         "data-uid", vf.SEARCH_HIT_UID
     )
+
+
+def test_skill_node_detail_shows_its_latin_name_and_type(app_page):
+    detail = _open(app_page, vf.SKILL_UID)
+    expect(detail).to_contain_text("ars · skill")

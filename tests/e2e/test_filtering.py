@@ -41,7 +41,7 @@ def test_type_filter_all_restores_index(app_page):
 
 def test_every_type_count_matches(app_page):
     for node_type, expected in vf.TYPE_COUNTS.items():
-        if node_type == vf.USER_TYPE:
+        if node_type in (vf.USER_TYPE, vf.SKILL_TYPE):
             continue  # no top-bar chip: it lives in the rail (user-type specs below)
         app_page.locator(f"[data-testid='type-filter'][data-type='{node_type}']").click()
         expect(_rows(app_page)).to_have_count(expected)
@@ -49,7 +49,7 @@ def test_every_type_count_matches(app_page):
 
 def test_parent_type_view_includes_its_user_types_nodes(app_page):
     app_page.locator(f"[data-testid='type-filter'][data-type='{vf.USER_TYPE_PARENT}']").click()
-    expect(_rows(app_page)).to_have_count(vf.TYPE_COUNTS.get(vf.USER_TYPE_PARENT, 0) + vf.TYPE_COUNTS[vf.USER_TYPE])
+    expect(_rows(app_page)).to_have_count(vf.TYPE_COUNTS.get(vf.USER_TYPE_PARENT, 0) + vf.PARENT_VIEW_COUNT)
 
 
 def test_clicking_the_open_rail_type_clears_it(app_page):
@@ -271,9 +271,29 @@ def test_user_type_sits_under_its_parent_in_the_rail(app_page):
     expect(app_page.locator(USER_STRIP)).to_have_count(0)
 
 
+def test_canonical_skill_type_sits_under_procedure_in_the_rail(app_page):
+    # `skill` ships in the packaged ontology (extends procedure), so a fresh
+    # vault shows it with no user ontology entry at all. The overlay carries one
+    # skill node, so the chip reads 1.
+    expect(app_page.locator(f"[data-testid='type-filter'][data-type='{vf.SKILL_TYPE}']")).to_have_count(0)
+
+    app_page.locator(f"[data-testid='type-filter'][data-type='{vf.USER_TYPE_PARENT}']").click()
+    group = app_page.locator(f"[data-testid='rail-type-group'][data-type='{vf.USER_TYPE_PARENT}']")
+    chip = group.locator(f"[data-testid='usertype-filter'][data-usertype='{vf.SKILL_TYPE}']")
+    expect(chip).to_have_count(1)
+    expect(chip).to_have_attribute("data-count", "1")
+
+
+def test_skill_chip_narrows_the_parent_view_to_the_skill_node(app_page):
+    app_page.locator(f"[data-testid='type-filter'][data-type='{vf.USER_TYPE_PARENT}']").click()
+    app_page.locator(f"[data-testid='usertype-filter'][data-usertype='{vf.SKILL_TYPE}']").click()
+    expect(_rows(app_page)).to_have_count(1)
+    expect(app_page.locator(f"[data-testid='node-row'][data-uid='{vf.SKILL_UID}']")).to_have_count(1)
+
+
 def test_parent_type_view_includes_the_user_type_nodes(app_page):
     app_page.locator(f"[data-testid='type-filter'][data-type='{vf.USER_TYPE_PARENT}']").click()
-    expect(_rows(app_page)).to_have_count(1)
+    expect(_rows(app_page)).to_have_count(vf.PARENT_VIEW_COUNT)
     expect(app_page.locator(f"[data-testid='node-row'][data-uid='{vf.USER_TYPE_UID}']")).to_have_count(1)
 
 
@@ -297,4 +317,4 @@ def test_user_type_row_narrows_and_clears(app_page):
 
     chip.click()
     expect(chip).to_have_attribute("data-active", "false")
-    expect(_rows(app_page)).to_have_count(1)  # the parent view still has it
+    expect(_rows(app_page)).to_have_count(vf.PARENT_VIEW_COUNT)  # the parent view still has it

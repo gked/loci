@@ -10,11 +10,15 @@ Two files feed the registry:
   ontology.yaml        canonical types (reseeded on META_VERSION bumps)
   ontology-user.yaml   user-defined extensions (never reseeded)
 
+A canonical type is a root (`extends: null`) or extends a canonical root, as
+`skill` extends `procedure`; it inherits the root's fields.
+
 User type safety rules (enforced at load time):
-  1. extends must name a canonical type — no new roots, no extending user types
+  1. extends must name a canonical root — no new roots, no extending user
+     types, no extending a canonical type that is itself an extension
   2. name must not collide with any canonical type
   3. additive only — no redefining inherited field names
-  4. one level deep — automatically guaranteed by rule 1
+  4. one level below a root — guaranteed by rule 1
 
 Invalid user type definitions are skipped with a warning; the server
 continues with whatever is valid.
@@ -112,6 +116,17 @@ class TypeRegistry:
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for entry in raw.get("types", []):
             td = self._parse_type(entry)
+            if td.extends:
+                # A canonical extension inherits from a root listed above it.
+                parent = self._types.get(td.extends)
+                if parent is None or parent.extends:
+                    self._warnings.append(
+                        f"Canonical type '{td.name}' skipped: parent '{td.extends}' "
+                        f"is not a canonical root listed before it"
+                    )
+                    continue
+                td.required_fields = parent.required_fields + td.required_fields
+                td.optional_fields = parent.optional_fields + td.optional_fields
             self._types[td.name] = td
             self._canonical_names.add(td.name)
 
@@ -126,6 +141,7 @@ class TypeRegistry:
 
     def _load_user(self, path: Path) -> None:
         canonical_names = set(self._types.keys())
+        canonical_roots = {n for n in canonical_names if not self._types[n].extends}
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for entry in (raw.get("types") or []):
             name = entry.get("name", "").strip()
@@ -137,16 +153,16 @@ class TypeRegistry:
                     f"User type '{name}' skipped: 'extends' must name a canonical type, not null"
                 )
                 continue
-            if extends not in canonical_names:
+            if extends not in canonical_roots:
                 self._warnings.append(
-                    f"User type '{name}' skipped: parent '{extends}' is not a canonical type"
+                    f"User type '{name}' skipped: parent '{extends}' is not a canonical root type"
                 )
                 continue
 
             # Rule 2: no name collision with canonical
             if name in canonical_names:
                 self._warnings.append(
-                    f"User type '{name}' skipped: name collides with canonical type"
+                    f"User type '{name}' skipped: name collides with canonical type (rename it to keep its custom fields)"
                 )
                 continue
 
@@ -252,6 +268,7 @@ class TypeRegistry:
         """
         errors: list[str] = []
         canonical_names = set(self._canonical_names)
+        canonical_roots = {n for n in canonical_names if not self._types[n].extends}
 
         name = (name or "").strip()
         if not name:
@@ -264,10 +281,10 @@ class TypeRegistry:
 
         if not extends:
             errors.append("'extends' is required and must name a canonical type")
-        elif extends not in canonical_names:
+        elif extends not in canonical_roots:
             errors.append(
-                f"'{extends}' is not a canonical type. "
-                f"Valid parents: {sorted(canonical_names)}"
+                f"'{extends}' is not a canonical root type. "
+                f"Valid parents: {sorted(canonical_roots)}"
             )
 
         if name in canonical_names:

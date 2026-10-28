@@ -7,6 +7,7 @@ export const TYPES = [
   ["article", "#f4c430"],
   ["bookmark", "#c062b8"],
   ["procedure", "#ff6b8a"],
+  ["skill", "#c2456a"],
   ["topic", "#a4421f"],
   ["event", "#7a5cc1"],
   ["asset", "#5e7a8c"],

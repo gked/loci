@@ -39,12 +39,49 @@ def test_loads_canonical_types():
         assert expected in names
 
 
-def test_canonical_types_have_no_extends():
+# The canonical types that specialise a root rather than being one.
+CANONICAL_EXTENSIONS = {"skill": "procedure"}
+
+
+def test_canonical_types_are_roots_or_known_extensions():
     registry = TypeRegistry.load(_canonical_ontology())
     for name in registry.type_names():
         td = registry.get(name)
-        assert td.extends is None
+        assert td.extends == CANONICAL_EXTENSIONS.get(name)
         assert registry.is_canonical(name)
+    assert registry.warnings == []
+
+
+def test_skill_is_canonical_and_extends_procedure():
+    registry = TypeRegistry.load(_canonical_ontology())
+    skill = registry.get("skill")
+    assert skill.extends == "procedure"
+    assert registry.is_canonical("skill")
+
+
+def test_skill_inherits_procedure_fields():
+    registry = TypeRegistry.load(_canonical_ontology())
+    skill = registry.get("skill")
+    procedure = registry.get("procedure")
+    assert "steps" in skill.required_names()
+    assert {f.name for f in procedure.optional_fields} <= {f.name for f in skill.optional_fields}
+    assert {"triggers", "bundled_resources", "skill_version"} <= {f.name for f in skill.optional_fields}
+
+
+def test_procedure_does_not_gain_skill_fields():
+    registry = TypeRegistry.load(_canonical_ontology())
+    names = {f.name for f in registry.get("procedure").optional_fields}
+    assert "triggers" not in names
+
+
+def test_canonical_extension_of_unknown_parent_skipped(tmp_path):
+    canonical = tmp_path / "ontology.yaml"
+    _write_ontology(canonical, [
+        {"name": "orphan", "extends": "missing", "description": "No parent."},
+    ])
+    registry = TypeRegistry.load(canonical)
+    assert "orphan" not in registry.type_names()
+    assert any("orphan" in w for w in registry.warnings)
 
 
 def test_task_has_status_required():
@@ -226,6 +263,48 @@ def test_user_extending_user_type_skipped(tmp_path):
     assert "recipe" in registry.type_names()
     assert "fancy-recipe" not in registry.type_names()
     assert any("fancy-recipe" in w for w in registry.warnings)
+
+
+def test_user_extending_canonical_extension_skipped(tmp_path):
+    """`skill` is canonical but not a root; a user type may not nest beneath it."""
+    user_file = tmp_path / "ontology-user.yaml"
+    _write_ontology(user_file, [{
+        "name": "claude-skill",
+        "extends": "skill",
+        "description": "Level 2.",
+        "fields": {"optional": []}
+    }])
+    registry = TypeRegistry.load(_canonical_ontology(), user_file)
+    assert "claude-skill" not in registry.type_names()
+    assert any("claude-skill" in w for w in registry.warnings)
+
+
+def test_user_type_named_skill_skipped_with_collision_warning(tmp_path):
+    """A vault that still carries its own `skill` type gets a warning, not a crash."""
+    user_file = tmp_path / "ontology-user.yaml"
+    _write_ontology(user_file, [{
+        "name": "skill",
+        "extends": "procedure",
+        "description": "Old user copy.",
+        "fields": {"optional": [{"name": "triggers", "type": "array"}]}
+    }])
+    registry = TypeRegistry.load(_canonical_ontology(), user_file)
+    assert registry.is_canonical("skill")
+    assert any("skill" in w and "collides" in w for w in registry.warnings)
+
+
+def test_validate_user_type_rejects_extending_skill():
+    registry = TypeRegistry.load(_canonical_ontology())
+    result = registry.validate_user_type("claude-skill", "skill")
+    assert result["valid"] is False
+    assert any("canonical root" in e for e in result["errors"])
+
+
+def test_validate_user_type_rejects_name_skill():
+    registry = TypeRegistry.load(_canonical_ontology())
+    result = registry.validate_user_type("skill", "procedure")
+    assert result["valid"] is False
+    assert any("collides" in e for e in result["errors"])
 
 
 def test_missing_user_file_is_safe():

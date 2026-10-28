@@ -65,6 +65,7 @@ reads, so a URL passed anywhere else is not checked.**
 - `entity` → `person` | `organization` | `place`
 - `asset` → `book` | `video` | `music` | `podcast` | `presentation` | `visual` | `physical`
 - `procedure` → no subtype yet; tag the category: #recipe, #workout, #protocol, #playbook, #tutorial
+- `skill` → a reusable agent skill (extends `procedure`; no subtype). Use it, not `procedure`, for a SKILL.md-style workflow
 
 A subtype never encodes who it was with or which sphere it belongs to — that is an
 `involves` / `belongs-to` relation and `domains`. Before adding any tag, ask: does it name

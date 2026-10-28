@@ -28,14 +28,14 @@ with a clear diff.** Update these constants, then re-run. To recompute:
 """
 
 # Total nodes in the graph, including the implicit ghost.
-TOTAL_GRAPH_NODES = 33
+TOTAL_GRAPH_NODES = 34
 
-# Nodes with a file on disk (base 27 + 5 overlay).
-TOTAL_FILES = 32
+# Nodes with a file on disk (base 27 + 6 overlay).
+TOTAL_FILES = 33
 
 # Rendered by default: active state AND has a path.
 # App.jsx filters archived and pathless nodes out of the index unless toggled.
-DEFAULT_VISIBLE = 31
+DEFAULT_VISIBLE = 32
 
 ARCHIVED_UIDS = ["e2e00001"]
 GHOST_UIDS = ["e2e0dead"]
@@ -49,6 +49,12 @@ RULE_IN_FRONTMATTER_UID = "e2e00004"
 USER_TYPE_UID = "e2e00005"
 USER_TYPE = "recipe"
 USER_TYPE_PARENT = "procedure"
+# The one node of the canonical `skill` type (extends `procedure` in the packaged
+# ontology, so no user ontology entry is involved). Also nests under USER_TYPE_PARENT.
+SKILL_UID = "e2e00006"
+SKILL_TYPE = "skill"
+# Rows in the parent's view: its own nodes plus every child type's.
+PARENT_VIEW_COUNT = 2  # the recipe and the skill
 
 # The local asset carried by ASSET_UID. conftest writes ASSET_FILENAME with
 # ASSET_CONTENT into <loci_root>/assets/ so these cannot drift from the file.
@@ -66,6 +72,7 @@ TYPE_COUNTS = {
     "entity": 1,
     "project": 1,
     "recipe": 1,
+    "skill": 1,
 }
 
 # Subtype counts among default-visible nodes of one type (drives the subtype
@@ -105,7 +112,7 @@ OPENABLE_UIDS = [
     "bbb00001", "bbb00002", "bbb00003",
     "ccc00001", "ccc00002",
     "ddd00001", "eee00001", "eee00002", "fff00001",
-    "e2e00001", "e2e00002", "e2e00003", "e2e00004",
+    "e2e00001", "e2e00002", "e2e00003", "e2e00004", "e2e00006",
 ]
 UNRESOLVABLE_UID_COUNT = 14
 

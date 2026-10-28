@@ -90,8 +90,10 @@ malformed user file must never take the vault down.
 **Types** (`TypeRegistry._load_user`, and the same rules re-implemented for
 pre-write checking in `validate_user_type`):
 
-1. `extends` must name a **canonical** type — no new roots, no extending another
-   user type. This is what keeps the hierarchy exactly one level deep.
+1. `extends` must name a **canonical root** (a canonical type whose own
+   `extends` is null) — no new roots, no extending another user type, no
+   extending a canonical extension such as `skill`. This keeps user types one
+   level below a root.
 2. `name` must not collide with a canonical type (or, in `validate_user_type`,
    with an existing user type).
 3. No redefining an inherited field name — additive only.
@@ -210,7 +212,11 @@ needs a value there, and a change to `state`'s enum needs both edited.
 ### Add a canonical type
 
 1. Add the entry to `ontology.yaml` under `types:` with `extends: null`,
-   a `description`, and `fields.required` / `fields.optional`.
+   a `description`, and `fields.required` / `fields.optional`. A type that is
+   a specialisation of a root, like `skill` under `procedure`, names that root
+   in `extends` instead, is listed after it, and lists only its own fields —
+   `TypeRegistry._load_canonical` prepends the root's. The UI nests it under
+   the root.
 2. Add a one-line row to `type-dictionary.md` and a branch to the decision tree
    in `type-decision.md`.
 3. Bump `META_VERSION` in `vault_init.py` so existing vaults get the new file.

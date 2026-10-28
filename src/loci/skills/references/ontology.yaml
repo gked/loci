@@ -195,6 +195,23 @@ types:
         - name: duration_minutes
           type: string
 
+  - name: skill
+    extends: procedure
+    description: >
+      A reusable agent skill — a packaged, repeatable workflow with a triggering
+      description and optional bundled scripts or reference files (for example a
+      Claude SKILL.md package). Inherits the procedure step model: steps capture
+      the workflow, inputs the expected input artifact, expected_outcome the
+      deliverable.
+    fields:
+      optional:
+        - name: triggers
+          type: array
+        - name: bundled_resources
+          type: array
+        - name: skill_version
+          type: string
+
   - name: topic
     extends: null
     description: Organizing hub for a subject area.

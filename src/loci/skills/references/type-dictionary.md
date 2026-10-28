@@ -24,5 +24,6 @@ task         — discrete actionable item with due date and status (subtype: bug
 event        — point-in-time or period occurrence
 entity       — real-world actor: person, organization, or place (subtype: person | organization | place — changes which optional fields apply)
 procedure    — repeatable process with ordered steps and expected outcome (use tags for process category: #recipe, #workout, #protocol, #playbook, #tutorial)
+skill        — reusable agent skill: a procedure with triggers and optional bundled resources (extends procedure; use procedure for a process that is not an agent skill)
 topic        — organizing hub for a subject area; first-class graph node for a concept you'd navigate to and see linked content from (use a tag instead if it's purely a filter label)
 asset        — a thing you own or possess: digital file in the asset vault, physical object, or both (subtype: book | video | music | podcast | presentation | visual | physical; storage: digital | physical | both)

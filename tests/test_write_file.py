@@ -112,6 +112,40 @@ def test_write_item_invalid_type_raises(tmp_vault):
         write_item(type="banana", title="T", body="", skip_duplicate_check=True)
 
 
+def test_write_item_skill_inherits_procedure_steps(tmp_vault):
+    result = write_item(
+        type="skill",
+        title="Triage the inbox",
+        body="Steps in the body.",
+        extra_fields={"steps": ["Scan", "Sort"], "triggers": ["triage my inbox"]},
+        skip_duplicate_check=True,
+    )
+    fm, _ = split_frontmatter(Path(result["path"]).read_text(encoding="utf-8"))
+    fm = yaml.safe_load(fm)
+    assert fm["type"] == "skill"
+    assert fm["steps"] == ["Scan", "Sort"]
+    assert fm["triggers"] == ["triage my inbox"]
+
+
+def test_write_item_skill_without_steps_is_rejected(tmp_vault):
+    result = write_item(type="skill", title="No steps", body="", skip_duplicate_check=True)
+    assert any("steps" in e for e in result["errors"])
+    assert "uid" not in result
+
+
+def test_skill_node_lints_clean_on_a_fresh_vault(tmp_vault):
+    from loci.tools.vault_linter import lint_vault
+    write_item(
+        type="skill",
+        title="Triage the inbox",
+        body="",
+        extra_fields={"steps": ["Scan", "Sort"]},
+        skip_duplicate_check=True,
+    )
+    result = lint_vault(tmp_vault)
+    assert [e for e in result["errors"] if "Triage" in str(e)] == []
+
+
 def test_write_item_sets_state_active(tmp_vault):
     result = write_item(
         type="document",
