@@ -442,8 +442,8 @@ type: enum
 values: digital | physical | both
 required: no
 description: >
-  Quick summary of how you have this asset. Avoids reading asset-registry
-  just to filter by possession type. Set to both when you own it in digital
+  Quick summary of how you have this asset. Lets you filter by possession
+  type without opening has_asset. Set to both when you own it in digital
   and physical form simultaneously.
 
 field: genre
@@ -524,71 +524,6 @@ summary: |
   Руководство по йога-нидре — техника психического сна, ротация сознания,
   применение для медитации и релаксации.
 ```
-
----
-
-## Asset-registry physical array
-
-The asset-registry YAML for a physical (or dual digital+physical) asset may include
-a `physical` array alongside `files`. Each entry in `physical` represents one
-physical instance you own.
-
-Schema per physical instance:
-  format      string   required — what kind of physical object: paperback, hardcover,
-                                  coin, vehicle, photo-album, print, instrument, etc.
-  location    string   required — where it is: "Bookshelf A3", "Home garage", "Safe, drawer 2"
-  condition   string   optional — freeform: new | mint | good | fair | poor | damaged;
-                                  use grading notation for collectibles (e.g. MS-65 for coins)
-  acquired_at string   optional — ISO 8601 date
-  quantity    integer  optional — how many; defaults to 1 (useful for coins, prints)
-  attributes  object   optional — freeform key-value dict for item-specific metadata
-  notes       string   optional — any other details
-
-Examples:
-
-  # Physical book
-  physical:
-    - format: paperback
-      location: "Bookshelf A3"
-      condition: good
-      acquired_at: '2019-04-01'
-      attributes:
-        edition: 3rd
-        isbn: "978-0-13-468599-1"
-
-  # Gold coins
-  physical:
-    - format: coin
-      location: "Safe, drawer 2"
-      condition: mint
-      quantity: 3
-      attributes:
-        metal: gold
-        weight_troy_oz: 1
-        mint: Royal Canadian Mint
-        year: 2019
-
-  # Car
-  physical:
-    - format: vehicle
-      location: "Home garage"
-      condition: good
-      acquired_at: '2021-03-15'
-      attributes:
-        make: Toyota
-        model: Camry
-        year: 2019
-        vin: 1HGCM82633A123456
-        color: Silver
-
-  # Picture album
-  physical:
-    - format: photo-album
-      location: "Living room cabinet"
-      condition: good
-      attributes:
-        period: "2005–2012"
-        contents: "Family photos, childhood"
 
 ---
 

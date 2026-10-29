@@ -90,7 +90,8 @@ def test_create_vault_structure_creates_asset_dirs(tmp_path):
     create_vault_structure(vault_root)
     loci_root = tmp_path
     assert (loci_root / "assets").is_dir()
-    assert (loci_root / "asset-registry" / ".pending").is_dir()
+    assert (loci_root / "assets" / ".pending").is_dir()
+    assert not (loci_root / "asset-registry").exists()
 
 
 def test_create_vault_structure_seeds_meta_files(tmp_path):
@@ -455,7 +456,7 @@ def test_check_meta_version_upgrade_builds_the_sibling_directories(tmp_path, fak
     loci_root = vault_root.parent
     assert (loci_root / "loci-stage").is_dir()
     assert (loci_root / "assets").is_dir()
-    assert (loci_root / "asset-registry" / ".pending").is_dir()
+    assert (loci_root / "assets" / ".pending").is_dir()
 
 
 def test_check_meta_version_skips_a_vault_whose_content_is_missing(tmp_path, fake_config_path):

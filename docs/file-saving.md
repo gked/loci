@@ -181,7 +181,7 @@ node before accepting any tool calls.
 | `_loci_root`, `_stage_root` path helpers | `src/loci/api.py` | 49–55 |
 | `save_asset` implementation | `src/loci/api.py` | 363–495 |
 | Atomic asset write | `src/loci/api.py` | 443–444 |
-| Intent file schema | `src/loci/tools/asset_registry.py` | 99–125 |
+| Intent file schema | `src/loci/tools/asset_registry.py` | 35–60 |
 | Crash recovery on startup | `src/loci/mcp_server.py` | 64–95 |
 | Inbox scan | `src/loci/tools/inbox_scanner.py` | 16–169 |
 | Asset resolver dispatcher | `src/loci/tools/resolvers/dispatcher.py` | 38–49 |

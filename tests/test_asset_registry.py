@@ -1,11 +1,9 @@
 """
 tests/test_asset_registry.py
-Tests for tools/asset_registry.py: write_intent, write_physical_entry,
-add_physical_instance, and recover_pending.
+Tests for tools/asset_registry.py: write_intent and recover_pending.
 """
 
 import json
-import yaml
 import pytest
 from pathlib import Path
 
@@ -18,7 +16,6 @@ def loci_root(tmp_path):
     root = tmp_path / "loci"
     root.mkdir()
     ar.assets_dir(root).mkdir(parents=True)
-    ar.registry_dir(root).mkdir(parents=True)
     ar.pending_dir(root).mkdir(parents=True)
     return root
 
@@ -40,84 +37,6 @@ def test_write_intent_creates_json(loci_root):
     assert data["format"] == "html"
     assert data["mime_type"] == "text/html"
     assert data["vault_node"] == vault_node
-
-
-# ---------------------------------------------------------------------------
-# write_physical_entry
-# ---------------------------------------------------------------------------
-
-def test_write_physical_entry_creates_yaml(loci_root):
-    instances = [{"format": "paperback", "location": "Bookshelf A3", "condition": "good"}]
-    ar.write_physical_entry(loci_root, "phys0002", instances)
-    reg = ar.registry_dir(loci_root) / "phys0002.yaml"
-    assert reg.exists()
-    data = yaml.safe_load(reg.read_text(encoding="utf-8"))
-    assert data["uid"] == "phys0002"
-    assert data["files"] == []
-    assert len(data["physical"]) == 1
-    assert data["physical"][0]["format"] == "paperback"
-    assert data["physical"][0]["location"] == "Bookshelf A3"
-
-
-def test_write_physical_entry_multiple_instances(loci_root):
-    instances = [
-        {"format": "coin", "location": "Safe, drawer 2", "quantity": 3,
-         "attributes": {"metal": "gold", "weight_troy_oz": 1}},
-        {"format": "coin", "location": "Bank vault", "quantity": 1},
-    ]
-    ar.write_physical_entry(loci_root, "phys0003", instances)
-    data = yaml.safe_load(
-        (ar.registry_dir(loci_root) / "phys0003.yaml").read_text(encoding="utf-8")
-    )
-    assert len(data["physical"]) == 2
-    assert data["physical"][0]["attributes"]["metal"] == "gold"
-
-
-# ---------------------------------------------------------------------------
-# add_physical_instance
-# ---------------------------------------------------------------------------
-
-def test_add_physical_instance_to_existing_digital_entry(loci_root):
-    uid = "dual0001"
-    # Write a minimal digital-only registry entry by hand
-    entry = {
-        "uid": uid, "registered_at": "2026-01-01T00:00:00Z",
-        "files": [{"format": "epub", "mime_type": "application/epub+zip", "primary": True,
-                   "locations": [{"scheme": "local", "path": f"assets/{uid}.epub"}]}],
-    }
-    (ar.registry_dir(loci_root) / f"{uid}.yaml").write_text(
-        yaml.dump(entry, sort_keys=False), encoding="utf-8"
-    )
-    ar.add_physical_instance(loci_root, uid, {"format": "paperback", "location": "Bookshelf B1"})
-
-    data = yaml.safe_load(
-        (ar.registry_dir(loci_root) / f"{uid}.yaml").read_text(encoding="utf-8")
-    )
-    assert len(data["files"]) == 1
-    assert len(data["physical"]) == 1
-    assert data["physical"][0]["format"] == "paperback"
-
-
-def test_add_physical_instance_appends_to_existing_physical(loci_root):
-    uid = "dual0002"
-    ar.write_physical_entry(loci_root, uid, [{"format": "hardcover", "location": "Office shelf"}])
-    ar.add_physical_instance(loci_root, uid, {"format": "paperback", "location": "Bookshelf A3"})
-
-    data = yaml.safe_load(
-        (ar.registry_dir(loci_root) / f"{uid}.yaml").read_text(encoding="utf-8")
-    )
-    assert len(data["physical"]) == 2
-
-
-def test_add_physical_instance_creates_entry_if_missing(loci_root):
-    uid = "dual0003"
-    ar.add_physical_instance(loci_root, uid, {"format": "vehicle", "location": "Home garage"})
-
-    reg = ar.registry_dir(loci_root) / f"{uid}.yaml"
-    assert reg.exists()
-    data = yaml.safe_load(reg.read_text(encoding="utf-8"))
-    assert data["uid"] == uid
-    assert data["physical"][0]["format"] == "vehicle"
 
 
 # ---------------------------------------------------------------------------

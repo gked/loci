@@ -14,7 +14,7 @@ flowchart TD
         MCP_L["MCP Server\n(stdio)"]
         API_L["api.py"]
         V_L["knowledge-vault/"]
-        A_L["assets/\nasset-registry/"]
+        A_L["assets/"]
     end
 
     CC -->|"stdio"| MCP_L

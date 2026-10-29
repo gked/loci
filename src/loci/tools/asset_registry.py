@@ -1,16 +1,15 @@
 """
 asset_registry.py
-Manages Loci asset write sequences and physical-asset registry entries.
+Manages Loci asset write sequences: path helpers, intent files and crash recovery.
 
 Folder structure (siblings under ~/Nextcloud/loci/):
   assets/                  ← binary/rich files (local storage)
     .pending/              ← intent files for crash recovery
-  asset-registry/          ← one YAML file per physical-only asset
+
+Where an asset lives is recorded in the node's `has_asset` frontmatter, not here.
 """
 
 import json
-import yaml
-from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -21,10 +20,6 @@ SIZE_THRESHOLD_BYTES = 10 * 1024 * 1024  # 10 MB
 # Path helpers
 # ---------------------------------------------------------------------------
 
-def registry_dir(loci_root: Path) -> Path:
-    return loci_root / "asset-registry"
-
-
 def assets_dir(loci_root: Path) -> Path:
     return loci_root / "assets"
 
@@ -34,67 +29,8 @@ def pending_dir(loci_root: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-# ---------------------------------------------------------------------------
 # Write sequence helpers
 # ---------------------------------------------------------------------------
-
-def write_physical_entry(loci_root: Path, uid: str, physical_instances: list[dict]) -> None:
-    """
-    Write asset-registry/<uid>.yaml for a physical-only asset (no digital file).
-
-    physical_instances is a list of dicts, each with at minimum:
-      format   str  — e.g. "paperback", "coin", "vehicle", "photo-album"
-      location str  — where it is physically
-
-    Optional keys per instance: condition, acquired_at, quantity, attributes, notes.
-    """
-    rd = registry_dir(loci_root)
-    rd.mkdir(parents=True, exist_ok=True)
-
-    entry = {
-        "uid": uid,
-        "registered_at": _now(),
-        "files": [],
-        "physical": physical_instances,
-    }
-
-    reg_path = rd / f"{uid}.yaml"
-    reg_path.write_text(
-        yaml.dump(entry, sort_keys=False, allow_unicode=True), encoding="utf-8"
-    )
-
-
-def add_physical_instance(loci_root: Path, uid: str, instance: dict) -> None:
-    """
-    Append a physical instance to an existing asset-registry entry.
-    Creates a minimal entry (no files) if none exists yet.
-
-    instance must have at minimum: format (str) and location (str).
-    """
-    rd = registry_dir(loci_root)
-    rd.mkdir(parents=True, exist_ok=True)
-    reg_path = rd / f"{uid}.yaml"
-
-    if reg_path.exists():
-        entry = yaml.safe_load(reg_path.read_text(encoding="utf-8")) or {}
-    else:
-        entry = {"uid": uid, "registered_at": _now(), "files": []}
-
-    physical = entry.get("physical") or []
-    physical.append(instance)
-    entry["physical"] = physical
-
-    reg_path.write_text(
-        yaml.dump(entry, sort_keys=False, allow_unicode=True), encoding="utf-8"
-    )
-
 
 def write_intent(
     loci_root: Path,

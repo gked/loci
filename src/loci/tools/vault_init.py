@@ -29,7 +29,7 @@ from loci import skill_assembly
 LEGACY_CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config.yml"
 REFERENCES_DIR = Path(__file__).parent.parent / "skills" / "references"
 
-META_VERSION = 16
+META_VERSION = 17
 
 # Records META_VERSION inside the vault. Only env-var mode (LOCI_VAULT_ROOT)
 # relies on it; a config.yml install tracks the same number there.
@@ -221,7 +221,7 @@ def create_vault_structure(vault_root: Path, include_siblings: bool = True) -> l
     if include_siblings:
         # Asset storage lives alongside vault/, not inside it
         loci_root = vault_root.parent
-        for folder in ["assets", "asset-registry/.pending"]:
+        for folder in ["assets", "assets/.pending"]:
             p = loci_root / folder
             p.mkdir(parents=True, exist_ok=True)
             print(f"  Created: {p}")

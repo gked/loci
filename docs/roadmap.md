@@ -45,6 +45,7 @@ also flagged where it is documented, so you don't have to remember this table.
 - [x] Locations refactor Phase 1: `has_asset` list schema, scheme dictionary, SchemeRegistry, local resolver + dispatcher, lint, `find_nodes` scheme filters
 - [x] Locations refactor Phase 2: external scheme resolvers (`url`, `google-drive`, `nextcloud`, `gmail`, and the rest)
 - [x] Locations refactor Phase 5: `asset-registry/` collapsed into `has_asset` frontmatter
+- [x] Retired the vestigial `asset-registry/` directory from `vault_init`, with the unused physical-entry helpers
 - [x] Web UI: React + Vite app over a FastAPI backend: vault index, type/tag filters, node reader, graph view, command palette
 - [x] Browser e2e suite: Playwright driving the real app against a real backend and vault
 - [x] CI + git hooks: `main` protected locally and on GitHub, both suites run on every push
@@ -52,7 +53,6 @@ also flagged where it is documented, so you don't have to remember this table.
 
 ### Next
 - [ ] Streamable HTTP transport (SSE is deprecated in the MCP spec)
-- [ ] Retire the vestigial `asset-registry/` directory from `vault_init`
 - [ ] Editing from the UI (currently read-only)
 - [ ] Real sync: scheduling, conflict handling, and tests for the rclone layer
 
