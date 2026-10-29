@@ -33,6 +33,14 @@ from loci.tools.vault_init import reset_ready_state as _reset_ready_state  # noq
 
 
 @pytest.fixture(autouse=True)
+def vault_git_off(monkeypatch):
+    """Vault history scans the vault and writes a commit on every write. Off by
+    default so the rest of the suite stays fast; test_vault_history.py turns it
+    back on."""
+    monkeypatch.setenv("LOCI_VAULT_HISTORY", "0")
+
+
+@pytest.fixture(autouse=True)
 def isolated_config(tmp_path_factory, monkeypatch):
     """
     Give each test its own throwaway config file.

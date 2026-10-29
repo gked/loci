@@ -139,6 +139,7 @@ style-driven markup, so text selectors break on every design pass.
 | `rail-row` | `VaultRail.jsx` | `data-rail-id`, `data-active` |
 | `rail-count` | `VaultRail.jsx` | `data-count` |
 | `app-version` | `VaultRail.jsx` | `data-version`; empty until `/api/health` resolves |
+| `history-state` | `VaultRail.jsx` | `data-state` (`on`, `ready`, `off`, `error`); absent until `/api/health` resolves |
 | `node-detail` | `NodeDetail.jsx` | `data-uid` |
 | `node-detail-empty` | `NodeDetail.jsx` | shown while the node query is loading |
 | `node-title`, `node-body`, `node-frontmatter`, `node-back` | `NodeDetail.jsx` | — |

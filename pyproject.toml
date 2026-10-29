@@ -21,6 +21,8 @@ dependencies = [
     "fastapi>=0.111",
     "pypdf>=4.0",
     "defusedxml>=0.7",
+    # Pure-Python Git, so vault history needs no `git` on the machine.
+    "dulwich>=1.2.20",
 ]
 
 # Two processes, not one — see the module docstring in src/loci/__init__.py.

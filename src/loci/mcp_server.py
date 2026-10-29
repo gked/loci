@@ -81,6 +81,15 @@ def _run_first_ready_work() -> None:
     except Exception as _lint_exc:  # pragma: no cover
         print(f"[loci] Startup linter failed (skipped): {_lint_exc}", file=sys.stderr)
 
+    # History is a convenience that fails quietly, so say when it is not running:
+    # otherwise the first sign is a missing entry on the day it is needed.
+    try:
+        _history = vault.history_status()
+        if _history["state"] in ("off", "error"):
+            notices.append(f"Vault history is {_history['state']}: {_history['detail']}")
+    except Exception as _history_exc:  # pragma: no cover
+        print(f"[loci] History status unavailable (skipped): {_history_exc}", file=sys.stderr)
+
     # Recover any interrupted asset saves from previous runs.
     try:  # pragma: no cover
         _recovered = ar.recover_pending(
@@ -125,7 +134,12 @@ def _write_vault_proxy(vault_root, uid, vault_node):
             extra_fields=extra_fields,
             skip_duplicate_check=True,
         )
-    return result.get("path", "")
+    path = result.get("path", "")
+    if path:
+        vault._record(
+            f"Recover {vault_node.get('type') or 'document'}: {vault_node.get('title', uid)} ({uid})",
+            path)
+    return path
 
 
 def _check_ready() -> None:
@@ -1112,6 +1126,8 @@ def main() -> None:  # pragma: no cover
     spawns this process from a config file it owns, so there is nowhere for the
     user to pass a flag.
     """
+    from loci.tools import vault_history
+    vault_history.set_source("mcp")
     transport = os.environ.get("LOCI_TRANSPORT", "stdio")
     if transport == "sse":
         import uvicorn

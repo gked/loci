@@ -498,6 +498,9 @@ button { font-family: inherit; }
   gap: 8px;
   color: var(--t-fg-mute);
 }
+.rail-foot .history { color: var(--t-fg-faint); }
+.rail-foot .history[data-state="off"],
+.rail-foot .history[data-state="error"] { color: var(--t-warn); }
 .rail-foot .health::before {
   content: "";
   width: 6px;

@@ -31,6 +31,7 @@ from loci.tools.relation_registry import get_relation_registry
 from loci.tools.frontmatter import load_frontmatter
 from loci.tools import nx_graph as graph
 from loci.tools import tag_hygiene
+from loci.tools import vault_history
 from loci.tools.vault_linter import lint_vault as _lint_vault
 from loci.tools import asset_registry as ar
 from loci.tools.resolvers.dispatcher import dispatch_resolve
@@ -45,6 +46,18 @@ def _vault_root() -> Path:
     if not config:
         raise RuntimeError(NOT_CONFIGURED_MESSAGE)
     return Path(config["vault_root"]).expanduser()
+
+
+def _before_write(*paths) -> None:
+    """Commit the files a write is about to change, as they are now, so a hand
+    edit in them is not overwritten with no commit of its own."""
+    vault_history.before_write(_vault_root(), paths)
+
+
+def _record(message: str, *paths) -> None:
+    """Commit what a write just changed. History never fails the write — see
+    vault_history."""
+    vault_history.record(_vault_root(), message, paths)
 
 
 def _loci_root() -> Path:
@@ -212,6 +225,7 @@ def save(
             path=result["path"],
         )
         graph.index_edges(result["uid"], relations or [])
+        _record(f"Add {type}: {title} ({result['uid']})", result["path"])
         graph.mark_fresh(_vault_root())
     return result
 
@@ -270,9 +284,16 @@ def delete(path: str) -> dict:
     # Read uid before deleting so we can drop the node from the graph
     fm, _ = load_frontmatter(p.read_text(encoding="utf-8"))
     uid = fm.get("uid") if fm else None
+    label = f"{(fm or {}).get('title') or p.stem} ({uid or p.name})"
+    # The delete commit can only remove what history already holds. A file it
+    # has never seen (the first write on a vault, or one made by hand since)
+    # would leave nothing to restore, so commit its current content first.
+    # When history is up to date this is a no-op.
+    _before_write(p)
     p.unlink()
     if uid:
         graph.drop_node(uid)
+    _record(f"Delete {label}", p)
     return {"deleted": True, "path": str(p)}
 
 
@@ -286,6 +307,7 @@ def patch(path: str, updates: dict, body: str = None) -> dict:
     Returns {uid, path, type, title}.
     """
     p = _resolve_vault_path(path)
+    _before_write(p)
     index = _name_index()   # before the write: see _name_index. The merged tags are checked,
                             # so a patch that only sets the subtype still wants the index.
     result = _patch_item(str(p), updates, body)
@@ -306,6 +328,7 @@ def patch(path: str, updates: dict, body: str = None) -> dict:
             path=str(p),
         )
         graph.index_edges(result["uid"], result.get("relations", []))
+        _record(f"Update {result.get('title') or p.stem} ({result['uid']})", p)
         graph.mark_fresh(_vault_root())
     return result
 
@@ -636,6 +659,7 @@ def save_asset(
 
     # Step 7: Delete intent file
     intent_path.unlink()
+    _record(f"Add {node_type}: {title} ({uid})", result["path"])
     graph.mark_fresh(_vault_root())
 
     out = {"uid": uid, "asset_path": str(asset_final), "vault_path": result["path"]}
@@ -966,6 +990,7 @@ def define_type(
         return {"defined": False, "errors": result["errors"]}
 
     user_path = vault_root / "meta" / "ontology-user.yaml"
+    _before_write(user_path)
     if not user_path.exists():
         raise FileNotFoundError(f"User ontology not found: {user_path}")
 
@@ -984,6 +1009,7 @@ def define_type(
 
     _append_yaml_entry(user_path, "types", entry)
     reset_registry()
+    _record(f"Define type: {name}", user_path)
     return {"defined": True, "name": name, "extends": extends}
 
 
@@ -1014,6 +1040,7 @@ def define_relation(
         return {"defined": False, "errors": result["errors"], "warnings": result["warnings"]}
 
     user_path = vault_root / "meta" / "relation-dictionary-user.yaml"
+    _before_write(user_path)
     if not user_path.exists():
         raise FileNotFoundError(f"User relation dictionary not found: {user_path}")
 
@@ -1043,7 +1070,17 @@ def define_relation(
 
     _rewrite_yaml_entries(user_path, "relations", add_entry)
     reset_relation_registry()
+    _record(f"Define relation: {name}", user_path)
     return {"defined": True, "name": name, "warnings": result["warnings"]}
+
+
+def history_status() -> dict:
+    """
+    {state, detail} for the vault's change history: 'on', 'ready' (the first
+    write starts it), 'off' or 'error' (the last write could not be recorded).
+    Shown in the MCP startup notice and by /api/health.
+    """
+    return vault_history.status(_vault_root())
 
 
 def app_version() -> str:
@@ -1215,7 +1252,9 @@ def write_skill(content: str, skill: str = "loci-save", append: bool = False) ->
     replaced on upgrade, so an edit there was lost on the next install; the
     overlay lives in the vault, which is the user's, and is never reseeded.
     """
+    _before_write(skill_assembly.overlay_path(_vault_root(), skill))
     p = skill_assembly.write_overlay(_vault_root(), skill, content, append=append)
+    _record(f"Update skill overlay: {skill}", p)
     return str(p)
 
 
@@ -1241,5 +1280,7 @@ def write_meta(file: str, content: str) -> str:
     # the model can reach this call with no meta/ directory on disk. Create it
     # rather than failing the write with a bare FileNotFoundError.
     p.parent.mkdir(parents=True, exist_ok=True)
+    _before_write(p)
     p.write_text(content, encoding="utf-8")
+    _record(f"Update meta: {file}", p)
     return str(p)

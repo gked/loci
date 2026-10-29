@@ -98,3 +98,20 @@ def test_rail_shows_the_version_the_api_reports(app_page, base_url):
     badge = app_page.locator("[data-testid='app-version']")
     expect(badge).to_have_attribute("data-version", expected)
     expect(badge).to_contain_text(f"v{expected}")
+
+
+def test_rail_shows_whether_vault_history_is_running(app_page, base_url):
+    """
+    The rail footer says what state the vault's change history is in, so a
+    history that is off or failing is visible before the day it is needed.
+
+    Portable like the version test: the expected state is read from /api/health.
+    """
+    with urllib.request.urlopen(f"{base_url}/api/health") as response:
+        expected = json.load(response)["history"]["state"]
+
+    assert expected in {"on", "ready", "off", "error"}, f"unexpected history state {expected!r}"
+
+    badge = app_page.locator("[data-testid='history-state']")
+    expect(badge).to_have_attribute("data-state", expected)
+    expect(badge).to_contain_text(f"historia · {expected}")

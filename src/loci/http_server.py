@@ -32,6 +32,7 @@ from loci.tools.vault_init import (
     migrate_legacy_config,
 )
 from loci.tools import nx_graph as graph
+from loci.tools import vault_history
 from loci.tools.type_registry import get_registry
 from loci.tools.frontmatter import split_frontmatter
 from loci import api as vault_api
@@ -209,6 +210,8 @@ def _authorize_local_request(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _VAULT_ROOT
+    # Here and not in main(): `make dev` starts uvicorn on `app` directly.
+    vault_history.set_source("ui")
     if _MIGRATION_NOTICE:
         log.warning(_MIGRATION_NOTICE)
     try:
@@ -366,6 +369,15 @@ def open_local_path(
 # Endpoints — /api/nodes/recent must be registered before /api/nodes/{uid}
 # ---------------------------------------------------------------------------
 
+def _history_status() -> dict:
+    """History is a convenience: a failure reading its status must not make the
+    whole vault look unhealthy."""
+    try:
+        return vault_api.history_status()
+    except Exception as e:
+        return {"state": "unknown", "detail": str(e)}
+
+
 @app.get("/api/health")
 def health():
     # `version` is the single source of truth for what the app calls itself:
@@ -380,6 +392,7 @@ def health():
             "version": vault_api.app_version(),
             "vault_root": str(vr),
             "node_count": g.number_of_nodes(),
+            "history": _history_status(),
         }
     except Exception as e:
         return {
@@ -388,6 +401,7 @@ def health():
             "version": vault_api.app_version(),
             "vault_root": "",
             "node_count": 0,
+            "history": {"state": "unknown", "detail": ""},
         }
 
 

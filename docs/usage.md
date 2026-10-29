@@ -304,7 +304,7 @@ The graph as a force-directed map, coloured by type and filterable by relation. 
 
 ## Vault Structure
 
-The vault is **flat**: every node is a Markdown file at the vault root, named by a slug of its title (`why-i-left-twitter.md`). There are no per-type folders; type is frontmatter, and the graph index does the organizing. The only subdirectory is `meta/`.
+The vault is **flat**: every node is a Markdown file at the vault root, named by a slug of its title (`why-i-left-twitter.md`). There are no per-type folders; type is frontmatter, and the graph index does the organizing. The only visible subdirectory is `meta/`; a hidden `.loci/` folder holds the change history.
 
 ```
 ~/loci/                              ← loci root (all stores are siblings)
@@ -323,6 +323,7 @@ The vault is **flat**: every node is a Markdown file at the vault root, named by
       relation-dictionary.md         ← human-readable relation guide  (reseeded)
       foreign-definitions.md         ← external source schemas        (user-owned)
       .meta-version                  ← which META_VERSION this vault was seeded at
+    .loci/history/                   ← change history: a Git-format repository Loci owns
 
   assets/                       ← binary/rich files adopted into the vault
     <uid>.<ext>                 ← one file per asset, named by vault node UID
@@ -352,3 +353,15 @@ has_asset:
 `resolve_asset` walks the locations in order and returns the first one that resolves. Schemes are declared in `scheme-dictionary.yaml` and validated on write; `local` and `url` fetch content directly, while cloud and remote schemes (`google-drive`, `nextcloud`, `gmail`, `onedrive`, `dropbox`, `icloud-drive`, `s3`, `ssh-remote`) resolve to a pointer that the appropriate MCP or native tool opens. `find_nodes(has_asset_scheme=…)` filters the graph by scheme.
 
 This replaced the separate `asset-registry/` YAML store (locations refactor, Phase 5). Location data now lives in the node's own frontmatter.
+
+### Vault history
+
+Every write Loci makes is recorded as one commit in `knowledge-vault/.loci/history/`. Loci reads and writes that repository itself, so you do not need Git installed.
+
+- **Edits made outside Loci** (by hand, in Obsidian, by a sync tool) are recorded as one "Changes made outside Loci" commit, made before the next write. They are never folded into an unrelated change. On a very large vault (a full check takes more than 0.1 seconds) the check runs at most once a minute, so an outside edit is recorded by the next check.
+- **Your own `.git`**, if you keep the vault in a repository, is never touched. History skips it, and skips editor litter (`.DS_Store`, `*.swp`, `*~`) and Obsidian's `.obsidian/` settings folder.
+- **Assets are not in it.** They live beside the vault; only the nodes that point at them are.
+- **It travels with the vault.** Move, back up or sync the vault folder and the history goes with it.
+- **You can read it with Git**, if you have it: `git --git-dir knowledge-vault/.loci/history log`. Use `log`, `show` and `diff` between commits. The store has no working tree, so `git status` is not meaningful.
+- **The rail shows its state** (`historia · on`). If history is off or a write could not be recorded, the rail turns the line orange and the MCP startup notice says so.
+- **Turn it off** with `LOCI_VAULT_HISTORY=0`.

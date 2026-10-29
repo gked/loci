@@ -112,7 +112,12 @@ export function VaultRail({ active, onNav, nodes, types = [], userTypes = [], ac
     queryKey: ["health"],
     queryFn: getHealth,
     staleTime: Infinity,
+    // The version never changes, but the history state can: a write that could
+    // not be recorded turns it to "error" while the page is open.
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   });
+  const history = health?.history;
 
   return (
     <aside className="rail">
@@ -154,6 +159,12 @@ export function VaultRail({ active, onNav, nodes, types = [], userTypes = [], ac
         <div className="health" data-testid="rail-count" data-count={nodes.length}>
           vault · {nodes.length} loci
         </div>
+        {history && history.state !== "unknown" && (
+          <div className="history" data-testid="history-state" data-state={history.state}
+               title={history.detail || undefined}>
+            historia · {history.state}
+          </div>
+        )}
         <div style={{ color: "var(--t-fg-faint)", fontSize: 9 }}>~/loci</div>
       </div>
     </aside>
