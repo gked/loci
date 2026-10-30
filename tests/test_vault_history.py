@@ -189,7 +189,7 @@ def test_history_of_a_deleted_file_is_still_listed(tmp_vault):
 def test_unchanged_patch_makes_no_extra_commit(tmp_vault):
     saved = save("History One")
     before = len(log(tmp_vault))
-    assert vault_history.record(tmp_vault, "No change", [saved["path"]]) is False
+    assert vault_history.record(tmp_vault, "No change", [saved["path"]]) is None
     assert len(log(tmp_vault)) == before
 
 
@@ -202,7 +202,7 @@ def test_assets_outside_the_vault_are_never_committed(tmp_vault):
     outside = tmp_vault.parent / "assets" / "x.bin"
     outside.parent.mkdir()
     outside.write_bytes(b"\0")
-    assert vault_history.record(tmp_vault, "asset", [outside]) is False
+    assert vault_history.record(tmp_vault, "asset", [outside]) is None
 
 
 def test_disabled_by_env(tmp_vault, monkeypatch):
@@ -331,7 +331,7 @@ def test_litter_and_the_store_itself_are_never_recorded(tmp_vault):
     assert not any(
         key.startswith(b".loci/") for key in vault_history._head(repo(tmp_vault))[1]
     )
-    assert vault_history.record(tmp_vault, "swap", [tmp_vault / "draft.swp"]) is False
+    assert vault_history.record(tmp_vault, "swap", [tmp_vault / "draft.swp"]) is None
 
 
 def test_a_glob_in_a_filename_commits_only_that_file(tmp_vault):
@@ -708,3 +708,348 @@ def test_a_history_that_cannot_be_read_shows_as_an_error(tmp_vault, monkeypatch)
     monkeypatch.setattr(vault_history, "_head", lambda r: (_ for _ in ()).throw(OSError("corrupt object")))
     assert vault_history.history(tmp_vault, saved["path"]) == []
     assert vault_history.status(tmp_vault) == {"state": "error", "detail": "corrupt object"}
+
+
+# ---------------------------------------------------------------------------
+# Viewing and restoring
+# ---------------------------------------------------------------------------
+
+def head_short(vault):
+    r = repo(vault)
+    return r.head().decode("ascii")[:7]
+
+
+def test_write_results_carry_the_commit(tmp_vault):
+    saved = save("History One")
+    assert saved["commit"] == head_short(tmp_vault)
+    patched = api.patch(saved["uid"], {"summary": "x"})
+    assert patched["commit"] == head_short(tmp_vault)
+    assert api.delete(saved["uid"])["commit"]
+
+
+def test_no_commit_field_when_history_is_off(tmp_vault, monkeypatch):
+    monkeypatch.setenv("LOCI_VAULT_HISTORY", "0")
+    assert "commit" not in save("History One")
+
+
+def test_history_and_read_an_old_version(tmp_vault):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="replaced body")
+    found = api.history(saved["uid"])
+    assert [c["subject"].split(" ")[0] for c in found] == ["Update", "Add"]
+    old = api.get(saved["uid"], commit=found[1]["commit"])
+    assert "hello" in old and "replaced body" not in old
+    assert "replaced body" in api.get(saved["uid"])
+
+
+def test_diff_shows_the_removed_and_added_lines(tmp_vault):
+    saved = save("History One")
+    patched = api.patch(saved["uid"], {}, body="replaced body")
+    text = api.diff(saved["uid"], patched["commit"])
+    assert "-hello" in text and "+replaced body" in text
+
+
+def test_restore_brings_back_a_body_overwritten_by_mistake(tmp_vault):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="oops")
+    result = api.restore(saved["uid"], saved["commit"])
+    assert result["restored"] and not result["was_deleted"]
+    assert "hello" in api.get(saved["uid"])
+    assert log(tmp_vault)[0].split("|", 1)[1].startswith("Restore History One")
+
+
+def test_restore_a_deleted_node_by_uid(tmp_vault):
+    saved = save("History One")
+    deleted = api.delete(saved["uid"])
+    # The file and the graph entry are gone; the uid alone must find it.
+    result = api.restore(saved["uid"], f"{deleted['commit']}~1")
+    assert result["was_deleted"]
+    assert "hello" in api.get(saved["uid"])
+    assert api.history(saved["uid"])[0]["subject"].startswith("Restore")
+
+
+def test_restore_saves_uncommitted_outside_edits_first(tmp_vault):
+    saved = save("History One")
+    path = Path(saved["path"])
+    path.write_text(path.read_text() + "\nedited in a text editor\n")
+    result = api.restore(saved["uid"], saved["commit"])
+    assert "external_edits_saved_as" in result
+    saved_as = next(c for c in commits(tmp_vault) if c.id.decode()[:7] == result["external_edits_saved_as"])
+    assert "edited in a text editor" in blob_at(tmp_vault, saved_as, rel(tmp_vault, saved))
+    assert "edited in a text editor" not in path.read_text()
+
+
+def test_undo_last_change_reverts_a_patch(tmp_vault):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="oops")
+    out = api.undo_last_change()
+    assert out["undone"].startswith("Update History One")
+    assert "hello" in api.get(saved["uid"])
+
+
+def test_undo_last_change_removes_a_new_node_and_a_delete_is_undone(tmp_vault):
+    saved = save("History One")
+    api.undo_last_change()
+    assert not Path(saved["path"]).exists()
+    api.undo_last_change()          # undoing the undo brings it back
+    assert "hello" in api.get(saved["uid"])
+
+
+def test_undo_refuses_the_baseline(tmp_vault):
+    vault_history.ensure_baseline(tmp_vault)
+    with pytest.raises(vault_history.HistoryError, match="baseline"):
+        api.undo_last_change()
+
+
+def test_a_bad_commit_reference_is_refused(tmp_vault):
+    saved = save("History One")
+    for bad in ["--output=/tmp/x", "main; rm -rf", "", "zzzz"]:
+        with pytest.raises(vault_history.HistoryError):
+            api.get(saved["uid"], commit=bad)
+
+
+def test_reading_a_commit_that_deleted_the_file_explains_the_fix(tmp_vault):
+    saved = save("History One")
+    deleted = api.delete(saved["uid"])
+    with pytest.raises(vault_history.HistoryError, match="~1"):
+        api.get(saved["uid"], commit=deleted["commit"])
+
+
+def test_history_with_no_store_says_so(tmp_vault):
+    with pytest.raises(vault_history.HistoryError, match="no history"):
+        api.history(next(tmp_vault.glob("*.md")).name)
+
+
+def test_every_history_tool_the_save_skill_names_is_an_mcp_tool():
+    import re
+    from loci import mcp_server
+
+    skill = Path(mcp_server.__file__).parent / "skills" / "loci-save" / "SKILL.md"
+    named = set(re.findall(r"loci__(\w+_vault\w*|undo_\w+)", skill.read_text(encoding="utf-8")))
+    registered = set(mcp_server.mcp._tool_manager._tools)
+    assert {"history_vault", "diff_vault", "restore_vault", "undo_last_vault_change"} <= named
+    assert named <= registered
+
+
+def test_a_deleted_node_with_an_all_digit_uid_is_still_found(tmp_vault):
+    path = tmp_vault / "digits.md"
+    path.write_text("---\nuid: '12345678'\ntitle: Digits\ntype: document\n---\nbody\n")
+    vault_history.record(tmp_vault, "Add digits", [path])
+    path.unlink()
+    vault_history.record(tmp_vault, "Delete digits", [path])
+    assert vault_history.find_path(tmp_vault, "12345678") == "digits.md"
+
+
+def test_undo_leaves_the_graph_fresh(tmp_vault):
+    save("History One")
+    nx_graph.get(tmp_vault)
+    api.undo_last_change()
+    assert nx_graph._built_at >= nx_graph._vault_dir_mtime(tmp_vault)
+
+
+def test_a_restore_still_succeeds_when_the_graph_cannot_be_updated(tmp_vault, monkeypatch):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="oops")
+
+    def boom(*a, **k):
+        raise RuntimeError("graph is broken")
+
+    monkeypatch.setattr(api.graph, "index_node", boom)
+    result = api.restore(saved["uid"], saved["commit"])
+    assert result["restored"] and result["commit"]
+    assert "hello" in Path(saved["path"]).read_text(encoding="utf-8")
+    assert subjects(tmp_vault)[0].startswith("Restore History One")
+
+
+def test_history_and_restore_work_for_a_deleted_file_named_by_path(tmp_vault):
+    saved = save("History One")
+    deleted = api.delete(saved["uid"])
+    relative = rel(tmp_vault, saved)
+    assert api.history(relative)[0]["subject"].startswith("Delete")
+    assert "hello" in api.get(relative, commit=f"{deleted['commit']}~1")
+    assert api.restore(str(Path(saved["path"])), f"{deleted['commit']}~1")["was_deleted"]
+    assert Path(saved["path"]).exists()
+
+
+def test_a_path_outside_the_vault_is_not_taken_for_a_deleted_node(tmp_vault):
+    save("History One")
+    assert api.history("../../etc/passwd") == []
+
+
+def test_a_hash_prefix_that_names_two_commits_is_refused(tmp_vault):
+    save("History One")
+    repo_ = repo(tmp_vault)
+    ids = [c.id.decode() for c in commits(tmp_vault)]
+    # Make an ambiguous prefix by planting a second commit that shares the first 4 characters.
+    prefix = ids[0][:4]
+    real_walker = repo_.get_walker
+    fake = type("E", (), {})()
+    fake.commit = type("C", (), {"id": (prefix + "f" * 36).encode()})()
+    monkey = pytest.MonkeyPatch()
+    try:
+        monkey.setattr(Repo, "get_walker", lambda self, **k: list(real_walker(**k)) + [fake])
+        with pytest.raises(vault_history.HistoryError, match="more characters"):
+            vault_history._resolve(repo_, prefix)
+    finally:
+        monkey.undo()
+
+
+def test_a_full_hash_resolves_directly_and_an_unknown_one_is_refused(tmp_vault):
+    save("History One")
+    repo_ = repo(tmp_vault)
+    full = repo_.head().decode()
+    assert vault_history._resolve(repo_, full) == repo_.head()
+    with pytest.raises(vault_history.HistoryError, match="No commit"):
+        vault_history._resolve(repo_, "0" * 40)
+
+
+def test_head_is_accepted_in_any_case(tmp_vault):
+    save("History One")
+    repo_ = repo(tmp_vault)
+    for ref in ("HEAD", "head", "Head", "head~1"):
+        assert vault_history._resolve(repo_, ref)
+
+
+def test_diff_of_a_commit_with_an_empty_message_does_not_fail(tmp_vault):
+    from dulwich.objects import Blob
+
+    save("History One")
+    r = repo(tmp_vault)
+    head, entries = vault_history._head(r)
+    made = vault_history._commit(r, head, entries, {b"empty.md": Blob.from_string(b"x")},
+                                 "", vault_history.SERVICE_AUTHOR)
+    assert vault_history._advance(r, head, made[0].id)
+    assert "+x" in vault_history.diff(tmp_vault, made[0].id.decode()[:7], tmp_vault / "empty.md")
+
+
+def test_undo_refuses_a_commit_that_holds_edits_made_outside_loci(tmp_vault):
+    save("History One")
+    hand = tmp_vault / "by-hand.md"
+    hand.write_text("typed in Obsidian")
+    vault_history.before_write(tmp_vault, [hand])
+    assert subjects(tmp_vault)[0] == "Changes made outside Loci"
+    with pytest.raises(vault_history.HistoryError, match="outside Loci"):
+        api.undo_last_change()
+    assert hand.read_text() == "typed in Obsidian"
+
+
+def test_a_uid_quoted_in_another_notes_body_is_not_taken_for_its_owner(tmp_vault):
+    owner = tmp_vault / "owner.md"
+    owner.write_text("---\nuid: 12345678\ntitle: Owner\ntype: document\n---\nbody\n")
+    vault_history.record(tmp_vault, "Add owner", [owner])
+    owner.unlink()
+    vault_history.record(tmp_vault, "Delete owner", [owner])
+    quoting = tmp_vault / "quoting.md"
+    quoting.write_text("---\nuid: abcdef01\ntitle: Quoting\ntype: document\n---\nExample:\nuid: 12345678\n")
+    vault_history.record(tmp_vault, "Add quoting", [quoting])
+    assert vault_history.find_path(tmp_vault, "12345678") == "owner.md"
+
+
+def test_an_undo_that_cannot_read_an_old_version_changes_nothing(tmp_vault, monkeypatch):
+    one, two = tmp_vault / "f1.md", tmp_vault / "f2.md"
+    for f in (one, two):
+        f.write_text("v1")
+    save("History One")
+    vault_history.record(tmp_vault, "Add files", [one, two])
+    for f in (one, two):
+        f.write_text("v2")
+    vault_history.record(tmp_vault, "Change both", [one, two])
+    real, calls = vault_history.show, []
+
+    def flaky(*a, **k):
+        calls.append(1)
+        if len(calls) > 1:
+            raise vault_history.HistoryError("cannot read")
+        return real(*a, **k)
+
+    monkeypatch.setattr(vault_history, "show", flaky)
+    with pytest.raises(vault_history.HistoryError):
+        api.undo_last_change()
+    assert one.read_text() == "v2" and two.read_text() == "v2"
+
+
+def test_the_history_tools_return_an_error_for_a_disk_failure(tmp_vault, monkeypatch):
+    from loci import mcp_server
+
+    def boom(*a, **k):
+        raise OSError("disk is full")
+
+    save("History One")
+    monkeypatch.setattr(mcp_server.vault, "undo_last_change", boom)
+    monkeypatch.setattr(mcp_server.vault, "restore", boom)
+    assert mcp_server.undo_last_vault_change() == {"error": "disk is full"}
+    assert mcp_server.restore_vault("x", "abcd") == {"error": "disk is full"}
+
+
+def test_undo_refuses_when_another_write_landed_after_head_was_read(tmp_vault, monkeypatch):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="oops")
+    real = vault_history.head_changes
+
+    def head_then_write(root):
+        out = real(root)
+        api.patch(saved["uid"], {}, body="newer")   # a second process commits here
+        return out
+
+    monkeypatch.setattr(vault_history, "head_changes", head_then_write)
+    with pytest.raises(vault_history.HistoryError, match="changed while"):
+        api.undo_last_change()
+    assert "newer" in api.get(saved["uid"])
+
+
+def test_undo_of_a_meta_change_resets_the_registries(tmp_vault):
+    from loci.tools.type_registry import REFERENCES_DIR, get_registry, reset_registry
+    (tmp_vault / "meta").mkdir()
+    for name in ("ontology.yaml", "ontology-user.yaml"):
+        shutil.copy(REFERENCES_DIR / name, tmp_vault / "meta" / name)
+    reset_registry()
+    api.define_type("zzwidget", "document", "A test type")
+    assert "zzwidget" in get_registry(tmp_vault).type_names()
+    api.undo_last_change()
+    assert "zzwidget" not in get_registry(tmp_vault).type_names()
+    reset_registry()
+
+
+def test_diff_names_a_change_to_the_final_newline(tmp_vault):
+    saved = save("History One")
+    p = Path(saved["path"])
+    text = p.read_text(encoding="utf-8")
+    assert not text.endswith("\n")
+    p.write_text(text + "\n", encoding="utf-8")
+    commit = vault_history.record(tmp_vault, "trim newline", [p])
+    assert commit
+    out = vault_history.diff(tmp_vault, commit, p)
+    assert "final newline" in out
+
+
+def test_restore_refuses_a_version_without_a_uid(tmp_vault):
+    saved = save("History One")
+    p = Path(saved["path"])
+    p.write_text("no frontmatter here\n", encoding="utf-8")
+    api._record("break it", p)
+    broken = vault_history.head_short(tmp_vault)
+    with pytest.raises(ValueError, match="no uid"):
+        api.restore(saved["path"], broken)
+
+
+def test_find_path_caches_a_miss_until_head_moves(tmp_vault, monkeypatch):
+    saved = save("History One")
+    assert vault_history.find_path(tmp_vault, "deadbeef") is None
+    calls = []
+    real = vault_history._scan_for_uid
+    monkeypatch.setattr(vault_history, "_scan_for_uid", lambda *a: calls.append(1) or real(*a))
+    vault_history.find_path(tmp_vault, "deadbeef")
+    assert not calls
+    api.patch(saved["uid"], {}, body="x")
+    vault_history.find_path(tmp_vault, "deadbeef")
+    assert calls
+
+
+def test_restore_warns_when_the_type_is_unknown_now(tmp_vault):
+    saved = save("History One")
+    p = Path(saved["path"])
+    p.write_text(p.read_text(encoding="utf-8").replace("type: document", "type: zzgone"), encoding="utf-8")
+    bad = vault_history.record(tmp_vault, "retype", [p])
+    result = api.restore(saved["path"], bad)
+    assert "zzgone" in result["warning"]
+    assert "warning" not in api.restore(saved["path"], saved["commit"])

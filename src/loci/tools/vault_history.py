@@ -29,20 +29,25 @@ identity; a caller that knows the real user (a future editor endpoint) passes
 `Source:` trailer, so the two stay separate.
 """
 
+import difflib
 import fnmatch
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
+from dulwich.diff_tree import tree_changes
 from dulwich.file import FileLocked
 from dulwich.index import commit_tree
-from dulwich.object_store import iter_tree_contents
+from dulwich.object_store import iter_tree_contents, tree_lookup_path
 from dulwich.objects import ZERO_SHA, Blob, Commit
 from dulwich.repo import Repo
+
+from loci.tools.frontmatter import split_frontmatter
 
 log = logging.getLogger(__name__)
 
@@ -91,6 +96,20 @@ _stat_cache: dict[tuple[str, bytes], tuple[tuple[int, int, int], bytes]] = {}
 # disk that will not take that file either.
 _last_error: dict[str, str] = {}
 STATUS_FILE = Path(".loci") / "history-status.json"
+
+
+# A commit as the agent names it: a hash, optionally stepped back ("abc123~1" is
+# the version before abc123 — how a deleted file is reached), or HEAD.
+_REV_RE = re.compile(r"(?:[0-9a-f]{4,40}|HEAD)(?:~\d{1,4})?")
+
+
+class HistoryError(Exception):
+    """A history request that cannot be answered: no store, bad commit, no such
+    version. The message is for the agent to read."""
+
+
+def _short(commit_id: bytes) -> str:
+    return commit_id.decode("ascii")[:7]
 
 
 def _set_error(vault_root: Path, reason: str) -> None:
@@ -369,15 +388,16 @@ def record(
     source: Optional[str] = None,
 ) -> bool:
     """Commit `paths` (files written or deleted) with `message`, after one
-    commit for anything else that changed outside Loci. Returns True when the
-    commit for `paths` was made. Never raises."""
+    commit for anything else that changed outside Loci. Returns the new commit's
+    short hash, or None when no commit was made (history off, nothing changed,
+    or a failure). Never raises."""
     if not enabled():
-        return False
+        return None
     vault_root = Path(vault_root)
     try:
         specs = _relative(vault_root, paths)
         if not specs or not vault_root.is_dir():
-            return False
+            return None
         repo = _open(vault_root, create=True)
         # A title can hold a newline; the subject and the trailer must not.
         message = " ".join(message.split())
@@ -426,10 +446,10 @@ def record(
             if made is None:
                 # "Nothing to commit" is normal: a patch that changed no bytes.
                 _clear_error(vault_root)
-                return False
+                return None
             if advance(head, made[0].id):
                 _clear_error(vault_root)
-                return True
+                return _short(made[0].id)
         if locked:
             lock = history_dir(vault_root) / "refs" / "heads" / "main.lock"
             raise OSError(f"the history branch is locked by {lock}; "
@@ -438,7 +458,7 @@ def record(
     except Exception as e:
         log.warning("vault history unavailable: %s", e)
         _set_error(vault_root, str(e))
-        return False
+        return None
 
 
 def ensure_baseline(vault_root: Path) -> None:
@@ -465,24 +485,24 @@ def ensure_baseline(vault_root: Path) -> None:
         _set_error(vault_root, str(e))
 
 
-def before_write(vault_root: Path, paths: Iterable[Path | str]) -> None:
+def before_write(vault_root: Path, paths: Iterable[Path | str]) -> Optional[str]:
     """Commit `paths` as they are on disk, before a write changes them. The
     commit record() makes afterwards holds only what that write changed, so a
     hand edit still sitting in the file would otherwise be overwritten with no
     commit of its own. The first call also makes the baseline. Reads only
-    `paths`, so it is cheap; a file that is up to date adds no commit.
-    Never raises."""
+    `paths`, so it is cheap; a file that is up to date adds no commit. Returns
+    the short hash of the commit it made, or None. Never raises."""
     if not enabled():
-        return
+        return None
     vault_root = Path(vault_root)
     try:
         if not vault_root.is_dir():
-            return
+            return None
         repo = _open(vault_root, create=True)
         head, _ = _head(repo)
         if head is None:
             ensure_baseline(vault_root)
-            return
+            return None
         specs = _relative(vault_root, paths)
         for attempt in range(_RACE_ATTEMPTS):
             if attempt:
@@ -490,16 +510,21 @@ def before_write(vault_root: Path, paths: Iterable[Path | str]) -> None:
             head, entries = _head(repo)
             made = _commit(repo, head, entries, _differences(vault_root, entries, only=specs),
                            OUTSIDE_MESSAGE, SERVICE_AUTHOR)
-            if made is None or _advance(repo, head, made[0].id):
-                return
+            if made is None:
+                return None
+            if _advance(repo, head, made[0].id):
+                return _short(made[0].id)
     except Exception as e:
         log.warning("vault history unavailable: %s", e)
         _set_error(vault_root, str(e))
+    return None
 
 
 def history(vault_root: Path, path: Path | str, limit: int = 50) -> list[dict]:
     """Commits that touched `path`, newest first:
-    [{commit, author, date, subject}]. Empty when there is no history."""
+    [{commit, author, date, subject}]. Raises HistoryError when the vault has no
+    store; an empty list means the store has no commit for the path."""
+    _require_repo(Path(vault_root))
     try:
         vault_root = Path(vault_root)
         repo = _open(vault_root)
@@ -524,3 +549,192 @@ def history(vault_root: Path, path: Path | str, limit: int = 50) -> list[dict]:
         log.warning("vault history unreadable: %s", e)
         _set_error(vault_root, str(e))
         return []
+
+
+# ---------------------------------------------------------------------------
+# Reading and restoring
+# ---------------------------------------------------------------------------
+
+def _require_repo(vault_root: Path) -> None:
+    if not enabled():
+        raise HistoryError("Vault history is turned off (LOCI_VAULT_HISTORY=0).")
+    if not is_repo(vault_root):
+        raise HistoryError("The vault has no history yet: nothing has been written since tracking began.")
+
+
+def _resolve(repo: Repo, commit: str) -> bytes:
+    """The commit id a reference names: a hash or hash prefix, or HEAD, then `~n`
+    steps back along the first parent. Raises HistoryError for anything else,
+    and for a prefix that names more than one commit."""
+    ref = (commit or "").strip().lower()
+    if ref.startswith("head"):
+        ref = "HEAD" + ref[4:]
+    if not _REV_RE.fullmatch(ref):
+        raise HistoryError(f"Not a commit reference: {commit!r}. Use a hash from history_vault, "
+                           "e.g. 'a1b2c3d' or 'a1b2c3d~1'.")
+    base, _, back = ref.partition("~")
+    try:
+        head = repo.refs[BRANCH]
+    except KeyError:
+        raise HistoryError("The vault has no history yet: nothing has been written since tracking began.")
+    if base == "HEAD":
+        found = head
+    elif len(base) == 40:
+        found = base.encode("ascii")
+        if found not in repo.object_store or not isinstance(repo[found], Commit):
+            raise HistoryError(f"No commit {base!r} in the history. Use a hash from history_vault.")
+    else:
+        matches = [e.commit.id for e in repo.get_walker(include=[head])
+                   if e.commit.id.decode("ascii").startswith(base)]
+        if not matches:
+            raise HistoryError(f"No commit {base!r} in the history. Use a hash from history_vault.")
+        if len(matches) > 1:
+            raise HistoryError(f"{base!r} names {len(matches)} commits. Use more characters of the hash.")
+        found = matches[0]
+    for _ in range(int(back or 0)):
+        parents = repo[found].parents
+        if not parents:
+            raise HistoryError(f"{ref} goes back past the first commit.")
+        found = parents[0]
+    return found
+
+
+def _text_at(repo: Repo, commit_id: bytes, key: bytes) -> Optional[str]:
+    try:
+        _, sha = tree_lookup_path(repo.object_store.__getitem__, repo[commit_id].tree, key)
+    except KeyError:
+        return None
+    return repo[sha].data.decode("utf-8", "replace")
+
+
+def _spec(vault_root: Path, path: Path | str) -> bytes:
+    specs = _relative(vault_root, [path])
+    if not specs:
+        raise HistoryError(f"{path} is outside the vault.")
+    return specs[0]
+
+
+_find_cache: dict = {}
+
+
+def find_path(vault_root: Path, uid: str) -> Optional[str]:
+    """Vault-relative path of the file that last carried `uid`, for a node whose
+    file is gone. None when history never saw it."""
+    _require_repo(vault_root)
+    repo = _open(vault_root)
+    head, _ = _head(repo)
+    if head is None:
+        return None
+    # Every write moves HEAD, so a result is good exactly as long as HEAD is the
+    # same: a uid that misses on disk is not re-walked through the whole history.
+    key = (str(Path(vault_root)), head)
+    if key in _find_cache and uid in _find_cache[key]:
+        return _find_cache[key][uid]
+    if len(_find_cache) > 8:
+        _find_cache.clear()
+    result = _scan_for_uid(repo, head, uid)
+    _find_cache.setdefault(key, {})[uid] = result
+    return result
+
+
+def _scan_for_uid(repo, head, uid: str) -> Optional[str]:
+    # A uid of digits only is stored quoted (uid: '12345678'), so allow quotes.
+    needle = re.compile(rb"(?m)^uid:[ \t]*['\"]?" + re.escape(uid.encode()) + rb"['\"]?[ \t]*$")
+    for entry in repo.get_walker(include=[head]):
+        commit = entry.commit
+        parent_tree = repo[commit.parents[0]].tree if commit.parents else None
+        for change in tree_changes(repo.object_store, parent_tree, commit.tree):
+            for side in (change.new, change.old):
+                if side and side.sha and side.path.endswith(b".md"):
+                    # Only the frontmatter: a note that quotes a "uid:" line in its
+                    # body must not be taken for the node that owns it.
+                    header, _ = split_frontmatter(repo[side.sha].data.decode("utf-8", "replace"))
+                    if header and needle.search(header.encode("utf-8")):
+                        return side.path.decode("utf-8", "surrogateescape")
+    return None
+
+
+def show(vault_root: Path, commit: str, path: Path | str) -> str:
+    """The text of `path` as it was right after `commit`."""
+    _require_repo(vault_root)
+    repo = _open(vault_root)
+    commit_id = _resolve(repo, commit)
+    key = _spec(vault_root, path)
+    text = _text_at(repo, commit_id, key)
+    if text is None:
+        name = key.decode("utf-8", "replace")
+        raise HistoryError(
+            f"{name} does not exist at {commit}. If {commit} is the commit that deleted it, "
+            f"use '{commit}~1' for the version before."
+        )
+    return text
+
+
+def diff(vault_root: Path, commit: str, path: Path | str) -> str:
+    """The change `commit` made to `path`, as a unified diff."""
+    _require_repo(vault_root)
+    repo = _open(vault_root)
+    commit_id = _resolve(repo, commit)
+    key = _spec(vault_root, path)
+    name = key.decode("utf-8", "replace")
+    parents = repo[commit_id].parents
+    old = _text_at(repo, parents[0], key) if parents else None
+    new = _text_at(repo, commit_id, key)
+    if old == new:
+        raise HistoryError(f"{commit} did not change {name}.")
+    c = repo[commit_id]
+    when = datetime.fromtimestamp(c.author_time, timezone(timedelta(seconds=c.author_timezone)))
+    lines_of_message = c.message.decode("utf-8", "replace").splitlines()
+    header = f"{_short(commit_id)} {c.author.partition(b' <')[0].decode('utf-8', 'replace')} " \
+             f"{when.isoformat()}\n{lines_of_message[0] if lines_of_message else ''}\n\n"
+    lines = difflib.unified_diff(
+        (old or "").splitlines(), (new or "").splitlines(),
+        fromfile=f"a/{name}" if old is not None else "/dev/null",
+        tofile=f"b/{name}" if new is not None else "/dev/null",
+        lineterm="",
+    )
+    body = "\n".join(lines)
+    if not body:
+        # Same lines, different bytes: a final newline or the line endings.
+        body = f"(no line changed: only the final newline or the line endings differ in {name})"
+    return header + body + "\n"
+
+
+def snapshot_external(vault_root: Path, paths: Iterable[Path | str]) -> Optional[str]:
+    """Commit uncommitted changes to `paths` (edits made outside Loci) before a
+    restore overwrites them, so the restore itself loses nothing. Returns the
+    commit's short hash, or None when the files were up to date."""
+    return before_write(vault_root, paths)
+
+
+def head_short(vault_root: Path) -> Optional[str]:
+    """Short hash of the newest commit, None when there is none."""
+    _require_repo(vault_root)
+    head, _ = _head(_open(vault_root))
+    return _short(head) if head else None
+
+
+def head_changes(vault_root: Path) -> tuple[str, str, list[tuple[str, str]]]:
+    """(short hash, subject, [(status, path)]) for the newest commit, with status
+    A, M or D. Raises when that commit is the baseline or the first commit:
+    there is nothing before it."""
+    _require_repo(vault_root)
+    repo = _open(vault_root)
+    head, _ = _head(repo)
+    if head is None:
+        raise HistoryError("The vault has no history yet: nothing has been written since tracking began.")
+    commit = repo[head]
+    subject = commit.message.decode("utf-8", "replace").splitlines()[0] if commit.message else ""
+    if subject.startswith("Baseline:") or not commit.parents:
+        raise HistoryError("The newest commit is the baseline. There is no earlier change to undo.")
+    if subject == OUTSIDE_MESSAGE:
+        raise HistoryError(
+            f"The newest commit ({_short(head)}) holds edits made outside Loci, not a Loci write. "
+            "Undoing it would remove those edits. Use history_vault and restore_vault on the one node instead."
+        )
+    status = {"add": "A", "delete": "D", "modify": "M"}
+    rows = [
+        (status.get(change.type, "M"), ((change.new and change.new.path) or change.old.path).decode("utf-8", "surrogateescape"))
+        for change in tree_changes(repo.object_store, repo[commit.parents[0]].tree, commit.tree)
+    ]
+    return _short(head), subject, rows

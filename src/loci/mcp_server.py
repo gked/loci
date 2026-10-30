@@ -34,6 +34,7 @@ from typing import Callable
 
 from loci import api as vault
 from loci.tools import nx_graph as graph
+from loci.tools.vault_history import HistoryError
 from loci.tools import asset_registry as ar
 from mcp.server.fastmcp import FastMCP
 from loci.tools.vault_init import (
@@ -382,17 +383,100 @@ def patch_vault(path: str, updates: dict, body: str = None) -> dict:
 
 @mcp.tool()
 @requires_vault
-def read_vault(path: str) -> str:
+def read_vault(path: str, commit: str = None) -> str:
     """
     Read a vault file.
     Accepts an 8-character hex UID (e.g. "0b74b77c"), an absolute path,
     or a path relative to vault_root (e.g. "my-note--0b74b77c.md").
     Prefer passing the UID when you have it — the path will be resolved automatically.
+
+    With commit (a hash from history_vault), returns the file as it was right
+    after that commit — also for a node that has since been changed or deleted.
+    For a deleted node, pass the hash of the commit that deleted it with "~1"
+    added (e.g. "a1b2c3d~1") to get the last version before the deletion.
     """
     try:
-        return vault.get(path)
-    except FileNotFoundError as e:
+        return vault.get(path, commit)
+    except (OSError, ValueError, HistoryError) as e:
         return str(e)
+
+
+@mcp.tool()
+@requires_vault
+def history_vault(path: str, limit: int = 20) -> dict:
+    """
+    List the commits that changed a node, newest first:
+    {commits: [{commit, author, date, subject}]}. Every vault write is one commit.
+
+    Accepts a UID, absolute path or vault-relative path. A UID also works for a
+    node that was deleted: history finds the file it last lived in.
+
+    Use this to find what happened to a node — for example when content is
+    missing after a write — then diff_vault to see the change and
+    restore_vault to undo it.
+    """
+    try:
+        return {"commits": vault.history(path, limit)}
+    except (OSError, ValueError, HistoryError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+@requires_vault
+def diff_vault(path: str, commit: str) -> dict:
+    """
+    Show the change one commit made to a node, as a unified diff:
+    lines starting with "-" were removed, "+" were added.
+    Get the commit hash from history_vault. Returns {diff} or {error}.
+    """
+    try:
+        return {"diff": vault.diff(path, commit)}
+    except (OSError, ValueError, HistoryError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+@requires_vault
+def restore_vault(path: str, commit: str) -> dict:
+    """
+    Put a node back as it was right after `commit`. Use it to repair a node
+    that a write damaged, or to bring back a deleted node.
+
+    You may call this without asking the user first: a restore is recorded as a
+    new commit, nothing is lost, and it can itself be undone. But:
+      1. Read the old version first (read_vault with commit) and check it holds
+         the content you want back.
+      2. If the node was changed after the damage, a restore also drops those
+         newer changes. Ask the user first, or use read_vault with commit and
+         patch_vault to put back only the missing part.
+      3. Tell the user what you restored: node, commit and why.
+
+    To restore a deleted node, pass its UID and the hash of the commit that
+    deleted it with "~1" added (e.g. "a1b2c3d~1").
+    Returns {restored, uid, path, from_commit, was_deleted, commit}.
+    """
+    try:
+        return vault.restore(path, commit)
+    except (OSError, ValueError, HistoryError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+@requires_vault
+def undo_last_vault_change() -> dict:
+    """
+    Undo the newest vault commit: a node it created is removed, a node it
+    changed or deleted is put back as before. Recorded as a new commit, so
+    calling it again undoes the undo.
+
+    Use it right after a write that went wrong. If other writes came after the
+    mistake, use history_vault and restore_vault on the one node instead.
+    Tell the user what you undid. Returns {undone, undone_commit, files, commit}.
+    """
+    try:
+        return vault.undo_last_change()
+    except (OSError, ValueError, HistoryError) as e:
+        return {"error": str(e)}
 
 
 @mcp.tool()

@@ -261,6 +261,32 @@ memory.
 
 ---
 
+## 🔒 Recovering from a mistake
+
+Every vault write is a commit. If a write removed or overwrote content by
+mistake — a patch that dropped a field or the body, a delete that was wrong —
+repair it yourself instead of asking the user to redo the work:
+
+1. `loci__history_vault(path=<uid>)` — find the commit. A deleted node is found
+   by its UID too.
+2. `loci__diff_vault(path=<uid>, commit=<hash>)` — see what that commit changed.
+   `loci__read_vault(path=<uid>, commit=<hash>)` reads the version from before
+   the mistake (`<hash>~1` for the commit that deleted it). Check it holds what
+   you want back.
+3. If the bad commit is the newest one for the node in the list from step 1,
+   nothing changed after it: `loci__restore_vault(path=<uid>, commit=<hash>~1)`.
+   A restore puts the node back as it was right after the commit you name, so
+   name the one before the mistake, not the bad one.
+   Right after your own bad write, `loci__undo_last_vault_change()` does the
+   same. It refuses when the newest commit holds edits made outside Loci.
+4. If the node changed after the mistake, a restore would drop those changes.
+   Ask the user, or patch only the missing part back with `loci__patch_vault`.
+5. Tell the user what you restored: which node, which commit, and why.
+
+A restore is a new commit, so it loses nothing and can be undone.
+
+---
+
 ## Edge cases
 
 - **No clear title:** generate from the first sentence or ask. Never leave it blank.

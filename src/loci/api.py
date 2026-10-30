@@ -11,6 +11,7 @@ Internal implementation lives in tools/. This module is the public facade.
 
 import contextlib
 import io
+import logging
 import re
 import sys
 from pathlib import Path
@@ -41,6 +42,9 @@ from loci.tools.resolvers.dispatcher import dispatch_resolve
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+log = logging.getLogger(__name__)
+
+
 def _vault_root() -> Path:
     config = load_config()
     if not config:
@@ -54,10 +58,13 @@ def _before_write(*paths) -> None:
     vault_history.before_write(_vault_root(), paths)
 
 
-def _record(message: str, *paths) -> None:
+def _record(message: str, *paths, into: dict = None) -> None:
     """Commit what a write just changed. History never fails the write — see
-    vault_history."""
-    vault_history.record(_vault_root(), message, paths)
+    vault_history. When `into` is given, the commit's short hash is added to it
+    as `commit`, so the caller can name the change it just made."""
+    commit = vault_history.record(_vault_root(), message, paths)
+    if into is not None and commit:
+        into["commit"] = commit
 
 
 def _loci_root() -> Path:
@@ -225,7 +232,7 @@ def save(
             path=result["path"],
         )
         graph.index_edges(result["uid"], relations or [])
-        _record(f"Add {type}: {title} ({result['uid']})", result["path"])
+        _record(f"Add {type}: {title} ({result['uid']})", result["path"], into=result)
         graph.mark_fresh(_vault_root())
     return result
 
@@ -293,8 +300,9 @@ def delete(path: str) -> dict:
     p.unlink()
     if uid:
         graph.drop_node(uid)
-    _record(f"Delete {label}", p)
-    return {"deleted": True, "path": str(p)}
+    out = {"deleted": True, "path": str(p)}
+    _record(f"Delete {label}", p, into=out)
+    return out
 
 
 def patch(path: str, updates: dict, body: str = None) -> dict:
@@ -328,7 +336,7 @@ def patch(path: str, updates: dict, body: str = None) -> dict:
             path=str(p),
         )
         graph.index_edges(result["uid"], result.get("relations", []))
-        _record(f"Update {result.get('title') or p.stem} ({result['uid']})", p)
+        _record(f"Update {result.get('title') or p.stem} ({result['uid']})", p, into=result)
         graph.mark_fresh(_vault_root())
     return result
 
@@ -349,14 +357,18 @@ def check_duplicate(type: str, title: str, url: str = None) -> dict:
     return {"duplicate": False}
 
 
-def get(path: str) -> str:
+def get(path: str, commit: str = None) -> str:
     """
     Read a vault file. Accepts an absolute path, a path relative to vault_root,
     or an 8-character hex UID.
+    With `commit`, returns the file as it was right after that commit (no asset
+    content is appended); the file may since have changed or been deleted.
     Raises FileNotFoundError if the file does not exist.
     When the node has has_asset: true, asset content is appended inline (text files
     under the size threshold) or as a path reference (binary/large files).
     """
+    if commit is not None:
+        return vault_history.show(_vault_root(), commit, _history_path(path))
     p = _resolve_vault_path(path)
     if not p.exists():
         raise FileNotFoundError(f"Vault file not found: {p}")
@@ -659,10 +671,12 @@ def save_asset(
 
     # Step 7: Delete intent file
     intent_path.unlink()
-    _record(f"Add {node_type}: {title} ({uid})", result["path"])
+    commit_into: dict = {}
+    _record(f"Add {node_type}: {title} ({uid})", result["path"], into=commit_into)
     graph.mark_fresh(_vault_root())
 
     out = {"uid": uid, "asset_path": str(asset_final), "vault_path": result["path"]}
+    out.update(commit_into)
     _attach_tag_warnings(out, index, tags, node_type, effective_subtype, uid, relations)
     return out
 
@@ -1284,3 +1298,158 @@ def write_meta(file: str, content: str) -> str:
     p.write_text(content, encoding="utf-8")
     _record(f"Update meta: {file}", p)
     return str(p)
+
+
+# ---------------------------------------------------------------------------
+# Vault history: view and restore
+# ---------------------------------------------------------------------------
+
+def _history_path(ref: str) -> Path:
+    """Path for a history request. Unlike _resolve_vault_path this also finds a
+    node whose file is gone — a deleted node is exactly what history is for —
+    by asking history which file last carried the uid."""
+    try:
+        return _resolve_vault_path(ref)
+    except FileNotFoundError:
+        uid = ref.strip()
+        if _UID_RE.fullmatch(uid):
+            found = vault_history.find_path(_vault_root(), uid)
+            if found:
+                return _vault_root() / found
+        raise
+
+
+def history(path: str, limit: int = 20) -> list:
+    """
+    Commits that touched a node, newest first: [{commit, author, date, subject}].
+    Accepts a UID, absolute path or vault-relative path — also for a deleted node.
+    """
+    return vault_history.history(_vault_root(), _history_path(path), limit)
+
+
+def diff(path: str, commit: str) -> str:
+    """The change `commit` made to the node, as a unified diff."""
+    return vault_history.diff(_vault_root(), commit, _history_path(path))
+
+
+def _reindex_quietly(p: Path) -> bool:
+    """Re-index a file that was just written back. The files are the truth and
+    the graph is a cache, so a failure here must not fail a restore that has
+    already changed the file: log it and leave the graph stale, so the next
+    query rebuilds it. Returns True when the graph is up to date."""
+    try:
+        _reindex_from_file(p)
+        return True
+    except Exception as e:
+        log.warning("graph not updated after restoring %s: %s", p, e)
+        return False
+
+
+def _reindex_from_file(p: Path) -> None:
+    """Bring the graph in line with a file written behind the write paths."""
+    fm, _ = load_frontmatter(p.read_text(encoding="utf-8"))
+    uid = (fm or {}).get("uid")
+    if not uid:
+        return
+    graph.index_node(
+        str(uid),
+        type=fm.get("type", ""),
+        title=fm.get("title", ""),
+        tags=tag_hygiene.as_tag_list(fm.get("tags")),
+        domains=fm.get("domains", []),
+        summary=fm.get("summary", ""),
+        state=fm.get("state", "active"),
+        source_url=fm.get("source_url", ""),
+        subtype=fm.get("subtype", ""),
+        aliases=fm.get("aliases", []),
+        language=fm.get("language", ""),
+        path=str(p),
+    )
+    graph.index_edges(str(uid), fm.get("relations", []))
+    graph.mark_fresh(_vault_root())
+
+
+def restore(path: str, commit: str) -> dict:
+    """
+    Put a node back as it was right after `commit`. Restores the whole file —
+    also a deleted one — and records the restore as a new commit, so history
+    is never rewritten and a restore can itself be undone.
+
+    Edits made outside Loci and not yet committed are committed first, so the
+    restore cannot lose them.
+    Returns {restored: True, uid, path, from_commit, commit}, plus `warning`
+    when the restored node has a type the registry no longer knows.
+    """
+    root = _vault_root()
+    p = _history_path(path)
+    old = vault_history.show(root, commit, p)
+    fm, _ = load_frontmatter(old)       # before any write: a broken header must leave the file alone
+    uid = (fm or {}).get("uid")
+    if not uid:
+        raise ValueError(
+            f"{commit} holds no uid for {p.name}: restoring it would leave a node that cannot be "
+            "found. Pick a commit where the node has a uid."
+        )
+    snapshot = vault_history.snapshot_external(root, [p])
+    was_deleted = not p.exists()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(old, encoding="utf-8")
+    _reindex_quietly(p)
+    out = {"restored": True, "uid": uid, "path": str(p), "from_commit": commit,
+           "was_deleted": was_deleted}
+    node_type = (fm or {}).get("type")
+    if node_type and node_type not in get_registry(root).type_names():
+        out["warning"] = (
+            f"The restored node has type '{node_type}', which the registry does not know now. "
+            "It is restored as it was. Define the type or change it with patch_vault."
+        )
+    if snapshot:
+        out["external_edits_saved_as"] = snapshot
+    _record(f"Restore {(fm or {}).get('title') or p.stem} ({uid or p.name}) to {commit}", p, into=out)
+    return out
+
+
+def undo_last_change() -> dict:
+    """
+    Undo the newest commit: files it added are removed, files it changed or
+    deleted are put back as they were before it. Recorded as a new commit.
+    Refuses when the newest commit is the baseline.
+    Returns {undone: subject, files: [...], commit}.
+    """
+    root = _vault_root()
+    sha, subject, changes = vault_history.head_changes(root)
+    paths = [root / rel for _, rel in changes]
+    # Read every old version before touching a file, so a failure leaves the
+    # vault as it was instead of half undone.
+    olds = {rel: vault_history.show(root, f"{sha}~1", rel) for status, rel in changes if status != "A"}
+    # A newer commit means another Loci process wrote since HEAD was read, and
+    # undoing would overwrite its work.
+    if vault_history.head_short(root) != sha:
+        raise vault_history.HistoryError("The vault changed while the undo was prepared. Run it again.")
+    snapshot = vault_history.snapshot_external(root, paths)
+    fresh = True
+    for status, rel in changes:
+        target = root / rel
+        if status == "A":
+            uid = _frontmatter_uid(target) if target.exists() else None
+            target.unlink(missing_ok=True)
+            if uid:
+                graph.drop_node(uid)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(olds[rel], encoding="utf-8")
+            if rel.endswith(".md"):
+                fresh = _reindex_quietly(target) and fresh
+    if fresh:
+        graph.mark_fresh(root)
+    if any(rel.startswith("meta/") for _, rel in changes):
+        # The registries are cached; an undone meta file must take effect now.
+        from loci.tools.relation_registry import reset_relation_registry
+        from loci.tools.type_registry import reset_registry
+        reset_registry()
+        reset_relation_registry()
+    out = {"undone": subject, "undone_commit": sha, "files": [rel for _, rel in changes]}
+    if snapshot:
+        out["external_edits_saved_as"] = snapshot
+    _record(f"Undo: {subject} ({sha})", *paths, into=out)
+    return out
