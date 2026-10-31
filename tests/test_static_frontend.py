@@ -41,7 +41,7 @@ def bundle(tmp_path, monkeypatch):
 def client(monkeypatch):
     monkeypatch.setenv("LOCI_API_TOKEN", "test-token-123")
     monkeypatch.setattr(http_server, "_API_TOKEN", None)
-    return TestClient(http_server.app)
+    return TestClient(http_server.app, base_url="http://localhost")
 
 
 # ---------------------------------------------------------------------------

@@ -27,3 +27,23 @@ vault file, URL, or MCP request can make Loci read or write outside the vault,
 run a command, or send data somewhere you did not ask it to. The local web app
 and the HTTP API bind to loopback by default; exposing them on a network is a
 deliberate choice and outside the default threat model.
+
+A web page open in your browser can also try to reach the local API. Loci
+refuses such requests with three checks:
+
+- **Host header.** Every request is refused unless its Host names this machine
+  (`127.0.0.1`, `localhost` or `[::1]`) or an entry in `allowed_hosts` in
+  `config.yml`. This stops DNS rebinding. The port is not compared, so an
+  `allowed_hosts` entry allows every port on that name. Restart Loci after you
+  edit the list.
+- **Origin header.** The routes that change files or open them require an Origin
+  that is the server itself or is listed in `allowed_origins`.
+- **API token.** Those same routes also require the token in the
+  `X-Loci-Token` header.
+
+A way to get around any of these checks from a web page is in scope.
+
+By design, the server gives the token to any program on your machine that
+requests the home page, because the packaged web app needs it. Another local
+program that reads the token is therefore out of scope. I may add stronger
+protection later, but I do not promise it.

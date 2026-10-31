@@ -211,7 +211,7 @@ def test_http_nodes_list_filters_by_subtype(tmp_vault, monkeypatch):
 
     monkeypatch.setattr(http_server, "_API_TOKEN", "t")
     monkeypatch.setattr(http_server, "_allowed_origins", lambda: [])
-    client = TestClient(http_server.app)
+    client = TestClient(http_server.app, base_url="http://localhost")
 
     rows = client.get("/api/nodes?type=task&subtype=chore", headers={"Authorization": "Bearer t"}).json()
     assert [r["title"] for r in rows] == ["Review pull requests"]
@@ -230,7 +230,7 @@ def test_http_types_endpoint_serves_the_vocabulary_with_subtypes(tmp_vault, monk
 
     monkeypatch.setattr(http_server, "_API_TOKEN", "t")
     monkeypatch.setattr(http_server, "_allowed_origins", lambda: [])
-    client = TestClient(http_server.app)
+    client = TestClient(http_server.app, base_url="http://localhost")
 
     rows = client.get("/api/types", headers={"Authorization": "Bearer t"}).json()
     by_name = {r["name"]: r["subtypes"] for r in rows}
@@ -259,7 +259,7 @@ def test_http_types_endpoint_picks_up_a_type_defined_by_another_process(tmp_vaul
 
     monkeypatch.setattr(http_server, "_API_TOKEN", "t")
     monkeypatch.setattr(http_server, "_allowed_origins", lambda: [])
-    client = TestClient(http_server.app)
+    client = TestClient(http_server.app, base_url="http://localhost")
     headers = {"Authorization": "Bearer t"}
 
     before = {r["name"] for r in client.get("/api/types", headers=headers).json()}
@@ -289,7 +289,7 @@ def test_http_types_endpoint_nests_the_canonical_skill_type_under_procedure(tmp_
 
     monkeypatch.setattr(http_server, "_API_TOKEN", "t")
     monkeypatch.setattr(http_server, "_allowed_origins", lambda: [])
-    client = TestClient(http_server.app)
+    client = TestClient(http_server.app, base_url="http://localhost")
     rows = {r["name"]: r["extends"] for r in client.get("/api/types", headers={"Authorization": "Bearer t"}).json()}
     assert rows["skill"] == "procedure"
     assert rows["procedure"] is None

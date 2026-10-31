@@ -396,7 +396,7 @@ def test_ui_server_labels_its_commits_ui_at_startup(tmp_vault):
     from fastapi.testclient import TestClient
     from loci import http_server
 
-    with TestClient(http_server.app):
+    with TestClient(http_server.app, base_url="http://localhost"):
         assert vault_history._source == "ui"
 
 
@@ -412,7 +412,7 @@ def test_health_reports_the_state_of_history(tmp_vault):
     from fastapi.testclient import TestClient
     from loci import http_server
 
-    client = TestClient(http_server.app)
+    client = TestClient(http_server.app, base_url="http://localhost")
     assert client.get("/api/health").json()["history"]["state"] == "ready"
     save("History One")
     assert client.get("/api/health").json()["history"] == {"state": "on", "detail": ""}
@@ -523,7 +523,7 @@ def test_a_failing_history_status_does_not_make_the_vault_look_empty(tmp_vault, 
         raise RuntimeError("no status")
 
     monkeypatch.setattr(http_server.vault_api, "history_status", boom)
-    body = TestClient(http_server.app).get("/api/health").json()
+    body = TestClient(http_server.app, base_url="http://localhost").get("/api/health").json()
     assert body["status"] == "ok"
     assert body["history"]["state"] == "unknown"
 

@@ -107,13 +107,18 @@ def auth(monkeypatch):
     monkeypatch.setattr(
         http_server, "_allowed_origins", lambda: ["http://localhost:5173"]
     )
+    # Pinned so a developer's own config.yml cannot change what the tests see.
+    monkeypatch.setattr(
+        http_server, "_ALLOWED_HOSTS", frozenset(http_server.DEFAULT_ALLOWED_HOSTS)
+    )
 
 
 @pytest.fixture
 def client(auth):
     from fastapi.testclient import TestClient
 
-    return TestClient(http_server.app)
+    # TestClient's default Host is `testserver`, which the Host allowlist refuses.
+    return TestClient(http_server.app, base_url="http://localhost")
 
 
 class TestLocalPath:
@@ -249,9 +254,9 @@ class TestOpenLocalAuth:
         whatever host and port uvicorn bound — 127.0.0.1:8765 by default, an
         ephemeral port under the e2e suite. No static allowlist can name it, so
         without a same-origin check every open-local from the wheel's own UI
-        403s. TestClient sends Host: testserver."""
+        403s. The client sends Host: localhost."""
         response, launch = self._post(
-            client, **{"Origin": "http://testserver", "X-Loci-Token": TOKEN}
+            client, **{"Origin": "http://localhost", "X-Loci-Token": TOKEN}
         )
 
         assert response.status_code == 200
@@ -264,7 +269,7 @@ class TestOpenLocalAuth:
             client,
             **{
                 "Origin": "https://evil.example",
-                "Host": "testserver",
+                "Host": "localhost",
                 "X-Loci-Token": TOKEN,
             },
         )
@@ -419,6 +424,161 @@ class TestHealthVersion:
         assert payload["version"] == vault_api.app_version()
 
 
+class TestHostAllowlist:
+    """DNS rebinding: the attacker's page ends up talking to 127.0.0.1, but its
+    Host header still carries the attacker's domain."""
+
+    @pytest.mark.parametrize(
+        "host", ["localhost", "localhost:8765", "127.0.0.1:8765", "[::1]:8765", "LOCALHOST"]
+    )
+    def test_loopback_names_are_served(self, client, host):
+        assert client.get("/api/health", headers={"Host": host}).status_code == 200
+
+    @pytest.mark.parametrize("host", ["evil.example", "evil.example:8765", "127.0.0.1.evil.example", ""])
+    def test_any_other_host_is_refused_on_a_read_route(self, client, host):
+        """Read routes have no token check, so this is the only guard on them."""
+        response = client.get("/api/nodes", headers={"Host": host})
+
+        assert response.status_code == 403
+        assert "allowed_hosts" in response.text
+
+    def test_the_token_page_is_not_handed_to_a_rebound_host(self, client):
+        assert client.get("/", headers={"Host": "evil.example"}).status_code == 403
+
+    def test_a_rebound_post_is_refused_even_with_matching_origin_and_token(self, client):
+        """Origin and Host agree under rebinding, so the same-origin check passes."""
+        response = client.post(
+            "/api/undo",
+            headers={
+                "Origin": "http://evil.example",
+                "Host": "evil.example",
+                "X-Loci-Token": TOKEN,
+            },
+        )
+
+        assert response.status_code == 403
+        assert "allowed_hosts" in response.text
+
+    def test_a_host_listed_in_config_is_served(self, client, monkeypatch):
+        monkeypatch.setattr(http_server, "_ALLOWED_HOSTS", None)
+        monkeypatch.setattr(
+            http_server, "_read_config_file", lambda: {"allowed_hosts": ["Loci.Lan", "10.0.0.5"]}
+        )
+
+        assert client.get("/api/health", headers={"Host": "loci.lan:8765"}).status_code == 200
+        assert client.get("/api/health", headers={"Host": "10.0.0.5"}).status_code == 200
+        assert client.get("/api/health", headers={"Host": "evil.example"}).status_code == 403
+        assert client.get("/api/health", headers={"Host": "localhost"}).status_code == 200
+
+    def test_the_body_says_to_restart_after_editing_the_list(self, client):
+        response = client.get("/api/nodes", headers={"Host": "evil.example"})
+
+        assert "restart" in response.text.lower()
+
+    @staticmethod
+    def _drive(scope):
+        """Run the middleware once; return (messages sent, whether the app ran).
+
+        Runs on its own thread: the browser suite leaves an event loop running
+        on the main thread, and `asyncio.run` refuses to start inside one.
+        """
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+
+        sent, served = [], []
+
+        async def app(scope, receive, send):
+            served.append(True)
+
+        async def send(message):
+            sent.append(message)
+
+        def go():
+            asyncio.run(http_server.HostAllowlistMiddleware(app)(scope, None, send))
+
+        with ThreadPoolExecutor(1) as pool:
+            pool.submit(go).result()
+        return sent, bool(served)
+
+    def test_the_first_host_header_decides(self):
+        """Starlette reads the first Host header, so the guard must too."""
+        sent, served = self._drive(
+            {"type": "http", "headers": [(b"host", b"evil.example"), (b"host", b"localhost")]}
+        )
+        assert not served and sent[0]["status"] == 403
+
+        _, served = self._drive(
+            {"type": "http", "headers": [(b"host", b"localhost"), (b"host", b"evil.example")]}
+        )
+        assert served
+
+    def test_a_request_with_no_host_header_is_refused(self):
+        sent, served = self._drive({"type": "http", "headers": []})
+
+        assert not served and sent[0]["status"] == 403
+
+    def test_a_websocket_with_a_foreign_host_is_closed(self):
+        sent, served = self._drive(
+            {"type": "websocket", "headers": [(b"host", b"evil.example")]}
+        )
+
+        assert not served
+        assert sent == [{"type": "websocket.close", "code": 1008}]
+
+    @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "[::1]"])
+    def test_binding_to_loopback_prints_no_note(self, host):
+        assert http_server._bind_note(host) is None
+
+    def test_binding_to_a_lan_address_names_allowed_hosts(self):
+        assert "allowed_hosts" in http_server._bind_note("192.168.1.5")
+
+    def test_binding_to_every_interface_names_allowed_hosts(self):
+        assert "allowed_hosts" in http_server._bind_note("0.0.0.0")
+
+    @pytest.mark.parametrize("host", ["localhost.", "localhost.:8765", "127.0.0.1."])
+    def test_a_trailing_dot_names_the_same_host(self, client, host):
+        assert client.get("/api/health", headers={"Host": host}).status_code == 200
+
+    def test_a_trailing_dot_in_config_matches_the_bare_name(self, client, monkeypatch):
+        monkeypatch.setattr(http_server, "_ALLOWED_HOSTS", None)
+        monkeypatch.setattr(http_server, "_read_config_file", lambda: {"allowed_hosts": ["loci.lan."]})
+
+        assert client.get("/api/health", headers={"Host": "loci.lan"}).status_code == 200
+
+    def test_an_entry_with_a_scheme_is_warned_about_and_not_matched(
+        self, client, monkeypatch, caplog
+    ):
+        monkeypatch.setattr(http_server, "_ALLOWED_HOSTS", None)
+        monkeypatch.setattr(
+            http_server, "_read_config_file", lambda: {"allowed_hosts": ["http://loci.lan:8765"]}
+        )
+
+        assert client.get("/api/health", headers={"Host": "http"}).status_code == 403
+        assert "http://loci.lan:8765" in caplog.text
+        assert client.get("/api/health", headers={"Host": "loci.lan"}).status_code == 403
+
+    def test_a_malformed_allowed_hosts_setting_falls_back_to_loopback(self, client, monkeypatch):
+        monkeypatch.setattr(http_server, "_ALLOWED_HOSTS", None)
+        monkeypatch.setattr(http_server, "_read_config_file", lambda: {"allowed_hosts": "loci.lan"})
+
+        assert client.get("/api/health", headers={"Host": "loci.lan"}).status_code == 403
+        assert client.get("/api/health", headers={"Host": "localhost"}).status_code == 200
+
+    @pytest.mark.parametrize(
+        ("raw", "name"),
+        [
+            ("localhost:8765", "localhost"),
+            ("Example.COM", "example.com"),
+            ("[::1]:8765", "[::1]"),
+            ("[::1]", "[::1]"),
+            ("[::1", "[::1"),
+            ("", ""),
+        ],
+    )
+    def test_host_name_strips_the_port(self, raw, name):
+        assert http_server._host_name(raw) == name
+
+
 class TestPackagingConstraints:
     """
     Guards on metadata that only breaks off the developer's machine.
@@ -537,7 +697,7 @@ class TestUndoEndpoints:
     def test_undo_from_another_origin_is_refused(self, client):
         saved = self._save_and_patch()
         response = client.post(
-            "/api/undo", headers={"Origin": "https://evil.example", "Host": "testserver", "X-Loci-Token": TOKEN}
+            "/api/undo", headers={"Origin": "https://evil.example", "Host": "localhost", "X-Loci-Token": TOKEN}
         )
         assert response.status_code == 403
         assert "oops" in vault_api.get(saved["uid"])

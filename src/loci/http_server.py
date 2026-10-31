@@ -22,7 +22,7 @@ from urllib.parse import unquote, urlparse
 import yaml
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 
 from loci.tools.vault_init import (
     HOW_TO_CONFIGURE,
@@ -183,6 +183,118 @@ def _api_token() -> str:
     return _API_TOKEN
 
 
+# ---------------------------------------------------------------------------
+# Host allowlist — the defence against DNS rebinding
+#
+# The Origin and token checks above guard only the two mutating routes, and the
+# read routes have no check at all: they rely on CORS to keep a foreign page
+# from *reading* a response. DNS rebinding defeats that. The attacker's domain
+# is first resolved to their server, then re-pointed at 127.0.0.1; the browser
+# now counts this API as the page's own site, so CORS no longer applies, and
+# Origin and Host both name the attacker's domain, so `_is_same_origin` agrees.
+# GET / even hands the page the token.
+#
+# What the attacker cannot change is the Host header: it carries their domain
+# name. Every request is therefore refused unless its Host names this machine.
+# The port is not compared — the attacker's page uses the same port.
+#
+# Known limit: a UI reached through a reverse proxy or under a custom hostname
+# sends that name as Host and is refused until the name is added to
+# `allowed_hosts` in config.yml. Likewise `--host` on a LAN address needs that
+# address listed. That is the price of refusing by default. The list is read
+# once, so editing it needs a restart.
+# ---------------------------------------------------------------------------
+
+DEFAULT_ALLOWED_HOSTS = ("127.0.0.1", "localhost", "[::1]")
+
+
+def _host_name(host: str) -> str:
+    """The hostname part of a Host header value: lower-case, port removed.
+
+    An IPv6 literal keeps its brackets, so `[::1]:8765` becomes `[::1]`. One
+    trailing dot is dropped: `localhost.` names the same host as `localhost`.
+    """
+    host = host.strip().lower()
+    if host.startswith("["):
+        end = host.find("]")
+        return host[: end + 1] if end != -1 else host
+    return host.split(":", 1)[0].removesuffix(".")
+
+
+_ALLOWED_HOSTS: frozenset[str] | None = None
+
+
+def _allowed_hosts() -> frozenset[str]:
+    """Loopback names plus anything listed under `allowed_hosts` in config.yml.
+
+    Read once per process, like the token: it is checked on every request.
+    """
+    global _ALLOWED_HOSTS
+    if _ALLOWED_HOSTS is None:
+        configured = _read_config_file().get("allowed_hosts")
+        extra = [str(h) for h in configured] if isinstance(configured, list) else []
+        for entry in extra:
+            if "://" in entry or "/" in entry:
+                log.warning(
+                    "Ignoring allowed_hosts entry %r: write a bare hostname, "
+                    "without a scheme or a path.",
+                    entry,
+                )
+        good = [h for h in extra if "/" not in h]
+        _ALLOWED_HOSTS = frozenset(_host_name(h) for h in (*DEFAULT_ALLOWED_HOSTS, *good))
+    return _ALLOWED_HOSTS
+
+
+def _first_host_header(scope) -> str:
+    """The first Host header, the one Starlette and `Header(host)` also read."""
+    for name, value in scope["headers"]:
+        if name == b"host":
+            return value.decode("latin-1")
+    return ""
+
+
+_REFUSED_BODY = (
+    "Host not allowed. If you reach Loci under another name, "
+    "add it to allowed_hosts in config.yml, then restart Loci."
+)
+
+
+class HostAllowlistMiddleware:
+    """Refuse any HTTP or WebSocket request whose Host does not name this machine."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            raw = _first_host_header(scope)
+            if _host_name(raw) not in _allowed_hosts():
+                log.warning("Refused a request with Host %r", raw)
+                if scope["type"] == "websocket":
+                    await send({"type": "websocket.close", "code": 1008})
+                    return
+                response = PlainTextResponse(_REFUSED_BODY, status_code=403)
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
+def _bind_note(host: str) -> str | None:
+    """A startup warning when `--host` is not a name the Host check accepts."""
+    if _host_name(host) in _allowed_hosts():
+        return None
+    if host in ("0.0.0.0", "::"):
+        return (
+            f"listening on every interface ({host}). Browsers refuse requests "
+            "unless the name in the address bar is listed under allowed_hosts "
+            "in config.yml."
+        )
+    return (
+        f"--host {host} is not in allowed_hosts, so every request will be "
+        "refused. Add it to allowed_hosts in config.yml."
+    )
+
+
 def _is_same_origin(origin: str, host: str | None) -> bool:
     """True when Origin names the authority this request was sent to.
 
@@ -235,6 +347,8 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+# Added last so it is outermost: a refused Host never reaches CORS or a route.
+app.add_middleware(HostAllowlistMiddleware)
 
 
 def _parse_file(raw: str) -> dict:
@@ -686,6 +800,10 @@ def main() -> None:  # pragma: no cover
     if problem:
         print(f"loci: {problem}", file=sys.stderr)
         raise SystemExit(1)
+
+    note = _bind_note(args.host)
+    if note:
+        print(f"loci: {note}", file=sys.stderr)
 
     uvicorn.run(app, host=args.host, port=args.port)
 
