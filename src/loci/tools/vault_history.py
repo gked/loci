@@ -35,13 +35,16 @@ import json
 import logging
 import os
 import re
+import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
 from dulwich.diff_tree import tree_changes
 from dulwich.file import FileLocked
+from dulwich.graph import can_fast_forward
 from dulwich.index import commit_tree
 from dulwich.object_store import iter_tree_contents, tree_lookup_path
 from dulwich.objects import ZERO_SHA, Blob, Commit
@@ -95,6 +98,9 @@ _stat_cache: dict[tuple[str, bytes], tuple[tuple[int, int, int], bytes]] = {}
 # STATUS_FILE, where the other one reads it; this dict is the fallback for a
 # disk that will not take that file either.
 _last_error: dict[str, str] = {}
+# Bumped by every _set_error in this process, so two stamps of the same reason
+# still differ when the status file has no usable mtime.
+_error_count = 0
 STATUS_FILE = Path(".loci") / "history-status.json"
 
 
@@ -116,6 +122,8 @@ def _set_error(vault_root: Path, reason: str) -> None:
     """Show `reason` to every process through STATUS_FILE. Only when that file
     cannot be written does this process keep the reason to itself: a copy kept
     beside a working file would outlive the other process clearing it."""
+    global _error_count
+    _error_count += 1
     root = str(Path(vault_root).resolve())
     try:
         path = Path(vault_root) / STATUS_FILE
@@ -142,6 +150,19 @@ def _read_error(vault_root: Path) -> Optional[str]:
     except (OSError, ValueError, AttributeError):
         pass
     return _last_error.get(str(Path(vault_root).resolve()))
+
+
+def error_stamp(vault_root: Path) -> Optional[tuple[str, Optional[int], int]]:
+    """The current error flag and when it was written, None when there is none.
+    Two stamps differ when a failure happened between them, even for the same
+    reason: that is how a caller tells its own failure from an older one."""
+    reason = _read_error(vault_root)
+    if not reason:
+        return None
+    try:
+        return reason, (Path(vault_root) / STATUS_FILE).stat().st_mtime_ns, _error_count
+    except OSError:
+        return reason, None, _error_count
 
 
 def _walk_due(root: str) -> bool:
@@ -562,6 +583,48 @@ def _require_repo(vault_root: Path) -> None:
         raise HistoryError("The vault has no history yet: nothing has been written since tracking began.")
 
 
+# Every commit id reachable from HEAD, per vault: built by one walk and then only
+# extended by the commits added since, so a short hash never walks the history
+# again. The sync HTTP endpoints run in a thread pool, so the lock guards it.
+_commit_ids_cache: dict[str, tuple[bytes, list[bytes]]] = {}
+_commit_ids_lock = threading.Lock()
+_CACHE_VAULTS = 8       # vaults a process keeps cached; the oldest is dropped past this
+
+
+def _remember(cache: dict, key: str, value) -> None:
+    """Store `value` under `key`, dropping the longest-cached vault once more than
+    _CACHE_VAULTS are held, so a process that switches vault roots does not keep
+    every history it has ever read."""
+    cache.pop(key, None)
+    cache[key] = value
+    while len(cache) > _CACHE_VAULTS:
+        del cache[next(iter(cache))]
+
+
+def _descends(repo: Repo, old: bytes, new: bytes) -> bool:
+    """True when `new` builds on `old`. False when `old` is not in the store at
+    all, as after the history was deleted or re-created: the caller then starts
+    from a fresh walk."""
+    try:
+        return can_fast_forward(repo, old, new)
+    except KeyError:
+        return False
+
+
+def _commit_ids(repo: Repo, head: bytes) -> list[bytes]:
+    key = str(repo.path)
+    with _commit_ids_lock:
+        known = _commit_ids_cache.get(key)
+        if known is not None and known[0] == head:
+            return known[1]
+        if known is not None and _descends(repo, known[0], head):
+            ids = known[1] + [e.commit.id for e in repo.get_walker(include=[head], exclude=[known[0]])]
+        else:
+            ids = [e.commit.id for e in repo.get_walker(include=[head])]
+        _remember(_commit_ids_cache, key, (head, ids))
+        return ids
+
+
 def _resolve(repo: Repo, commit: str) -> bytes:
     """The commit id a reference names: a hash or hash prefix, or HEAD, then `~n`
     steps back along the first parent. Raises HistoryError for anything else,
@@ -584,8 +647,7 @@ def _resolve(repo: Repo, commit: str) -> bytes:
         if found not in repo.object_store or not isinstance(repo[found], Commit):
             raise HistoryError(f"No commit {base!r} in the history. Use a hash from history_vault.")
     else:
-        matches = [e.commit.id for e in repo.get_walker(include=[head])
-                   if e.commit.id.decode("ascii").startswith(base)]
+        matches = [c for c in _commit_ids(repo, head) if c.decode("ascii").startswith(base)]
         if not matches:
             raise HistoryError(f"No commit {base!r} in the history. Use a hash from history_vault.")
         if len(matches) > 1:
@@ -599,12 +661,17 @@ def _resolve(repo: Repo, commit: str) -> bytes:
     return found
 
 
-def _text_at(repo: Repo, commit_id: bytes, key: bytes) -> Optional[str]:
+def _bytes_at(repo: Repo, commit_id: bytes, key: bytes) -> Optional[bytes]:
     try:
         _, sha = tree_lookup_path(repo.object_store.__getitem__, repo[commit_id].tree, key)
     except KeyError:
         return None
-    return repo[sha].data.decode("utf-8", "replace")
+    return repo[sha].data
+
+
+def _text_at(repo: Repo, commit_id: bytes, key: bytes) -> Optional[str]:
+    data = _bytes_at(repo, commit_id, key)
+    return None if data is None else data.decode("utf-8", "replace")
 
 
 def _spec(vault_root: Path, path: Path | str) -> bytes:
@@ -614,7 +681,12 @@ def _spec(vault_root: Path, path: Path | str) -> bytes:
     return specs[0]
 
 
-_find_cache: dict = {}
+# uid -> vault-relative path of the file that last carried it, per vault, built
+# by one walk of the history and then only extended: a lookup never walks again.
+# The sync HTTP endpoints run in a thread pool, so the lock guards every use.
+_UID_LINE = re.compile(rb"(?m)^uid:[ \t]*['\"]?([^\s'\"]+)['\"]?[ \t]*$")
+_uid_index: dict[str, tuple[bytes, dict[str, str]]] = {}
+_uid_index_lock = threading.Lock()
 
 
 def find_path(vault_root: Path, uid: str) -> Optional[str]:
@@ -625,33 +697,50 @@ def find_path(vault_root: Path, uid: str) -> Optional[str]:
     head, _ = _head(repo)
     if head is None:
         return None
-    # Every write moves HEAD, so a result is good exactly as long as HEAD is the
-    # same: a uid that misses on disk is not re-walked through the whole history.
-    key = (str(Path(vault_root)), head)
-    if key in _find_cache and uid in _find_cache[key]:
-        return _find_cache[key][uid]
-    if len(_find_cache) > 8:
-        _find_cache.clear()
-    result = _scan_for_uid(repo, head, uid)
-    _find_cache.setdefault(key, {})[uid] = result
-    return result
+    root = str(Path(vault_root))
+    with _uid_index_lock:
+        known = _uid_index.get(root)
+        if known is None or known[0] != head:
+            _remember(_uid_index, root, (head, _extend_uid_index(repo, head, known)))
+        return _uid_index[root][1].get(uid)
 
 
-def _scan_for_uid(repo, head, uid: str) -> Optional[str]:
-    # A uid of digits only is stored quoted (uid: '12345678'), so allow quotes.
-    needle = re.compile(rb"(?m)^uid:[ \t]*['\"]?" + re.escape(uid.encode()) + rb"['\"]?[ \t]*$")
-    for entry in repo.get_walker(include=[head]):
-        commit = entry.commit
-        parent_tree = repo[commit.parents[0]].tree if commit.parents else None
-        for change in tree_changes(repo.object_store, parent_tree, commit.tree):
-            for side in (change.new, change.old):
-                if side and side.sha and side.path.endswith(b".md"):
-                    # Only the frontmatter: a note that quotes a "uid:" line in its
-                    # body must not be taken for the node that owns it.
-                    header, _ = split_frontmatter(repo[side.sha].data.decode("utf-8", "replace"))
-                    if header and needle.search(header.encode("utf-8")):
-                        return side.path.decode("utf-8", "surrogateescape")
-    return None
+def _extend_uid_index(repo: Repo, head: bytes, known: Optional[tuple[bytes, dict[str, str]]]) -> dict[str, str]:
+    """The index as of `head`: `known` plus the commits added since it was built,
+    or a fresh walk when `known` is not an ancestor of `head`."""
+    if known is not None and _descends(repo, known[0], head):
+        index = dict(known[1])
+        entries = repo.get_walker(include=[head], exclude=[known[0]])
+    else:
+        index = {}
+        entries = repo.get_walker(include=[head])
+    # Newest first, so the first commit to name a uid owns it — except that a
+    # commit added to a known index overrides what is already there.
+    seen: set[str] = set()
+    for entry in entries:
+        for uid, path in _uids_in(repo, entry.commit).items():
+            if uid not in seen:
+                seen.add(uid)
+                index[uid] = path
+    return index
+
+
+def _uids_in(repo: Repo, commit: Commit) -> dict[str, str]:
+    parent_tree = repo[commit.parents[0]].tree if commit.parents else None
+    found: dict[str, str] = {}
+    changes = list(tree_changes(repo.object_store, parent_tree, commit.tree))
+    # Where the file is now before where it was: a move shows as a delete and an
+    # add, and the delete can sort first.
+    for side in [c.new for c in changes] + [c.old for c in changes]:
+        if side and side.sha and side.path.endswith(b".md"):
+            # Only the frontmatter: a note that quotes a "uid:" line in its
+            # body must not be taken for the node that owns it.
+            header, _ = split_frontmatter(repo[side.sha].data.decode("utf-8", "replace"))
+            match = header and _UID_LINE.search(header.encode("utf-8"))
+            if match:
+                found.setdefault(match.group(1).decode("utf-8", "replace"),
+                                 side.path.decode("utf-8", "surrogateescape"))
+    return found
 
 
 def show(vault_root: Path, commit: str, path: Path | str) -> str:
@@ -668,6 +757,19 @@ def show(vault_root: Path, commit: str, path: Path | str) -> str:
             f"use '{commit}~1' for the version before."
         )
     return text
+
+
+def show_bytes(vault_root: Path, commit: str, path: Path | str) -> bytes:
+    """The exact bytes of `path` right after `commit`: what a restore writes
+    back, so a file that is not valid UTF-8 returns unchanged."""
+    _require_repo(vault_root)
+    repo = _open(vault_root)
+    commit_id = _resolve(repo, commit)
+    key = _spec(vault_root, path)
+    data = _bytes_at(repo, commit_id, key)
+    if data is None:
+        raise HistoryError(f"{key.decode('utf-8', 'replace')} does not exist at {commit}.")
+    return data
 
 
 def diff(vault_root: Path, commit: str, path: Path | str) -> str:
@@ -700,6 +802,70 @@ def diff(vault_root: Path, commit: str, path: Path | str) -> str:
     return header + body + "\n"
 
 
+LOCK_TIMEOUT_S = 10.0
+_lock_held = threading.local()      # roots this thread already holds, so a nested take is a no-op
+
+
+@contextmanager
+def write_lock(vault_root: Path, required: bool = False):
+    """Hold the vault's write lock, across processes. The MCP server and the UI
+    backend are separate processes, and two of them writing or undoing at once
+    would each overwrite the other's files.
+
+    Every write takes it (see `_serialized` in api.py). Undo and restore also
+    re-check HEAD under it. It waits up to LOCK_TIMEOUT_S, then raises
+    HistoryError: a hung holder must not pin a request thread forever.
+
+    It is re-entrant within a thread. It is a no-op while history is off or while
+    the vault has no history store yet. When the lock file cannot be opened a
+    plain write goes on without it, with a warning; with `required=True`, which
+    undo and restore pass, HistoryError is raised instead, because an undo that
+    runs unlocked can overwrite another process's write.
+
+    POSIX only: it uses fcntl.flock. On Windows there is no lock, and the HEAD
+    re-check in undo and restore is the only guard. It leaves a small gap
+    between the check and the write."""
+    try:
+        import fcntl
+    except ImportError:     # no flock on this platform: the HEAD re-check is the guard
+        yield
+        return
+    held = _lock_held.__dict__.setdefault("roots", set())
+    key = str(Path(vault_root))
+    if key in held or not enabled() or not is_repo(vault_root):
+        yield
+        return
+    lock_dir = Path(vault_root) / ".loci"
+    try:
+        handle = open(lock_dir / "undo.lock", "a")
+    except OSError as e:    # a lock file that cannot be made must not stop a plain write
+        if required:
+            raise HistoryError(
+                f"The vault's write lock cannot be opened ({e}), so the change was not made."
+            ) from e
+        log.warning("write lock unavailable, continuing without it: %s", e)
+        yield
+        return
+    with handle:
+        deadline = time.monotonic() + LOCK_TIMEOUT_S
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise HistoryError(
+                        "The vault is busy: another write, undo or restore is still running. Nothing was changed. Try again in a moment."
+                    ) from None
+                time.sleep(0.05)
+        held.add(key)
+        try:
+            yield
+        finally:
+            held.discard(key)
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def snapshot_external(vault_root: Path, paths: Iterable[Path | str]) -> Optional[str]:
     """Commit uncommitted changes to `paths` (edits made outside Loci) before a
     restore overwrites them, so the restore itself loses nothing. Returns the
@@ -712,6 +878,13 @@ def head_short(vault_root: Path) -> Optional[str]:
     _require_repo(vault_root)
     head, _ = _head(_open(vault_root))
     return _short(head) if head else None
+
+
+def head_id(vault_root: Path) -> Optional[str]:
+    """Full hash of the newest commit, None when there is none."""
+    _require_repo(vault_root)
+    head, _ = _head(_open(vault_root))
+    return head.decode("ascii") if head else None
 
 
 def head_changes(vault_root: Path) -> tuple[str, str, list[tuple[str, str]]]:

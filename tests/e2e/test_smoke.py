@@ -8,6 +8,7 @@ keep them cheap and unconditional.
 
 import json
 import re
+import time
 import urllib.request
 
 import pytest
@@ -115,3 +116,51 @@ def test_rail_shows_whether_vault_history_is_running(app_page, base_url):
     badge = app_page.locator("[data-testid='history-state']")
     expect(badge).to_have_attribute("data-state", expected)
     expect(badge).to_contain_text(f"historia · {expected}")
+
+
+def test_undo_says_why_when_there_is_nothing_to_undo(app_page, base_url):
+    """
+    The e2e vault is read-only to the UI and has no recorded change, so the
+    first click must end in the reason, not in a write. Portable like the
+    history test: the expected outcome is read from /api/history/last.
+    """
+    with urllib.request.urlopen(f"{base_url}/api/history/last") as response:
+        last = json.load(response)
+    assert last["undoable"] is False, "the e2e vault must have no change to undo"
+
+    app_page.locator("[data-testid='undo-last']").click()
+
+    result = app_page.locator("[data-testid='undo-result']")
+    expect(result).to_have_attribute("data-state", "error")
+    expect(result).to_contain_text(last["reason"])
+    expect(app_page.locator("[data-testid='undo-confirm']")).to_have_count(0)
+
+
+def test_undo_buttons_show_where_keyboard_focus_is(app_page):
+    """
+    `all: unset` strips the browser's focus ring, so the control carries its own:
+    a keyboard user must see which undo button they are on before pressing it.
+    """
+    button = app_page.locator("[data-testid='undo-last']")
+    button.focus()
+    app_page.keyboard.press("Shift+Tab")
+    app_page.keyboard.press("Tab")      # arrive by keyboard, so :focus-visible applies
+    expect(button).to_be_focused()
+    outline = button.evaluate("el => getComputedStyle(el).outlineStyle")
+    assert outline != "none", "a focused undo button has no visible focus ring"
+
+
+def test_undo_buttons_are_disabled_while_the_request_runs(app_page):
+    """A second click during the lookup must not send a second request."""
+    seen = []
+    def slow(route):
+        seen.append(1)
+        time.sleep(0.4)
+        route.continue_()
+
+    app_page.route("**/api/history/last", slow)
+    button = app_page.locator("[data-testid='undo-last']")
+    button.click()
+    expect(button).to_be_disabled()
+    expect(app_page.locator("[data-testid='undo-result']")).to_be_visible()
+    assert len(seen) == 1

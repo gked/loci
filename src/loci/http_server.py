@@ -405,6 +405,35 @@ def health():
         }
 
 
+@app.get("/api/history/last")
+def history_last():
+    """The change an undo would undo: {undoable, subject, commit, files} or
+    {undoable: false, reason}. Read-only."""
+    return vault_api.last_change()
+
+
+@app.post("/api/undo")
+def undo_last(
+    origin: str | None = Header(None),
+    x_loci_token: str | None = Header(None),
+    host: str | None = Header(None),
+    commit: str | None = Query(None),
+):
+    """Undo the newest vault change. Writes, so it takes the same origin and
+    token check as /api/open-local. `commit` is the hash /api/history/last
+    showed, required: when a newer change has landed since, nothing is undone (409)."""
+    _authorize_local_request(origin, x_loci_token, host)
+    if not commit:
+        raise HTTPException(status_code=422, detail="commit is required: pass the hash /api/history/last showed.")
+    try:
+        return vault_api.undo_last_change(commit)
+    except vault_history.HistoryError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except (OSError, ValueError) as e:
+        log.warning("undo failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Undo failed: {e}") from e
+
+
 @app.get("/api/nodes/recent")
 def nodes_recent(
     days: int = Query(30),

@@ -1,5 +1,77 @@
-import { useQuery } from "@tanstack/react-query";
-import { getHealth } from "../lib/api.js";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getHealth, getLastChange, undoLastChange } from "../lib/api.js";
+
+// Undo takes two clicks: the first looks up what the newest change is and shows
+// it, the second does it. Nothing is written until the second.
+function UndoControl() {
+  const queryClient = useQueryClient();
+  const [step, setStep] = useState("idle"); // idle | confirm | done | error
+  const [message, setMessage] = useState("");
+  const [shown, setShown] = useState(""); // the commit the user was shown
+  const [busy, setBusy] = useState(false); // a request is in flight: no second click
+
+  const ask = async () => {
+    setBusy(true);
+    setShown(""); // a lookup that fails must not leave the last undo's commit to confirm
+    try {
+      const last = await getLastChange();
+      if (!last.undoable) {
+        setStep("error");
+        setMessage(last.reason);
+      } else {
+        setStep("confirm");
+        setMessage(last.subject);
+        setShown(last.commit);
+      }
+    } catch (e) {
+      setStep("error");
+      setMessage(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      // Undo the change that was shown, not whatever is newest by now.
+      const done = await undoLastChange(shown);
+      setStep("done");
+      setMessage(done.undone);
+      setShown(""); // spent: a later confirm must come from a fresh lookup
+      queryClient.invalidateQueries();
+    } catch (e) {
+      setStep("error");
+      setMessage(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="undo" data-testid="undo" data-step={step}>
+      {step === "idle" && (
+        <button onClick={ask} disabled={busy} data-testid="undo-last">revoca · undo last change</button>
+      )}
+      {step === "confirm" && (
+        <>
+          <div data-testid="undo-subject">{message}</div>
+          <button onClick={confirm} disabled={busy} data-testid="undo-confirm">undo this</button>
+          <button onClick={() => { setStep("idle"); setShown(""); }} disabled={busy} data-testid="undo-cancel">cancel</button>
+        </>
+      )}
+      {(step === "done" || step === "error") && (
+        <>
+          <div data-testid="undo-result" data-state={step}>
+            {step === "done" ? `undone · ${message}` : message}
+          </div>
+          <button onClick={() => setStep("idle")} data-testid="undo-dismiss">ok</button>
+        </>
+      )}
+    </div>
+  );
+}
 
 function Row({ id, label, latin, icon, count, active, onNav }) {
   return (
@@ -165,6 +237,7 @@ export function VaultRail({ active, onNav, nodes, types = [], userTypes = [], ac
             historia · {history.state}
           </div>
         )}
+        <UndoControl/>
         <div style={{ color: "var(--t-fg-faint)", fontSize: 9 }}>~/loci</div>
       </div>
     </aside>

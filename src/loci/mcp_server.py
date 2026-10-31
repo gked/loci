@@ -307,12 +307,15 @@ def write_vault(
         allow_duplicate: Write even though a similar node exists. Only after
                       the user has chosen "save as new".
     """
-    return vault.save(
-        type=type, title=title, body=body, tags=tags, domains=domains,
-        summary=summary, author=author, relations=relations,
-        references=references, extra_fields=extra_fields,
-        allow_duplicate=allow_duplicate,
-    )
+    try:
+        return vault.save(
+            type=type, title=title, body=body, tags=tags, domains=domains,
+            summary=summary, author=author, relations=relations,
+            references=references, extra_fields=extra_fields,
+            allow_duplicate=allow_duplicate,
+        )
+    except HistoryError as e:
+        return {"error": str(e)}
 
 
 @mcp.tool()
@@ -329,7 +332,7 @@ def delete_vault(path: str) -> dict:
     """
     try:
         return vault.delete(path)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, HistoryError) as e:
         return {"error": str(e)}
 
 
@@ -377,7 +380,7 @@ def patch_vault(path: str, updates: dict, body: str = None) -> dict:
     """
     try:
         return vault.patch(path, updates, body)
-    except (FileNotFoundError, ValueError) as e:
+    except (FileNotFoundError, ValueError, HistoryError) as e:
         return {"error": str(e)}
 
 
@@ -463,7 +466,7 @@ def restore_vault(path: str, commit: str) -> dict:
 
 @mcp.tool()
 @requires_vault
-def undo_last_vault_change() -> dict:
+def undo_last_vault_change(commit: str = None) -> dict:
     """
     Undo the newest vault commit: a node it created is removed, a node it
     changed or deleted is put back as before. Recorded as a new commit, so
@@ -471,10 +474,13 @@ def undo_last_vault_change() -> dict:
 
     Use it right after a write that went wrong. If other writes came after the
     mistake, use history_vault and restore_vault on the one node instead.
+    Pass `commit` (the hash the bad write returned, at least 7 characters) to
+    undo only that change: if a newer one has landed since, nothing is undone
+    and an error is returned.
     Tell the user what you undid. Returns {undone, undone_commit, files, commit}.
     """
     try:
-        return vault.undo_last_change()
+        return vault.undo_last_change(commit)
     except (OSError, ValueError, HistoryError) as e:
         return {"error": str(e)}
 
@@ -622,7 +628,7 @@ def write_skill(content: str, skill: str = "loci-save", append: bool = False) ->
     """
     try:
         return vault.write_skill(content, skill, append=append)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, HistoryError) as e:
         return str(e)
 
 
@@ -671,7 +677,7 @@ def define_type(
     """
     try:
         return vault.define_type(name, extends, description, fields)
-    except (FileNotFoundError, ValueError) as e:
+    except (FileNotFoundError, ValueError, HistoryError) as e:
         return {"defined": False, "errors": [str(e)]}
 
 
@@ -708,7 +714,7 @@ def define_relation(
     """
     try:
         return vault.define_relation(name, description, group, inverse_of, symmetric)
-    except (FileNotFoundError, ValueError) as e:
+    except (FileNotFoundError, ValueError, HistoryError) as e:
         return {"defined": False, "errors": [str(e)], "warnings": []}
 
 
@@ -741,7 +747,7 @@ def write_meta(file: str, content: str) -> str:
     """
     try:
         return vault.write_meta(file, content)
-    except ValueError as e:
+    except (ValueError, HistoryError) as e:
         return str(e)
 
 

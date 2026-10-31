@@ -3,6 +3,7 @@ Vault change history: every API write is one commit in the history store at
 vault_root/.loci/history, a Git-format repository that dulwich reads and writes.
 """
 
+import contextlib
 import logging
 import shutil
 import subprocess
@@ -954,7 +955,7 @@ def test_an_undo_that_cannot_read_an_old_version_changes_nothing(tmp_vault, monk
     for f in (one, two):
         f.write_text("v2")
     vault_history.record(tmp_vault, "Change both", [one, two])
-    real, calls = vault_history.show, []
+    real, calls = vault_history.show_bytes, []
 
     def flaky(*a, **k):
         calls.append(1)
@@ -962,7 +963,7 @@ def test_an_undo_that_cannot_read_an_old_version_changes_nothing(tmp_vault, monk
             raise vault_history.HistoryError("cannot read")
         return real(*a, **k)
 
-    monkeypatch.setattr(vault_history, "show", flaky)
+    monkeypatch.setattr(vault_history, "show_bytes", flaky)
     with pytest.raises(vault_history.HistoryError):
         api.undo_last_change()
     assert one.read_text() == "v2" and two.read_text() == "v2"
@@ -978,6 +979,7 @@ def test_the_history_tools_return_an_error_for_a_disk_failure(tmp_vault, monkeyp
     monkeypatch.setattr(mcp_server.vault, "undo_last_change", boom)
     monkeypatch.setattr(mcp_server.vault, "restore", boom)
     assert mcp_server.undo_last_vault_change() == {"error": "disk is full"}
+    assert mcp_server.undo_last_vault_change("abcdef0") == {"error": "disk is full"}
     assert mcp_server.restore_vault("x", "abcd") == {"error": "disk is full"}
 
 
@@ -1032,17 +1034,192 @@ def test_restore_refuses_a_version_without_a_uid(tmp_vault):
         api.restore(saved["path"], broken)
 
 
-def test_find_path_caches_a_miss_until_head_moves(tmp_vault, monkeypatch):
+def test_find_path_walks_the_history_once_and_then_only_the_new_commits(tmp_vault, monkeypatch):
     saved = save("History One")
     assert vault_history.find_path(tmp_vault, "deadbeef") is None
-    calls = []
-    real = vault_history._scan_for_uid
-    monkeypatch.setattr(vault_history, "_scan_for_uid", lambda *a: calls.append(1) or real(*a))
-    vault_history.find_path(tmp_vault, "deadbeef")
-    assert not calls
+    walked = []
+    real = vault_history._uids_in
+    monkeypatch.setattr(vault_history, "_uids_in", lambda repo, commit: walked.append(commit.id) or real(repo, commit))
+    assert vault_history.find_path(tmp_vault, "deadbeef") is None
+    assert not walked                      # HEAD did not move: answered from the index
     api.patch(saved["uid"], {}, body="x")
-    vault_history.find_path(tmp_vault, "deadbeef")
-    assert calls
+    assert vault_history.find_path(tmp_vault, "deadbeef") is None
+    assert len(walked) == 1                # one new commit read, not the whole history
+
+
+def test_find_path_follows_a_node_to_its_newest_path_and_through_a_delete(tmp_vault):
+    saved = save("History One")
+    p = Path(saved["path"])
+    assert vault_history.find_path(tmp_vault, saved["uid"]) == p.name
+    moved = tmp_vault / "moved.md"
+    p.rename(moved)
+    vault_history.record(tmp_vault, "Move", [p, moved])
+    assert vault_history.find_path(tmp_vault, saved["uid"]) == "moved.md"
+    moved.unlink()
+    vault_history.record(tmp_vault, "Delete", [moved])
+    assert vault_history.find_path(tmp_vault, saved["uid"]) == "moved.md"
+
+
+def test_find_path_survives_threads_asking_while_head_moves(tmp_vault):
+    import threading
+    saved = save("History One")
+    errors = []
+
+    def ask():
+        try:
+            for _ in range(20):
+                assert vault_history.find_path(tmp_vault, saved["uid"])
+                vault_history.find_path(tmp_vault, "deadbeef")
+        except Exception as e:      # noqa: BLE001 — any failure is the finding
+            errors.append(e)
+
+    threads = [threading.Thread(target=ask) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for i in range(5):
+        api.patch(saved["uid"], {}, body=f"v{i}")
+    for t in threads:
+        t.join()
+    assert not errors
+
+
+def test_restore_writes_a_file_that_is_not_utf8_back_unchanged(tmp_vault):
+    saved = save("History One")
+    p = Path(saved["path"])
+    original = p.read_bytes() + b"caf\xe9 \xff\n"          # Latin-1 bytes in the body
+    p.write_bytes(original)
+    good = vault_history.record(tmp_vault, "hand edit", [p])
+    p.write_text("overwritten by mistake\n", encoding="utf-8")
+    vault_history.record(tmp_vault, "bad write", [p])
+    api.restore(str(p), good)
+    assert p.read_bytes() == original
+
+
+def test_undo_writes_a_deleted_file_that_is_not_utf8_back_unchanged(tmp_vault):
+    saved = save("History One")
+    p = Path(saved["path"])
+    original = p.read_bytes() + b"caf\xe9 \xff\n"
+    p.write_bytes(original)
+    vault_history.record(tmp_vault, "hand edit", [p])
+    p.unlink()
+    vault_history.record(tmp_vault, "Delete", [p])
+    api.undo_last_change()
+    assert p.read_bytes() == original
+
+
+def test_an_undo_that_cannot_be_recorded_changes_nothing(tmp_vault, monkeypatch):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="oops")
+    def failing(root, *a, **k):
+        vault_history._set_error(root, "disk is full")
+        return None
+
+    monkeypatch.setattr(vault_history, "record", failing)   # history is failing
+    with pytest.raises(vault_history.HistoryError, match="could not record"):
+        api.undo_last_change()
+    assert "oops" in api.get(saved["uid"])
+
+
+def test_a_restore_that_cannot_be_recorded_changes_nothing(tmp_vault, monkeypatch):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="oops")
+    def failing(root, *a, **k):
+        vault_history._set_error(root, "disk is full")
+        return None
+
+    monkeypatch.setattr(vault_history, "record", failing)   # history is failing
+    with pytest.raises(vault_history.HistoryError, match="could not record"):
+        api.restore(saved["path"], saved["commit"])
+    assert "oops" in api.get(saved["uid"])
+
+
+def test_an_undo_that_fails_part_way_puts_every_file_back(tmp_vault, monkeypatch):
+    one, two = tmp_vault / "f1.md", tmp_vault / "f2.md"
+    for f in (one, two):
+        f.write_text("v1")
+    save("History One")
+    vault_history.record(tmp_vault, "Add files", [one, two])
+    for f in (one, two):
+        f.write_text("v2")
+    vault_history.record(tmp_vault, "Change both", [one, two])
+    real = Path.write_bytes
+
+    def fail_on_second(self, data):
+        if self == two and data == b"v1":
+            raise OSError("permission denied")
+        return real(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", fail_on_second)
+    with pytest.raises(OSError, match="permission denied"):
+        api.undo_last_change()
+    monkeypatch.undo()
+    assert one.read_text() == "v2" and two.read_text() == "v2"
+    # Nothing is left to commit as an edit "outside Loci".
+    assert vault_history.before_write(tmp_vault, [one, two]) is None
+
+
+def test_undo_refuses_a_commit_too_short_to_name_a_change(tmp_vault):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="first")
+    shown = api.last_change()["commit"]
+    with pytest.raises(vault_history.HistoryError, match="too short"):
+        api.undo_last_change(shown[0])
+    assert "first" in api.get(saved["uid"])
+
+
+def test_the_mcp_undo_tool_takes_the_commit_and_refuses_a_stale_one(tmp_vault):
+    from loci import mcp_server
+
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="first")
+    shown = api.last_change()["commit"]
+    api.patch(saved["uid"], {}, body="second")
+    out = mcp_server.undo_last_vault_change(shown)
+    assert "changed since" in out["error"]
+    assert "second" in api.get(saved["uid"])
+
+
+def test_last_change_reports_an_unreadable_store_instead_of_raising(tmp_vault, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("corrupt pack")
+
+    monkeypatch.setattr(vault_history, "head_changes", boom)
+    out = api.last_change()
+    assert out["undoable"] is False
+    assert "corrupt pack" in out["reason"]
+
+
+def test_undo_refuses_when_a_newer_change_landed_after_the_one_shown(tmp_vault):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="first")
+    shown = api.last_change()["commit"]
+    api.patch(saved["uid"], {}, body="second")          # lands after the user saw `shown`
+    with pytest.raises(vault_history.HistoryError, match="changed since"):
+        api.undo_last_change(shown)
+    assert "second" in api.get(saved["uid"])
+    api.undo_last_change(api.last_change()["commit"])   # the change now newest does undo
+    assert "first" in api.get(saved["uid"])
+
+
+def test_undo_waits_for_the_lock_another_process_holds(tmp_vault):
+    import threading
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="oops")
+    done = threading.Event()
+    with vault_history.write_lock(tmp_vault):
+        t = threading.Thread(target=lambda: (api.undo_last_change(), done.set()))
+        t.start()
+        assert not done.wait(0.3)                       # blocked while the lock is held
+    t.join(5)
+    assert done.is_set()
+    assert "hello" in api.get(saved["uid"])
+
+
+def test_history_of_a_vault_with_history_off_is_an_error_not_an_empty_list(tmp_vault, monkeypatch):
+    saved = save("History One")
+    monkeypatch.setenv("LOCI_VAULT_HISTORY", "0")
+    with pytest.raises(vault_history.HistoryError, match="turned off"):
+        vault_history.history(tmp_vault, saved["path"])
 
 
 def test_restore_warns_when_the_type_is_unknown_now(tmp_vault):
@@ -1053,3 +1230,289 @@ def test_restore_warns_when_the_type_is_unknown_now(tmp_vault):
     result = api.restore(saved["path"], bad)
     assert "zzgone" in result["warning"]
     assert "warning" not in api.restore(saved["path"], saved["commit"])
+
+
+@contextlib.contextmanager
+def held_by_another_thread(root):
+    """Hold the vault's write lock on a second thread, as another process would."""
+    ready, release = threading.Event(), threading.Event()
+
+    def hold():
+        with vault_history.write_lock(root):
+            ready.set()
+            release.wait(5)
+
+    t = threading.Thread(target=hold)
+    t.start()
+    ready.wait(5)
+    try:
+        yield
+    finally:
+        release.set()
+        t.join()
+
+
+def test_write_lock_gives_up_with_a_clear_error_when_the_holder_hangs(tmp_vault, monkeypatch):
+    save("History One")
+    monkeypatch.setattr(vault_history, "LOCK_TIMEOUT_S", 0.2)
+    with held_by_another_thread(tmp_vault):
+        with pytest.raises(vault_history.HistoryError, match="busy"):
+            with vault_history.write_lock(tmp_vault):
+                pytest.fail("the second holder must not get the lock")
+    with vault_history.write_lock(tmp_vault):       # free again once the holder lets go
+        pass
+
+
+def test_an_undo_waiting_on_a_held_lock_is_a_409_not_a_hang(tmp_vault, monkeypatch):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="first")
+    shown = api.last_change()["commit"]
+    monkeypatch.setattr(vault_history, "LOCK_TIMEOUT_S", 0.2)
+    with held_by_another_thread(tmp_vault):
+        with pytest.raises(vault_history.HistoryError, match="busy"):
+            api.undo_last_change(shown)
+    assert "first" in api.get(saved["uid"])
+
+
+def test_a_short_hash_walks_the_history_once_and_then_only_the_new_commits(tmp_vault, monkeypatch):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="first")
+    first = api.last_change()["commit"]
+    repo = vault_history._open(tmp_vault)
+    walks = []
+    real = Repo.get_walker
+
+    def counting(self, *a, **k):
+        walks.append(k)
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(Repo, "get_walker", counting)
+    head = vault_history._head(repo)[0]
+    vault_history._commit_ids_cache.clear()
+    vault_history._resolve(repo, first)
+    vault_history._resolve(repo, first)
+    assert len(walks) == 1                               # the second lookup used the cache
+    api.patch(saved["uid"], {}, body="second")
+    repo = vault_history._open(tmp_vault)
+    assert vault_history._resolve(repo, first) == vault_history._resolve(repo, first)
+    assert walks[-1].get("exclude")                      # extended from the cached head, not rewalked
+    assert head != vault_history._head(repo)[0]
+
+
+def test_a_save_waits_for_the_lock_an_undo_holds(tmp_vault, monkeypatch):
+    save("History One")
+    monkeypatch.setattr(vault_history, "LOCK_TIMEOUT_S", 0.2)
+    with held_by_another_thread(tmp_vault):
+        with pytest.raises(vault_history.HistoryError, match="busy"):
+            save("History Two")
+    assert save("History Three")["uid"]      # free again
+
+
+def test_the_write_lock_is_reentrant_within_a_thread(tmp_vault):
+    save("History One")
+    with vault_history.write_lock(tmp_vault):
+        with vault_history.write_lock(tmp_vault):
+            pass
+
+
+def test_a_failed_write_leaves_no_empty_folder_behind(tmp_vault, monkeypatch):
+    target = tmp_vault / "brand-new-dir" / "deep" / "x.md"
+
+    def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(api, "_record", boom)
+    with pytest.raises(RuntimeError):
+        api._apply_files({target: b"hello"}, "msg", {})
+    assert not target.exists()
+    assert not (tmp_vault / "brand-new-dir").exists()
+
+
+def test_a_failure_after_the_commit_keeps_the_files_that_match_head(tmp_vault, monkeypatch):
+    target = tmp_vault / "kept.md"
+
+    calls = []
+
+    def interrupted(*a, **k):
+        calls.append(1)
+        if len(calls) > 1:      # the first call is the stamp taken before the write
+            raise KeyboardInterrupt()
+
+    monkeypatch.setattr(vault_history, "error_stamp", interrupted)
+    into = {}
+    with pytest.raises(KeyboardInterrupt):
+        api._apply_files({target: b"hello"}, "msg", into)
+    assert "commit" in into
+    assert target.read_bytes() == b"hello"       # HEAD has it, so the file stays
+
+
+def test_the_mcp_write_tools_report_a_busy_vault_instead_of_raising(tmp_vault, monkeypatch):
+    from loci import mcp_server
+
+    saved = save("History One")
+    monkeypatch.setattr(vault_history, "LOCK_TIMEOUT_S", 0.2)
+    with held_by_another_thread(tmp_vault):
+        written = mcp_server.write_vault(type="document", title="History Two", body="b")
+        patched = mcp_server.patch_vault(saved["uid"], {}, body="x")
+        deleted = mcp_server.delete_vault(saved["uid"])
+    for result in (written, patched, deleted):
+        assert "busy" in result["error"]
+    assert not list(tmp_vault.rglob("history-two*"))     # the refused save wrote nothing
+    assert api.get(saved["uid"])                          # and the delete removed nothing
+
+
+def test_an_error_flag_from_an_earlier_write_does_not_fail_a_no_op_restore(tmp_vault):
+    saved = save("History One")
+    vault_history._set_error(tmp_vault, "an earlier write failed")
+    # The node already holds this content: no bytes change, so no commit is made.
+    out = api.restore(saved["path"], saved["commit"])
+    assert out["restored"] and "commit" not in out
+
+
+def test_a_cached_commit_list_survives_the_history_being_recreated(tmp_vault):
+    first = save("History One")["commit"]
+    repo = vault_history._open(tmp_vault)
+    assert vault_history._resolve(repo, first)       # fills the cache
+    shutil.rmtree(vault_history.history_dir(tmp_vault))
+    second = save("History Two")["commit"]
+    repo = vault_history._open(tmp_vault)
+    assert vault_history._resolve(repo, second)      # the old head is gone from the new store
+    third = save("History Three")
+    assert vault_history.find_path(tmp_vault, third["uid"])
+
+
+def test_an_undo_removes_the_folders_the_added_file_leaves_empty(tmp_vault):
+    save("History One")
+    new = tmp_vault / "fresh" / "deep" / "f.md"
+    new.parent.mkdir(parents=True)
+    new.write_text("v1")
+    vault_history.record(tmp_vault, "Add file", [new])
+    api.undo_last_change()
+    assert not new.exists()
+    assert not (tmp_vault / "fresh").exists()
+    assert tmp_vault.exists()
+
+
+def test_an_undo_that_fails_after_saving_outside_edits_says_so(tmp_vault, monkeypatch):
+    one = tmp_vault / "f1.md"
+    one.write_text("v1")
+    save("History One")
+    vault_history.record(tmp_vault, "Add file", [one])
+    one.write_text("v2")
+    vault_history.record(tmp_vault, "Change file", [one])
+    one.write_text("hand edit")                       # an edit outside Loci
+    real = Path.write_bytes
+
+    def fail(self, data):
+        if self == one and data == b"v1":
+            raise OSError("permission denied")
+        return real(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", fail)
+    with pytest.raises(vault_history.HistoryError, match="saved as") as e:
+        api.undo_last_change()
+    monkeypatch.undo()
+    snapshot = vault_history.head_short(tmp_vault)
+    assert snapshot in str(e.value)                   # the message names the commit that is newest now
+    assert one.read_text() == "hand edit"
+
+
+def test_undo_checks_the_commit_argument_before_it_reads_history(tmp_vault):
+    with pytest.raises(vault_history.HistoryError, match="too short"):
+        api.undo_last_change("abc")
+
+
+def test_write_skill_reports_a_busy_vault_instead_of_raising(tmp_vault, monkeypatch):
+    from loci import mcp_server
+
+    save("History One")
+    monkeypatch.setattr(vault_history, "LOCK_TIMEOUT_S", 0.2)
+    with held_by_another_thread(tmp_vault):
+        result = mcp_server.write_skill("my rule")
+    assert "busy" in result
+
+
+def test_two_failures_with_the_same_reason_have_different_stamps(tmp_vault):
+    vault_history._set_error(tmp_vault, "disk full")
+    first = vault_history.error_stamp(tmp_vault)
+    vault_history._set_error(tmp_vault, "disk full")
+    assert vault_history.error_stamp(tmp_vault) != first
+
+
+def test_an_undo_whose_cache_refresh_fails_still_reports_the_undo(tmp_vault, monkeypatch):
+    saved = save("History One")
+    monkeypatch.setattr(api.graph, "drop_node", lambda uid: (_ for _ in ()).throw(RuntimeError("graph broke")))
+    result = api.undo_last_change()
+    assert result["undone"]
+    assert "could not be refreshed" in result["warning"]
+    assert not Path(saved["path"]).exists()           # the undo itself happened
+
+
+def test_the_write_lock_makes_no_files_where_history_was_never_started(tmp_path):
+    with vault_history.write_lock(tmp_path):
+        pass
+    assert not (tmp_path / ".loci").exists()
+
+
+def test_a_write_lock_file_that_cannot_be_opened_does_not_stop_the_write(tmp_vault, monkeypatch):
+    real = open
+
+    def refuse(file, *a, **k):
+        if str(file).endswith("undo.lock"):
+            raise OSError("read-only")
+        return real(file, *a, **k)
+
+    monkeypatch.setattr("builtins.open", refuse)
+    with vault_history.write_lock(tmp_vault):
+        pass
+
+
+def test_a_restore_that_fails_after_saving_outside_edits_says_so(tmp_vault, monkeypatch):
+    saved = save("History One")
+    p = Path(saved["path"])
+    p.write_text(p.read_text() + "\nhand edit")       # an edit outside Loci
+    real = Path.write_bytes
+
+    def fail(self, data):
+        if self == p:
+            raise OSError("permission denied")
+        return real(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", fail)
+    with pytest.raises(vault_history.HistoryError, match="saved as"):
+        api.restore(saved["uid"], saved["commit"])
+
+
+def test_a_lock_file_that_cannot_be_opened_stops_an_undo(tmp_vault, monkeypatch):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="oops")
+    real = open
+
+    def refuse(file, *a, **k):
+        if str(file).endswith("undo.lock"):
+            raise OSError("read-only")
+        return real(file, *a, **k)
+
+    monkeypatch.setattr("builtins.open", refuse)
+    with pytest.raises(vault_history.HistoryError, match="write lock cannot be opened"):
+        api.undo_last_change()
+    assert "oops" in api.get(saved["uid"])
+
+
+def test_an_undo_commit_that_is_not_a_hash_prefix_is_refused(tmp_vault):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="oops")
+    sha = vault_history.head_short(tmp_vault)
+    for bad in (sha + "zzzz", "g" * 7, vault_history.head_id(tmp_vault) + "0"):
+        with pytest.raises(vault_history.HistoryError):
+            api.undo_last_change(bad)
+    assert "oops" in api.get(saved["uid"])
+    assert api.undo_last_change(sha)["undone"]
+
+
+def test_the_history_caches_keep_only_the_newest_vaults():
+    cache = {}
+    for n in range(vault_history._CACHE_VAULTS + 3):
+        vault_history._remember(cache, f"v{n}", n)
+    assert len(cache) == vault_history._CACHE_VAULTS
+    assert "v0" not in cache and f"v{vault_history._CACHE_VAULTS + 2}" in cache

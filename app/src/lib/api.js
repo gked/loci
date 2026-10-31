@@ -109,3 +109,28 @@ export async function openLocalPath(path, fetchImpl = fetch) {
   }
   return res.json();
 }
+
+// What an undo would undo: {undoable, subject, commit, files} or {undoable: false, reason}.
+export function getLastChange() {
+  return request("/history/last");
+}
+
+// `commit` is the hash getLastChange showed, so the server undoes that change
+// and refuses when a newer one has landed since.
+export async function undoLastChange(commit, fetchImpl = fetch) {
+  const query = commit ? `?commit=${encodeURIComponent(commit)}` : "";
+  const res = await fetchImpl(`${BASE}/undo${query}`, {
+    method: "POST",
+    headers: { [TOKEN_HEADER]: getApiToken() },
+  });
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {
+      // Keep the HTTP status when the response has no JSON error body.
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}

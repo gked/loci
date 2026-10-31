@@ -454,3 +454,96 @@ class TestPackagingConstraints:
 
         assert callable(mcp_server.main)
         assert callable(http_server.main)
+
+
+class TestUndoEndpoints:
+    """GET /api/history/last previews an undo; POST /api/undo does it and
+    takes the same origin and token check as /api/open-local."""
+
+    HEADERS = {"Origin": "http://localhost:5173", "X-Loci-Token": TOKEN}
+
+    @pytest.fixture(autouse=True)
+    def history_on(self, monkeypatch, tmp_vault):
+        monkeypatch.setenv("LOCI_VAULT_HISTORY", "1")
+        monkeypatch.setattr(http_server, "_VAULT_ROOT", tmp_vault)
+
+    def _save_and_patch(self):
+        saved = vault_api.save(type="document", title="Undo Me", body="hello",
+                               extra_fields={"status": "draft", "subtype": "note"})
+        vault_api.patch(saved["uid"], {}, body="oops")
+        return saved
+
+    def test_last_shows_the_change_without_making_it(self, client):
+        saved = self._save_and_patch()
+        body = client.get("/api/history/last").json()
+        assert body["undoable"] and body["subject"].startswith("Update Undo Me")
+        assert "oops" in vault_api.get(saved["uid"])
+
+    def test_undo_reverts_the_newest_change(self, client):
+        saved = self._save_and_patch()
+        shown = client.get("/api/history/last").json()["commit"]
+        response = client.post(f"/api/undo?commit={shown}", headers=self.HEADERS)
+        assert response.status_code == 200
+        assert "hello" in vault_api.get(saved["uid"])
+
+    def test_undo_without_a_commit_is_refused_and_writes_nothing(self, client):
+        saved = self._save_and_patch()
+        response = client.post("/api/undo", headers=self.HEADERS)
+        assert response.status_code == 422
+        assert "oops" in vault_api.get(saved["uid"])
+
+    def test_undo_with_a_one_character_commit_is_a_409(self, client):
+        saved = self._save_and_patch()
+        shown = client.get("/api/history/last").json()["commit"]
+        response = client.post(f"/api/undo?commit={shown[0]}", headers=self.HEADERS)
+        assert response.status_code == 409
+        assert "too short" in response.json()["detail"]
+        assert "oops" in vault_api.get(saved["uid"])
+
+    def test_undo_with_a_disk_failure_says_why(self, client, monkeypatch):
+        self._save_and_patch()
+        shown = client.get("/api/history/last").json()["commit"]
+
+        def boom(*a, **k):
+            raise OSError("disk is full")
+
+        monkeypatch.setattr(vault_api, "undo_last_change", boom)
+        response = client.post(f"/api/undo?commit={shown}", headers=self.HEADERS)
+        assert response.status_code == 500
+        assert "disk is full" in response.json()["detail"]
+
+    def test_undo_of_a_change_that_is_no_longer_the_newest_is_a_409(self, client):
+        saved = self._save_and_patch()
+        shown = client.get("/api/history/last").json()["commit"]
+        vault_api.patch(saved["uid"], {}, body="newer")      # lands after the user saw `shown`
+        response = client.post(f"/api/undo?commit={shown}", headers=self.HEADERS)
+        assert response.status_code == 409
+        assert "changed since" in response.json()["detail"]
+        assert "newer" in vault_api.get(saved["uid"])
+
+    def test_undo_of_the_change_that_was_shown_goes_through(self, client):
+        saved = self._save_and_patch()
+        shown = client.get("/api/history/last").json()["commit"]
+        response = client.post(f"/api/undo?commit={shown}", headers=self.HEADERS)
+        assert response.status_code == 200
+        assert "hello" in vault_api.get(saved["uid"])
+
+    def test_undo_without_a_token_writes_nothing(self, client):
+        saved = self._save_and_patch()
+        response = client.post("/api/undo", headers={"Origin": "http://localhost:5173"})
+        assert response.status_code == 403
+        assert "oops" in vault_api.get(saved["uid"])
+
+    def test_undo_from_another_origin_is_refused(self, client):
+        saved = self._save_and_patch()
+        response = client.post(
+            "/api/undo", headers={"Origin": "https://evil.example", "Host": "testserver", "X-Loci-Token": TOKEN}
+        )
+        assert response.status_code == 403
+        assert "oops" in vault_api.get(saved["uid"])
+
+    def test_nothing_to_undo_is_a_409_with_the_reason(self, client):
+        response = client.post("/api/undo?commit=abcdef0", headers=self.HEADERS)
+        assert response.status_code == 409
+        assert "history" in response.json()["detail"]
+        assert client.get("/api/history/last").json()["undoable"] is False

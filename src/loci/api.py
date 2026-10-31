@@ -10,6 +10,7 @@ Internal implementation lives in tools/. This module is the public facade.
 """
 
 import contextlib
+import functools
 import io
 import logging
 import re
@@ -50,6 +51,16 @@ def _vault_root() -> Path:
     if not config:
         raise RuntimeError(NOT_CONFIGURED_MESSAGE)
     return Path(config["vault_root"]).expanduser()
+
+
+def _serialized(fn):
+    """Run a vault write under the history write lock, so an undo or restore in
+    another process cannot land between its read and its commit."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with vault_history.write_lock(_vault_root()):
+            return fn(*args, **kwargs)
+    return wrapper
 
 
 def _before_write(*paths) -> None:
@@ -162,6 +173,7 @@ def _refuse_duplicate(title: str, url: Optional[str], tool: str) -> Optional[dic
     }
 
 
+@_serialized
 def save(
     type: str,
     title: str,
@@ -279,6 +291,7 @@ def _attach_tag_warnings(result: dict, index: dict | None, tags, node_type, subt
         result["tag_warnings"] = [w.message for w in warnings]
 
 
+@_serialized
 def delete(path: str) -> dict:
     """
     Delete a vault item. Accepts an absolute path, a path relative to vault_root,
@@ -305,6 +318,7 @@ def delete(path: str) -> dict:
     return out
 
 
+@_serialized
 def patch(path: str, updates: dict, body: str = None) -> dict:
     """
     Patch frontmatter fields in an existing vault item.
@@ -522,6 +536,7 @@ def find_unregistered_assets() -> list:
     ]
 
 
+@_serialized
 def save_asset(
     format: str,
     mime_type: str,
@@ -986,6 +1001,7 @@ def _append_yaml_entry(path: Path, list_key: str, entry: dict) -> None:
     _rewrite_yaml_entries(path, list_key, lambda entries: entries + [entry])
 
 
+@_serialized
 def define_type(
     name: str,
     extends: str,
@@ -1027,6 +1043,7 @@ def define_type(
     return {"defined": True, "name": name, "extends": extends}
 
 
+@_serialized
 def define_relation(
     name: str,
     description: str,
@@ -1257,6 +1274,7 @@ def lint_vault() -> dict:
     return _lint_vault(_vault_root())
 
 
+@_serialized
 def write_skill(content: str, skill: str = "loci-save", append: bool = False) -> str:
     """
     Write the user's additions for a skill — vault/skills/<skill>.md, the
@@ -1272,6 +1290,7 @@ def write_skill(content: str, skill: str = "loci-save", append: bool = False) ->
     return str(p)
 
 
+@_serialized
 def write_meta(file: str, content: str) -> str:
     """
     Overwrite a vault meta file. Returns the path written.
@@ -1369,6 +1388,69 @@ def _reindex_from_file(p: Path) -> None:
     graph.mark_fresh(_vault_root())
 
 
+def _apply_files(writes: dict, message: str, into: dict) -> None:
+    """Write `writes` ({path: bytes, or None to delete}) and record them as one
+    commit, all or nothing: if a write fails, or history cannot record the
+    change, every file is put back as it was and the error is raised. Without
+    that a failure would leave files that differ from HEAD, and the next write
+    would commit them as an edit "outside Loci"."""
+    before = {p: (p.read_bytes() if p.exists() else None) for p in writes}
+    made: list[Path] = []       # folders this call creates, removed again on rollback
+    for p in writes:
+        if writes[p] is not None:
+            for parent in p.parents:
+                if parent.exists():
+                    break
+                made.append(parent)
+    flagged = vault_history.error_stamp(_vault_root())
+    try:
+        for p, data in writes.items():
+            if data is None:
+                p.unlink(missing_ok=True)
+            else:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_bytes(data)
+        _record(message, *writes, into=into)
+        # No commit is normal when the write changed no bytes. History says it
+        # failed by flagging an error, and then the change must not stand. An
+        # error flag that was already up before this write is not this write's.
+        failure = vault_history.error_stamp(_vault_root())
+        if "commit" not in into and failure and failure != flagged:
+            raise vault_history.HistoryError(
+                f"History could not record the change, so it was not made: {failure[0]}"
+            )
+    except BaseException:
+        if "commit" in into:
+            raise       # recorded: the files match HEAD, and putting them back would split the two
+        for p, data in before.items():
+            try:
+                if data is None:
+                    p.unlink(missing_ok=True)
+                else:
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_bytes(data)
+            except OSError as e:
+                log.error("could not put %s back after a failed write: %s", p, e)
+        for folder in sorted(set(made), key=lambda d: len(d.parts), reverse=True):
+            try:
+                folder.rmdir()
+            except OSError:
+                pass        # not empty or already gone
+        raise
+
+
+def _prune_empty_parents(path: Path, root: Path) -> None:
+    """Remove the folders a deleted file leaves empty, up to but not including
+    the vault root, so an undone save leaves no stray folder behind."""
+    for parent in path.parents:
+        if parent == root or root not in parent.parents:
+            return
+        try:
+            parent.rmdir()
+        except OSError:
+            return      # not empty, or already gone
+
+
 def restore(path: str, commit: str) -> dict:
     """
     Put a node back as it was right after `commit`. Restores the whole file —
@@ -1382,74 +1464,137 @@ def restore(path: str, commit: str) -> dict:
     """
     root = _vault_root()
     p = _history_path(path)
-    old = vault_history.show(root, commit, p)
-    fm, _ = load_frontmatter(old)       # before any write: a broken header must leave the file alone
-    uid = (fm or {}).get("uid")
-    if not uid:
-        raise ValueError(
-            f"{commit} holds no uid for {p.name}: restoring it would leave a node that cannot be "
-            "found. Pick a commit where the node has a uid."
-        )
-    snapshot = vault_history.snapshot_external(root, [p])
-    was_deleted = not p.exists()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(old, encoding="utf-8")
-    _reindex_quietly(p)
-    out = {"restored": True, "uid": uid, "path": str(p), "from_commit": commit,
-           "was_deleted": was_deleted}
-    node_type = (fm or {}).get("type")
-    if node_type and node_type not in get_registry(root).type_names():
-        out["warning"] = (
-            f"The restored node has type '{node_type}', which the registry does not know now. "
-            "It is restored as it was. Define the type or change it with patch_vault."
-        )
-    if snapshot:
-        out["external_edits_saved_as"] = snapshot
-    _record(f"Restore {(fm or {}).get('title') or p.stem} ({uid or p.name}) to {commit}", p, into=out)
-    return out
+    with vault_history.write_lock(root, required=True):
+        old = vault_history.show_bytes(root, commit, p)
+        fm, _ = load_frontmatter(old.decode("utf-8", "replace"))   # before any write: a broken header must leave the file alone
+        uid = (fm or {}).get("uid")
+        if not uid:
+            raise ValueError(
+                f"{commit} holds no uid for {p.name}: restoring it would leave a node that cannot be "
+                "found. Pick a commit where the node has a uid."
+            )
+        snapshot = vault_history.snapshot_external(root, [p])
+        was_deleted = not p.exists()
+        out = {"restored": True, "uid": uid, "path": str(p), "from_commit": commit,
+               "was_deleted": was_deleted}
+        try:
+            _apply_files({p: old}, f"Restore {(fm or {}).get('title') or p.stem} ({uid or p.name}) to {commit}", out)
+        except Exception as e:
+            if snapshot:
+                # The snapshot is a commit and stays: it holds the user's own edits.
+                raise vault_history.HistoryError(
+                    f"{e} Edits made outside Loci were saved as {snapshot} before the restore, "
+                    "so the newest change is now that commit."
+                ) from e
+            raise
+        _reindex_quietly(p)
+        node_type = (fm or {}).get("type")
+        if node_type and node_type not in get_registry(root).type_names():
+            out["warning"] = (
+                f"The restored node has type '{node_type}', which the registry does not know now. "
+                "It is restored as it was. Define the type or change it with patch_vault."
+            )
+        if snapshot:
+            out["external_edits_saved_as"] = snapshot
+        return out
 
 
-def undo_last_change() -> dict:
+def last_change() -> dict:
+    """
+    What undo_last_change would undo, without doing it:
+    {undoable: True, subject, commit, files}, or {undoable: False, reason} when
+    the newest commit is the baseline, holds edits made outside Loci, or the
+    vault has no history.
+    """
+    try:
+        sha, subject, changes = vault_history.head_changes(_vault_root())
+    except vault_history.HistoryError as e:
+        return {"undoable": False, "reason": str(e)}
+    except Exception as e:  # a damaged store must not turn the preview into a 500
+        log.warning("last_change failed: %s", e)
+        return {"undoable": False, "reason": f"The history store could not be read: {e}"}
+    return {"undoable": True, "subject": subject, "commit": sha, "files": [rel for _, rel in changes]}
+
+
+def undo_last_change(commit: str = None) -> dict:
     """
     Undo the newest commit: files it added are removed, files it changed or
     deleted are put back as they were before it. Recorded as a new commit.
     Refuses when the newest commit is the baseline.
+    Pass `commit` (the hash last_change returned) to undo only that commit: if
+    a newer one has landed since, nothing is undone and HistoryError is raised.
     Returns {undone: subject, files: [...], commit}.
     """
     root = _vault_root()
-    sha, subject, changes = vault_history.head_changes(root)
-    paths = [root / rel for _, rel in changes]
-    # Read every old version before touching a file, so a failure leaves the
-    # vault as it was instead of half undone.
-    olds = {rel: vault_history.show(root, f"{sha}~1", rel) for status, rel in changes if status != "A"}
-    # A newer commit means another Loci process wrote since HEAD was read, and
-    # undoing would overwrite its work.
-    if vault_history.head_short(root) != sha:
-        raise vault_history.HistoryError("The vault changed while the undo was prepared. Run it again.")
-    snapshot = vault_history.snapshot_external(root, paths)
-    fresh = True
-    for status, rel in changes:
-        target = root / rel
-        if status == "A":
-            uid = _frontmatter_uid(target) if target.exists() else None
-            target.unlink(missing_ok=True)
-            if uid:
-                graph.drop_node(uid)
-        else:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(olds[rel], encoding="utf-8")
-            if rel.endswith(".md"):
-                fresh = _reindex_quietly(target) and fresh
-    if fresh:
-        graph.mark_fresh(root)
-    if any(rel.startswith("meta/") for _, rel in changes):
-        # The registries are cached; an undone meta file must take effect now.
-        from loci.tools.relation_registry import reset_relation_registry
-        from loci.tools.type_registry import reset_registry
-        reset_registry()
-        reset_relation_registry()
-    out = {"undone": subject, "undone_commit": sha, "files": [rel for _, rel in changes]}
-    if snapshot:
-        out["external_edits_saved_as"] = snapshot
-    _record(f"Undo: {subject} ({sha})", *paths, into=out)
-    return out
+    shown = (commit or "").strip().lower()
+    if shown and len(shown) < 7:
+        raise vault_history.HistoryError(
+            f"'{shown}' is too short to name a change: pass at least 7 characters of the commit hash."
+        )
+    if shown and not re.fullmatch(r"[0-9a-f]{7,40}", shown):
+        raise vault_history.HistoryError(
+            f"'{shown}' does not name a change: pass 7 to 40 hexadecimal characters of the commit hash."
+        )
+    with vault_history.write_lock(root, required=True):
+        sha, subject, changes = vault_history.head_changes(root)
+        if shown and not (vault_history.head_id(root) or sha).startswith(shown):
+            raise vault_history.HistoryError(
+                f"The vault changed since {shown} was shown: the newest change is now {sha} ({subject}). "
+                "Nothing was undone."
+            )
+        paths = [root / rel for _, rel in changes]
+        # Read every old version before touching a file.
+        olds = {rel: vault_history.show_bytes(root, f"{sha}~1", rel) for status, rel in changes if status != "A"}
+        uids = {rel: _frontmatter_uid(root / rel) for status, rel in changes
+                if status == "A" and (root / rel).exists()}
+        out = {"undone": subject, "undone_commit": sha, "files": [rel for _, rel in changes]}
+        # A newer commit means another Loci process wrote since HEAD was read, and
+        # undoing would overwrite its work. Checked before the snapshot and again
+        # after it, because the snapshot is itself a commit.
+        changed = "The vault changed while the undo was prepared. Run it again."
+        if vault_history.head_short(root) != sha:
+            raise vault_history.HistoryError(changed)
+        snapshot = vault_history.snapshot_external(root, paths)
+        if vault_history.head_short(root) != (snapshot or sha):
+            raise vault_history.HistoryError(changed)
+        writes = {root / rel: (None if status == "A" else olds[rel]) for status, rel in changes}
+        try:
+            _apply_files(writes, f"Undo: {subject} ({sha})", out)
+        except Exception as e:
+            if snapshot:
+                # The snapshot is a commit and stays: it holds the user's own edits.
+                raise vault_history.HistoryError(
+                    f"{e} Edits made outside Loci were saved as {snapshot} before the undo, "
+                    f"so the newest change is now {snapshot}, not {sha}."
+                ) from e
+            raise
+        # The files are undone and committed. What follows only refreshes caches,
+        # so a failure here must not report the undo as failed: a second click
+        # would undo the next older change.
+        try:
+            fresh = True
+            for status, rel in changes:
+                target = root / rel
+                if status == "A":
+                    _prune_empty_parents(target, root)
+                    if uids.get(rel):
+                        graph.drop_node(uids[rel])
+                elif rel.endswith(".md"):
+                    fresh = _reindex_quietly(target) and fresh
+            if fresh:
+                graph.mark_fresh(root)
+            if any(rel.startswith("meta/") for _, rel in changes):
+                # The registries are cached; an undone meta file must take effect now.
+                from loci.tools.relation_registry import reset_relation_registry
+                from loci.tools.type_registry import reset_registry
+                reset_registry()
+                reset_relation_registry()
+        except Exception as e:
+            log.warning("undo of %s done, but the caches were not refreshed: %s", sha, e)
+            out["warning"] = (
+                "The change was undone, but the search index could not be refreshed. "
+                "It rebuilds on the next query."
+            )
+        if snapshot:
+            out["external_edits_saved_as"] = snapshot
+        return out

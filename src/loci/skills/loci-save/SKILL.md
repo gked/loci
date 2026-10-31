@@ -277,8 +277,12 @@ repair it yourself instead of asking the user to redo the work:
    nothing changed after it: `loci__restore_vault(path=<uid>, commit=<hash>~1)`.
    A restore puts the node back as it was right after the commit you name, so
    name the one before the mistake, not the bad one.
-   Right after your own bad write, `loci__undo_last_vault_change()` does the
-   same. It refuses when the newest commit holds edits made outside Loci.
+   Right after your own bad write, `loci__undo_last_vault_change(commit=<hash>)`
+   does the same, with the hash the write returned. It refuses when a newer
+   change landed, or when the newest commit holds edits made outside Loci.
+   If the bad commit created the node, `<hash>~1` holds no version of it, so a
+   restore fails. Remove a node created by mistake with `loci__delete_vault`
+   or `loci__undo_last_vault_change`.
 4. If the node changed after the mistake, a restore would drop those changes.
    Ask the user, or patch only the missing part back with `loci__patch_vault`.
 5. Tell the user what you restored: which node, which commit, and why.
