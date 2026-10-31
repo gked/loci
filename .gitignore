@@ -24,3 +24,6 @@ test-results/
 # The frontend bundle `make wheel` compiles into the package. Build output,
 # not source — pyproject's hatch `artifacts` entry is what still ships it.
 /src/loci/static/
+
+# Vite's dependency pre-bundle cache. Regenerated on every dev start.
+app/.vite/

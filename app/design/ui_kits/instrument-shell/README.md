@@ -8,7 +8,7 @@ A paper variant of the same chrome (`canvas.paper`) keeps long-form reading on i
 
 ```jsx
 <Corners
-  tl={{label:'thesaurus',  value:'~/Nextcloud/loci'}}
+  tl={{label:'thesaurus',  value:'~/loci'}}
   tr={{label:'caelum',     value:'observatorium · v0.4'}}
   bl={{label:'fundatum',   value:'mmxxvi · iv'}}
   br={{label:'lat · long', value:'40.71 · -74.00'}}

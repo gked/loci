@@ -72,7 +72,7 @@ const Sidebar = ({ section, onNav, vault }) => {
         {tags.map(t => <NavRow key={t} id={"#"+t} icon="file" label={"#"+t}/>)}
       </div>
       <div style={{ marginTop: "auto", padding: 12, borderTop: "1px solid var(--vault-rule)", display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--vault-fg-muted)" }}>
-        <Icon name="settings" size={14}/><span>vault @ ~/Nextcloud/loci</span>
+        <Icon name="settings" size={14}/><span>vault @ ~/loci</span>
       </div>
     </aside>
   );

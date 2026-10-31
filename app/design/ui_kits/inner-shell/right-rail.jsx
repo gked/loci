@@ -52,7 +52,7 @@ const RightRail = ({ section, onNav, vault, selectedUid, onOpenUid, onOpenGraph 
 
       {/* footer — open vault location */}
       <div style={{ padding: "10px 14px", borderTop: "1px solid var(--vault-rule)", display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--vault-fg-muted)", flexShrink: 0 }}>
-        <Icon name="settings" size={11}/><span>~/Nextcloud/loci</span>
+        <Icon name="settings" size={11}/><span>~/loci</span>
       </div>
     </aside>
   );

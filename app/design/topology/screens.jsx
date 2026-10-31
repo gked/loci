@@ -17,7 +17,7 @@ function SplashScreen({ onEnter, motion }) {
       <Meridian/>
       <Reticle/>
       <Corners
-        tl={{label:'thesaurus', value:'~/Nextcloud/loci'}}
+        tl={{label:'thesaurus', value:'~/loci'}}
         tr={{label:'caelum', value:'observatorium · v0.4'}}
         bl={{label:'fundatum', value:'mmxxvi · iv'}}
         br={{label:'lat ·  long', value:'40.7128 · -74.0060'}}
@@ -125,7 +125,7 @@ function VaultRail({ active, onNav, vault, density }) {
 
       <div className="rail-foot">
         <div className="health">vault healthy · 17 loci · 23 nexus</div>
-        <div style={{color:'var(--t-fg-faint)', fontSize:9}}>~/Nextcloud/loci</div>
+        <div style={{color:'var(--t-fg-faint)', fontSize:9}}>~/loci</div>
       </div>
     </aside>
   );
@@ -795,7 +795,7 @@ function SettingsScreen() {
       <Meridian/>
       <Corners
         tl={{label:'calibratio', value:'vault settings'}}
-        tr={{label:'vault', value:'~/Nextcloud/loci'}}
+        tr={{label:'vault', value:'~/loci'}}
         bl={{label:'last sync', value:'2026-05-07 09:14'}}
         br={{label:'engine', value:'networkx 3.2 · v0.4'}}
       />

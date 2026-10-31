@@ -2,7 +2,7 @@
 asset_registry.py
 Manages Loci asset write sequences: path helpers, intent files and crash recovery.
 
-Folder structure (siblings under ~/Nextcloud/loci/):
+Folder structure (siblings under ~/loci/):
   assets/                  ← binary/rich files (local storage)
     .pending/              ← intent files for crash recovery
 

@@ -85,12 +85,12 @@ def test_normalise_keeps_the_symbols_that_make_a_name():
 def test_candidate_names_use_title_stem_and_only_abbreviation_parentheticals():
     assert tag_hygiene.candidate_names({"title": "Globex Corp (GLX)"}) == ["Globex Corp (GLX)", "Globex Corp", "GLX"]
     assert tag_hygiene.candidate_names({"title": "Initech (company)"}) == ["Initech (company)", "Initech"]
-    assert tag_hygiene.candidate_names({"title": "Acme Corp", "aliases": ["CM"]}) == ["Acme Corp", "CM"]
+    assert tag_hygiene.candidate_names({"title": "Acme Corp", "aliases": ["AC"]}) == ["Acme Corp", "AC"]
 
 
 def test_candidate_names_ignore_aliases_that_are_not_a_list():
     # `aliases: CM` iterated as a string would answer to `c` and `m`.
-    assert tag_hygiene.candidate_names({"title": "Acme Corp", "aliases": "CM"}) == ["Acme Corp"]
+    assert tag_hygiene.candidate_names({"title": "Acme Corp", "aliases": "AC"}) == ["Acme Corp"]
     assert tag_hygiene.candidate_names({"title": "Acme Corp", "aliases": None}) == ["Acme Corp"]
 
 
@@ -191,14 +191,15 @@ def test_plan_skips_a_node_whose_tags_is_not_a_list(tmp_path):
 
 def test_plan_ignores_an_aliases_field_that_is_not_a_list(tmp_path):
     v = _vault(tmp_path)
-    _node(v, "cm", uid="cccc0011", type="entity", title="Acme Corp", subtype="organization", aliases="CM")
-    _node(v, "c", uid="cccc0012", type="task", title="Tagged c", status="todo", subtype="feature", tags=["c", "cm"])
+    _node(v, "ac", uid="cccc0011", type="entity", title="Acme Corp", subtype="organization", aliases="ACME")
+    _node(v, "c", uid="cccc0012", type="task", title="Tagged c", status="todo", subtype="feature", tags=["a", "c", "m", "e", "acme"])
     plan = mig.plan_vault(v)
 
-    # `c` names nothing; `cm` would have matched a real alias but not a mistyped one.
+    # Iterated as a string, the alias would answer to `a`, `c`, `m` and `e`;
+    # `acme` would have matched a real alias but not a mistyped one.
     assert not any(e.uid == "cccc0012" for e in plan.edges)
-    assert plan.unmatched["c"] == 1 and plan.unmatched["cm"] == 1
-    assert plan.problems == ["cm.md: aliases is not a list — ignored"]
+    assert all(plan.unmatched[t] == 1 for t in ("a", "c", "m", "e", "acme"))
+    assert plan.problems == ["ac.md: aliases is not a list — ignored"]
 
 
 def test_plan_drops_a_tag_naming_the_node_itself_without_a_self_edge(tmp_path):
