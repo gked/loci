@@ -12,8 +12,7 @@ with the web UI already compiled inside it — so there is no checkout, no Node,
 and no build step.
 
 **Requires:** Python 3.13+, [uv](https://docs.astral.sh/uv/), and
-[`gh`](https://cli.github.com/) (only to download: the repo is private, so an
-anonymous browser download won't work either).
+[`gh`](https://cli.github.com/) (only to download the wheel from the release).
 
 ### 1. Download and install
 
