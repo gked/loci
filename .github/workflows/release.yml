@@ -56,6 +56,20 @@ jobs:
       - name: Build the wheel
         run: make wheel
 
+      # PyPI refuses a distribution whose metadata it cannot render, and a
+      # published version can never be replaced. Catch it here, before the
+      # GitHub Release exists and long before the upload.
+      - name: Check the distribution metadata
+        run: uvx twine check --strict dist/*
+
+      # The publish job ships exactly these files, not a second build.
+      - name: Keep the built distributions for the publish job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
       - name: Compose release notes
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,3 +97,28 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --title "Loci ${GITHUB_REF_NAME}" \
             --notes-file notes.md
+
+  # PyPI trusted publishing: no API token is stored anywhere. PyPI trusts this
+  # repository, this workflow file and this environment, and accepts the
+  # short-lived identity token GitHub mints for the job. That is also why this
+  # is its own job — `id-token: write` is held by the one job that runs no
+  # repository code, only the upload.
+  #
+  # It runs after the GitHub Release, so a failed upload leaves a release that
+  # can be re-run ("Re-run failed jobs"), never an upload with no release.
+  publish-pypi:
+    name: Publish to PyPI
+    needs: release
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/loci-vault
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3

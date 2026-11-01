@@ -257,9 +257,27 @@ Pushing `vX.Y.Z` fires [`.github/workflows/release.yml`](../.github/workflows/re
 3. **Build.** `make wheel`, never a bare `uv build`: it compiles `app/` into
    `src/loci/static/` first, so the wheel carries the UI. `app/` is not
    packaged, and an installed Loci has neither it nor Node to build it with.
-4. **Publish.** `scripts/release_notes.py` writes the upgrade section, GitHub
+4. **Check.** `twine check --strict` on the wheel and the sdist. PyPI refuses
+   metadata it cannot render, and a published version can never be replaced, so
+   this runs before anything is published.
+5. **Release.** `scripts/release_notes.py` writes the upgrade section, GitHub
    generates the merged-PR list beneath it, and the wheel is attached to the
    Release.
+6. **PyPI.** A second job, `publish-pypi`, uploads the same files the first job
+   built. It uses trusted publishing, so no API token is stored anywhere. If
+   the upload fails, use "Re-run failed jobs": the Release already exists and
+   the build is not repeated.
+
+The PyPI name is `loci-vault`. The bare name `loci` belongs to an unrelated
+project, so the import package and the `loci` and `loci-mcp` commands keep their
+names and only the distribution differs. Code that asks package metadata for the
+version must use `loci-vault`.
+
+**One-time setup on PyPI** (the workflow cannot do this for you). Before the
+first tag, on pypi.org: add a *pending publisher* for the project `loci-vault`
+with owner `gked`, repository `loci`, workflow `release.yml` and environment
+`pypi`. In the GitHub repo, create an environment named `pypi`. Both names must
+match what the workflow declares, or PyPI rejects the token.
 
 To build the wheel without releasing anything:
 

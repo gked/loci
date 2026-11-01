@@ -60,7 +60,7 @@ Requires Python 3.13+, [uv](https://docs.astral.sh/uv/), and
 ```bash
 rm -rf /tmp/loci-wheel
 gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
-uv tool install /tmp/loci-wheel/loci-*.whl
+uv tool install /tmp/loci-wheel/loci_vault-*.whl
 ```
 
 **2. Wire it into Claude Code**

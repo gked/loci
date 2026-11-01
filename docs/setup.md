@@ -16,14 +16,14 @@ and no build step.
 
 ### 1. Download and install
 
-The asset is called `loci-<version>-py3-none-any.whl` — the version is the only
+The asset is called `loci_vault-<version>-py3-none-any.whl` — the version is the only
 part that moves, so download into an empty directory and let a glob install it.
 You never have to know the number:
 
 ```bash
 rm -rf /tmp/loci-wheel
 gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
-uv tool install /tmp/loci-wheel/loci-*.whl
+uv tool install /tmp/loci-wheel/loci_vault-*.whl
 ```
 
 `gh release download` with no tag takes the newest release. To pin a specific
@@ -32,7 +32,7 @@ one instead, name its tag and the wheel comes back with that version in it:
 ```bash
 rm -rf /tmp/loci-wheel
 gh release download v0.2.0 --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
-uv tool install /tmp/loci-wheel/loci-*.whl
+uv tool install /tmp/loci-wheel/loci_vault-*.whl
 ```
 
 (The directory is emptied first because the glob has to match exactly one file.
@@ -73,7 +73,19 @@ the latter only exists in a checkout, so `set_vault_root` is the wheel's way in.
 ```bash
 rm -rf /tmp/loci-wheel
 gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
-uv tool install --force /tmp/loci-wheel/loci-*.whl
+uv tool install --force /tmp/loci-wheel/loci_vault-*.whl
+loci skills
+```
+
+**Coming from 0.6.0 or earlier.** The package was renamed from `loci` to
+`loci-vault`, because the name `loci` on PyPI belongs to an unrelated project.
+The commands (`loci`, `loci-mcp`) and the import name are unchanged, but uv
+sees two different tools that want the same commands and refuses the second.
+Remove the old one first:
+
+```bash
+uv tool uninstall loci
+uv tool install /tmp/loci-wheel/loci_vault-*.whl
 loci skills
 ```
 

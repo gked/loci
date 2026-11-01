@@ -8,7 +8,7 @@
 
 ```
 gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
-uv tool install /tmp/loci-wheel/loci-*.whl
+uv tool install /tmp/loci-wheel/loci_vault-*.whl
   │
   └─ puts `loci-mcp` and `loci` on PATH; the UI bundle is inside the wheel
 
@@ -64,7 +64,7 @@ Claude Code spawns:  uv run loci-mcp  (stdio transport)
 ```
 rm -rf /tmp/loci-wheel
 gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
-uv tool install --force /tmp/loci-wheel/loci-*.whl
+uv tool install --force /tmp/loci-wheel/loci_vault-*.whl
 loci skills                            # rewrites any stub whose frontmatter changed
 
 User restarts Claude Code / Claude Desktop

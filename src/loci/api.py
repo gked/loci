@@ -1126,7 +1126,7 @@ def app_version() -> str:
     from importlib.metadata import PackageNotFoundError, version
 
     try:
-        return version("loci")
+        return version("loci-vault")
     except PackageNotFoundError:  # pragma: no cover — running from a bare tree
         return "unknown"
 

@@ -317,13 +317,13 @@ def test_the_repos_lockfile_agrees_with_pyproject():
     lock = (REPO_ROOT / "uv.lock").read_text()
 
     entry = re.search(
-        r'^\[\[package\]\]\nname = "loci"\nversion = "(\d+\.\d+\.\d+)"',
+        r'^\[\[package\]\]\nname = "loci-vault"\nversion = "(\d+\.\d+\.\d+)"',
         lock,
         re.MULTILINE,
     )
-    assert entry, "no [[package]] entry for loci in uv.lock"
+    assert entry, "no [[package]] entry for loci-vault in uv.lock"
     assert entry.group(1) == declared, (
-        f"uv.lock says loci {entry.group(1)}, pyproject.toml says {declared}. "
+        f"uv.lock says loci-vault {entry.group(1)}, pyproject.toml says {declared}. "
         f"Run `uv lock`."
     )
 
