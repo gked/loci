@@ -53,8 +53,7 @@ thinking accumulates, in a form no platform owns.
 ## Quick start
 
 Requires Python 3.13+, [uv](https://docs.astral.sh/uv/), and
-[`gh`](https://cli.github.com/) (the repo is private; `gh` is how the wheel
-downloads).
+[`gh`](https://cli.github.com/) (`gh` is how the wheel downloads).
 
 **1. Install the latest release**
 
