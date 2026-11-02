@@ -54,22 +54,6 @@ the latter only exists in a checkout, so `set_vault_root` is the wheel's way in.
 
 ### Upgrading
 
-**Coming from 0.6.0 or earlier?** Read this first. Those releases installed a
-package called `loci`, from a wheel on the GitHub Release. The package is now
-`loci-vault`, but it provides the same commands (`loci`, `loci-mcp`), and uv
-refuses to install a second tool that wants commands the first one owns. Remove
-the old one, once:
-
-```bash
-uv tool uninstall loci
-uv tool install loci-vault
-loci skills
-```
-
-Your vault is not touched. After this, upgrade as below.
-
-**Otherwise:**
-
 ```bash
 uv tool upgrade loci-vault
 loci skills
@@ -112,8 +96,7 @@ With no tag, `gh release download` takes the newest release. Name a tag
 match exactly one file. Then continue from [step 2](#2-install-the-skills-and-register-the-server).
 
 To upgrade, repeat the commands with `uv tool install --force`, then run
-`loci skills`. A 0.6.0 install needs the uninstall under
-[Upgrading](#upgrading) first.
+`loci skills`.
 
 ---
 

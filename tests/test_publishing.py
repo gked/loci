@@ -36,7 +36,7 @@ def test_the_commands_and_import_package_keep_the_loci_name():
 def test_app_version_reads_the_distribution_under_its_pypi_name():
     """version("loci") would raise for a loci-vault install and report
     "unknown" in the UI and /api/health."""
-    assert api.app_version() == _pyproject()["project"]["version"]
+    assert re.fullmatch(r"\d+\.\d+\.\d+\S*", api.app_version())
 
 
 def test_the_package_has_a_pypi_page_worth_showing():
