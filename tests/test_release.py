@@ -34,7 +34,7 @@ from scripts.release import (  # noqa: E402
 )
 
 PYPROJECT = '''[project]
-name = "loci"
+name = "loci-vault"
 version = "0.4.2"
 dependencies = ["mcp[cli]>=1.0,<2"]
 
@@ -58,7 +58,7 @@ def test_reads_the_real_pyproject():
 
 def test_missing_version_line_is_an_error():
     with pytest.raises(ReleaseError, match="no `version"):
-        read_version('[project]\nname = "loci"\n')
+        read_version('[project]\nname = "loci-vault"\n')
 
 
 @pytest.mark.parametrize(
@@ -250,13 +250,13 @@ def fake_repo(tmp_path, monkeypatch):
             if command[:2] == ("uv", "lock"):
                 self.locked = True
                 # What `uv lock` really does: settle the lock on the new version.
-                self.lock.write_text(f'name = "loci"\nversion = "{release.read_version(self.pyproject.read_text())}"\n')
+                self.lock.write_text(f'name = "loci-vault"\nversion = "{release.read_version(self.pyproject.read_text())}"\n')
                 return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
             raise AssertionError(f"unexpected subprocess: {command}")
 
     recorder = Recorder()
     recorder.lock = tmp_path / "uv.lock"
-    recorder.lock.write_text('name = "loci"\nversion = "0.4.2"\n')
+    recorder.lock.write_text('name = "loci-vault"\nversion = "0.4.2"\n')
 
     monkeypatch.setattr(release, "PYPROJECT", recorder.pyproject)
     monkeypatch.setattr(release, "UV_LOCK", recorder.lock)
@@ -317,13 +317,13 @@ def test_the_repos_lockfile_agrees_with_pyproject():
     lock = (REPO_ROOT / "uv.lock").read_text()
 
     entry = re.search(
-        r'^\[\[package\]\]\nname = "loci"\nversion = "(\d+\.\d+\.\d+)"',
+        r'^\[\[package\]\]\nname = "loci-vault"\nversion = "(\d+\.\d+\.\d+)"',
         lock,
         re.MULTILINE,
     )
-    assert entry, "no [[package]] entry for loci in uv.lock"
+    assert entry, "no [[package]] entry for loci-vault in uv.lock"
     assert entry.group(1) == declared, (
-        f"uv.lock says loci {entry.group(1)}, pyproject.toml says {declared}. "
+        f"uv.lock says loci-vault {entry.group(1)}, pyproject.toml says {declared}. "
         f"Run `uv lock`."
     )
 

@@ -55,6 +55,13 @@ directory is gitignored, so pyproject's `[tool.hatch.build] artifacts` entry is
 what keeps it in the wheel; hatchling honours `.gitignore` and would otherwise
 drop it silently. Never publish with a bare `uv build`.
 
+**The distribution is `loci-vault`; the import package and commands are
+`loci`.** The bare name `loci` on PyPI is an unrelated project. Anything that
+asks package metadata for this package (`importlib.metadata.version`) must say
+`loci-vault`, and the wheel file is `loci_vault-<version>-py3-none-any.whl`.
+`release.yml` publishes to PyPI by trusted publishing after the GitHub Release;
+see docs/development.md for the one-time PyPI setup.
+
 Adding a console script means adding it to `[project.scripts]` in
 `pyproject.toml` and giving it a `main()`. Keep `loci-mcp` and `loci` as
 separate processes — see the docstring in `src/loci/__init__.py` for why.
@@ -203,7 +210,7 @@ make release-publish                       # tags the merged commit
 ```
 
 **The bump moves the version in two files** — `pyproject.toml`, and the
-version `uv.lock` records for the local `loci` package. `uv run` re-resolves
+version `uv.lock` records for the local `loci-vault` package. `uv run` re-resolves
 the lock the moment those disagree, and the first command to run `uv run`
 after a bump PR was `make release-publish` itself, which dirtied the tree its
 own clean-tree guard then refused to act on. `release.py` runs `uv lock` as

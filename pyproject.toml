@@ -1,6 +1,12 @@
 [project]
-name = "loci"
+# The PyPI name is `loci-vault`; the import package and both commands stay
+# `loci`. The bare name `loci` on PyPI belongs to an unrelated 2018 project, so
+# it cannot be published under. Anything that asks the installed metadata for
+# this distribution (api.app_version) must use this name, not the import name.
+name = "loci-vault"
 version = "0.6.0"
+description = "A personal knowledge graph on plain Markdown files, with an MCP server for Claude and a local web app."
+readme = "README.md"
 # Source-available, not open source: noncommercial use is free, commercial use
 # needs a separate licence. See LICENSE and CONTRIBUTING.md.
 license = "PolyForm-Noncommercial-1.0.0"
@@ -24,6 +30,12 @@ dependencies = [
     # Pure-Python Git, so vault history needs no `git` on the machine.
     "dulwich>=1.2.20",
 ]
+
+[project.urls]
+Homepage = "https://github.com/gked/loci"
+Source = "https://github.com/gked/loci"
+Issues = "https://github.com/gked/loci/issues"
+Security = "https://github.com/gked/loci/security/policy"
 
 # Two processes, not one — see the module docstring in src/loci/__init__.py.
 [project.scripts]

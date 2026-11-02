@@ -495,7 +495,8 @@ def _history_status() -> dict:
 @app.get("/api/health")
 def health():
     # `version` is the single source of truth for what the app calls itself:
-    # vault_api.app_version() reads it straight out of pyproject.toml. The UI reads
+    # vault_api.app_version() reads it from the installed package metadata, under
+    # the distribution name `loci-vault` (not the import name `loci`). The UI reads
     # it from here rather than carrying its own literal, so there is one number
     # to bump and no way for the two to disagree.
     try:

@@ -508,7 +508,7 @@ wheels = [
 ]
 
 [[package]]
-name = "loci"
+name = "loci-vault"
 version = "0.6.0"
 source = { editable = "." }
 dependencies = [

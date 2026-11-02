@@ -1,43 +1,27 @@
 # Setup
 
-Two ways to run Loci. The **released wheel** is the path for using it; **From a checkout** is what developing it needs.
+Three ways to run Loci. **From PyPI** is the path for using it. A **release wheel** is the same package, downloaded from GitHub instead. **From a checkout** is what developing it needs.
 
 ---
 
-## A released wheel
+## From PyPI
 
-The path if you want to *use* Loci rather than work on it. Every tagged release
-attaches a wheel to its [GitHub Release](https://github.com/gked/loci/releases),
-with the web UI already compiled inside it — so there is no checkout, no Node,
-and no build step.
+The path if you want to *use* Loci rather than work on it. The package is
+[`loci-vault`](https://pypi.org/project/loci-vault/), with the web UI already
+compiled inside it — so there is no checkout, no Node, and no build step.
 
-**Requires:** Python 3.13+, [uv](https://docs.astral.sh/uv/), and
-[`gh`](https://cli.github.com/) (only to download the wheel from the release).
+**Requires:** Python 3.13+ and [uv](https://docs.astral.sh/uv/).
 
-### 1. Download and install
-
-The asset is called `loci-<version>-py3-none-any.whl` — the version is the only
-part that moves, so download into an empty directory and let a glob install it.
-You never have to know the number:
+### 1. Install
 
 ```bash
-rm -rf /tmp/loci-wheel
-gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
-uv tool install /tmp/loci-wheel/loci-*.whl
+uv tool install loci-vault
 ```
 
-`gh release download` with no tag takes the newest release. To pin a specific
-one instead, name its tag and the wheel comes back with that version in it:
+To pin a version: `uv tool install loci-vault==<version>`.
 
-```bash
-rm -rf /tmp/loci-wheel
-gh release download v0.2.0 --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
-uv tool install /tmp/loci-wheel/loci-*.whl
-```
-
-(The directory is emptied first because the glob has to match exactly one file.
-There is no `loci-latest.whl`: a wheel's filename *is* its version, and uv
-rejects one that does not parse as a number.)
+The package is `loci-vault` because the bare name `loci` on PyPI belongs to an
+unrelated project. The commands and the import name are still `loci`.
 
 That puts both console scripts on your PATH — `loci-mcp` (the stdio MCP server)
 and `loci` (the HTTP API *and* the UI, from one process on
@@ -71,9 +55,7 @@ the latter only exists in a checkout, so `set_vault_root` is the wheel's way in.
 ### Upgrading
 
 ```bash
-rm -rf /tmp/loci-wheel
-gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
-uv tool install --force /tmp/loci-wheel/loci-*.whl
+uv tool upgrade loci-vault
 loci skills
 ```
 
@@ -90,7 +72,31 @@ Every release's notes open with whatever the upgrade asks of you, because
 Running `loci skills` regardless is the safe habit: it compares each installed
 stub against the one it would write and does nothing if nothing moved.
 
-How those wheels are built and published is [Releasing](development.md#releasing).
+How releases are built and published is [Releasing](development.md#releasing).
+
+---
+
+## From a release wheel
+
+The same package, downloaded from the [GitHub Release](https://github.com/gked/loci/releases)
+instead of PyPI. Use it to pin a build PyPI does not serve, or when PyPI is not
+reachable. It needs [`gh`](https://cli.github.com/) as well as uv.
+
+The asset is called `loci_vault-<version>-py3-none-any.whl` — the version is the only
+part that moves, so download into an empty directory and let a glob install it:
+
+```bash
+rm -rf /tmp/loci-wheel
+gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
+uv tool install /tmp/loci-wheel/loci_vault-*.whl
+```
+
+With no tag, `gh release download` takes the newest release. Name a tag
+(`v0.2.0`) to pin one. The directory is emptied first because the glob has to
+match exactly one file. Then continue from [step 2](#2-install-the-skills-and-register-the-server).
+
+To upgrade, repeat the commands with `uv tool install --force`, then run
+`loci skills`.
 
 ---
 
@@ -102,7 +108,7 @@ here, and `setup.py` stands in for the wheel's `loci skills` + `claude mcp add`.
 
 **Requires:** Python 3.13+, [uv](https://docs.astral.sh/uv/), [rclone](https://rclone.org/) (optional, for backup), Node 20+ (optional, for the web UI)
 
-> **Just want to use Loci?** Install a [released wheel](#a-released-wheel)
+> **Just want to use Loci?** [Install from PyPI](#from-pypi)
 > instead — no checkout, no Node, and the UI comes compiled inside it. The steps
 > below are for developing Loci itself (`make dev`, `make run`).
 
@@ -199,6 +205,18 @@ Open Claude Code and say:
 ```
 Save this to my loci vault as a note: Loci is now set up and working.
 ```
+
+### Building a wheel from the checkout
+
+To install your own build as a real tool, with the UI compiled in:
+
+```bash
+make wheel                              # dist/*.whl; compiles app/ first
+uv tool install --force dist/loci_vault-*.whl
+```
+
+Use `make wheel`, never a bare `uv build`: a bare build ships a wheel with no UI.
+Needs Node 20+.
 
 ---
 
