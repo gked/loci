@@ -47,6 +47,17 @@ def test_the_package_has_a_pypi_page_worth_showing():
     assert "Source" in project["urls"]
 
 
+def test_readme_images_use_absolute_urls_so_they_render_on_pypi():
+    """PyPI shows the README out of context: a relative path is a broken image."""
+    readme = (REPO_ROOT / "README.md").read_text()
+    sources = re.findall(r'<img[^>]*\bsrc="([^"]+)"', readme)
+    sources += re.findall(r"!\[[^\]]*\]\(([^)\s]+)", readme)
+
+    assert sources
+    relative = [s for s in sources if not s.startswith("https://")]
+    assert relative == []
+
+
 def _workflow() -> dict:
     return yaml.safe_load(WORKFLOW.read_text())
 

@@ -2,7 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/monogram-dark.svg">
-  <img src="docs/images/monogram-light.svg" alt="Loci" width="96" height="96">
+  <img src="https://raw.githubusercontent.com/gked/loci/main/docs/images/monogram-light.svg" alt="Loci" width="96" height="96">
 </picture>
 
 <br/>
@@ -46,7 +46,7 @@ walking the graph. And **the files themselves**, which open, `grep`, and commit
 in any editor with nothing else running. The goal is one place where your
 thinking accumulates, in a form no platform owns.
 
-![Loci topology view: force-directed graph coloured by node type](docs/images/graph-view.png)
+![Loci topology view: force-directed graph coloured by node type](https://raw.githubusercontent.com/gked/loci/main/docs/images/graph-view.png)
 
 ---
 
