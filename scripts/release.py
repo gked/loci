@@ -178,7 +178,7 @@ def confirm(question: str, assume_yes: bool) -> bool:
 def uv_lock() -> None:
     """Re-resolve uv.lock against the version just written to pyproject.toml.
 
-    uv.lock records a version for the local `loci` package too, so bumping
+    uv.lock records a version for the local `loci-vault` package too, so bumping
     pyproject.toml alone leaves the two disagreeing — and `uv run` rewrites
     the lock to settle it at the start of the very next command. That command
     was `make release-publish`, which then found the tree dirty and refused to

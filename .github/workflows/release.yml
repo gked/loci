@@ -9,11 +9,11 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write  # creating a Release writes to the repo
+  contents: read
 
 jobs:
-  release:
-    name: Build and publish
+  build:
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,9 +58,10 @@ jobs:
 
       # PyPI refuses a distribution whose metadata it cannot render, and a
       # published version can never be replaced. Catch it here, before the
-      # GitHub Release exists and long before the upload.
+      # GitHub Release exists and long before the upload. twine is pinned: this
+      # job builds what is uploaded to PyPI, so it does not run a floating tool.
       - name: Check the distribution metadata
-        run: uvx twine check --strict dist/*
+        run: uvx twine@7.0.0 check --strict dist/*
 
       # The publish job ships exactly these files, not a second build.
       - name: Keep the built distributions for the publish job
@@ -69,6 +70,55 @@ jobs:
           name: dist
           path: dist/
           if-no-files-found: error
+
+  # PyPI trusted publishing: no API token is stored anywhere. PyPI trusts this
+  # repository, this workflow file and this environment, and accepts the
+  # short-lived identity token GitHub mints for the job. That is also why this
+  # is its own job — `id-token: write` is held by the one job that runs no
+  # repository code, only the upload.
+  #
+  # It runs before the GitHub Release. If the pending publisher or the `pypi`
+  # environment is missing or misnamed, the upload fails here and no Release
+  # exists yet: fix the setup and "Re-run failed jobs". The reverse order left a
+  # public Release for a version that never reached PyPI.
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/loci-vault
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  # Last, and only once PyPI has the files: a Release means the version is out.
+  # If this job fails, "Re-run failed jobs" repeats only this job. PyPI refuses
+  # a second upload of the same version, so the upload must not be repeated.
+  release:
+    name: GitHub Release
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # creating a Release writes to the repo
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # release_notes.py reads the previous tag's files out of git history.
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v4
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist/
 
       - name: Compose release notes
         env:
@@ -82,7 +132,7 @@ jobs:
 
           # The upgrade section first — it is the part that asks something of
           # the reader — then GitHub's own list of merged PRs beneath it.
-          uv run python scripts/release_notes.py "${PREVIOUS}" "${TAG}" > notes.md
+          uv run --no-project python scripts/release_notes.py "${PREVIOUS}" "${TAG}" > notes.md
           gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
             -f tag_name="${TAG}" \
             ${PREVIOUS:+-f previous_tag_name="${PREVIOUS}"} \
@@ -97,28 +147,3 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --title "Loci ${GITHUB_REF_NAME}" \
             --notes-file notes.md
-
-  # PyPI trusted publishing: no API token is stored anywhere. PyPI trusts this
-  # repository, this workflow file and this environment, and accepts the
-  # short-lived identity token GitHub mints for the job. That is also why this
-  # is its own job — `id-token: write` is held by the one job that runs no
-  # repository code, only the upload.
-  #
-  # It runs after the GitHub Release, so a failed upload leaves a release that
-  # can be re-run ("Re-run failed jobs"), never an upload with no release.
-  publish-pypi:
-    name: Publish to PyPI
-    needs: release
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/loci-vault
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: dist
-          path: dist/
-
-      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3

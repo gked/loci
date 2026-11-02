@@ -47,6 +47,16 @@ def test_the_package_has_a_pypi_page_worth_showing():
     assert "Source" in project["urls"]
 
 
+def test_readme_links_use_absolute_urls_so_they_work_on_pypi():
+    """PyPI shows the README out of context: a relative link is a 404."""
+    readme = (REPO_ROOT / "README.md").read_text()
+    targets = re.findall(r"(?<!!)\[[^\]]*\]\(([^)\s]+)", readme)
+
+    assert targets
+    relative = [t for t in targets if not t.startswith(("https://", "#"))]
+    assert relative == []
+
+
 def test_readme_images_use_absolute_urls_so_they_render_on_pypi():
     """PyPI shows the README out of context: a relative path is a broken image."""
     readme = (REPO_ROOT / "README.md").read_text()
@@ -62,10 +72,22 @@ def _workflow() -> dict:
     return yaml.safe_load(WORKFLOW.read_text())
 
 
-def test_publishing_is_a_separate_job_after_the_github_release():
+def test_pypi_is_published_before_the_github_release_exists():
+    """A missing or misnamed trusted publisher must fail before anything is
+    public, not after a Release has already announced the version."""
     jobs = _workflow()["jobs"]
 
-    assert jobs["publish-pypi"]["needs"] == "release"
+    assert jobs["publish-pypi"]["needs"] == "build"
+    assert jobs["release"]["needs"] == "publish-pypi"
+
+
+def test_only_the_release_job_may_write_to_the_repo():
+    jobs = _workflow()["jobs"]
+
+    assert _workflow()["permissions"] == {"contents": "read"}
+    assert jobs["release"]["permissions"]["contents"] == "write"
+    assert "contents" not in jobs["build"].get("permissions", {})
+    assert "contents" not in jobs["publish-pypi"]["permissions"]
 
 
 def test_only_the_publish_job_may_mint_an_identity_token():
@@ -74,6 +96,7 @@ def test_only_the_publish_job_may_mint_an_identity_token():
     jobs = _workflow()["jobs"]
 
     assert jobs["publish-pypi"]["permissions"]["id-token"] == "write"
+    assert "id-token" not in jobs["build"].get("permissions", {})
     assert "id-token" not in jobs["release"].get("permissions", {})
     assert "id-token" not in _workflow().get("permissions", {})
 
@@ -99,7 +122,7 @@ def test_every_action_in_the_publish_path_is_pinned_to_a_commit():
     jobs = _workflow()["jobs"]
     publish_actions = [
         step["uses"]
-        for job in (jobs["release"], jobs["publish-pypi"])
+        for job in (jobs["build"], jobs["publish-pypi"], jobs["release"])
         for step in job["steps"]
         if step.get("uses", "").split("@")[0]
         in {
@@ -115,7 +138,17 @@ def test_every_action_in_the_publish_path_is_pinned_to_a_commit():
 
 
 def test_the_distribution_metadata_is_checked_before_publishing():
-    steps = _workflow()["jobs"]["release"]["steps"]
+    steps = _workflow()["jobs"]["build"]["steps"]
     runs = " ".join(step.get("run", "") for step in steps)
 
-    assert "twine check --strict" in runs
+    assert "twine@" in runs and "check --strict" in runs
+
+
+def test_twine_is_pinned_to_an_exact_version():
+    """The build job makes what PyPI receives; it runs no floating tool."""
+    runs = " ".join(
+        step.get("run", "")
+        for step in _workflow()["jobs"]["build"]["steps"]
+    )
+
+    assert re.search(r"uvx twine@\d+\.\d+\.\d+ check", runs)

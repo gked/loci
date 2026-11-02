@@ -237,7 +237,7 @@ make release-publish               # tags the merged commit and pushes the tag
 #### What the bump touches
 
 Two files: the version in `pyproject.toml`, and the version `uv.lock` records
-for the local `loci` package. Both, because `uv run` re-resolves the lock the
+for the local `loci-vault` package. Both, because `uv run` re-resolves the lock the
 moment those disagree — and the first command to run `uv run` after a bump PR
 was `make release-publish` itself, which dirtied the tree its own clean-tree
 guard then refused to act on. `release.py` runs `uv lock` as part of the bump,
@@ -257,16 +257,19 @@ Pushing `vX.Y.Z` fires [`.github/workflows/release.yml`](../.github/workflows/re
 3. **Build.** `make wheel`, never a bare `uv build`: it compiles `app/` into
    `src/loci/static/` first, so the wheel carries the UI. `app/` is not
    packaged, and an installed Loci has neither it nor Node to build it with.
-4. **Check.** `twine check --strict` on the wheel and the sdist. PyPI refuses
+4. **Check.** `twine check --strict` (twine pinned to an exact version) on the wheel and the sdist. PyPI refuses
    metadata it cannot render, and a published version can never be replaced, so
    this runs before anything is published.
-5. **Release.** `scripts/release_notes.py` writes the upgrade section, GitHub
-   generates the merged-PR list beneath it, and the wheel is attached to the
-   Release.
-6. **PyPI.** A second job, `publish-pypi`, uploads the same files the first job
-   built. It uses trusted publishing, so no API token is stored anywhere. If
-   the upload fails, use "Re-run failed jobs": the Release already exists and
-   the build is not repeated.
+5. **PyPI.** A second job, `publish-pypi`, uploads the files the first job
+   built. It uses trusted publishing, so no API token is stored anywhere. It
+   runs *before* the GitHub Release: if the PyPI setup below is missing or
+   misnamed, the upload fails and nothing is public yet. Fix the setup and use
+   "Re-run failed jobs".
+6. **Release.** A third job, `release`, runs only after PyPI has the files.
+   `scripts/release_notes.py` writes the upgrade section, GitHub generates the
+   merged-PR list beneath it, and the same files are attached to the Release.
+   If this job fails, "Re-run failed jobs" repeats only this job — PyPI refuses
+   a second upload of the same version, so the upload is never repeated.
 
 The PyPI name is `loci-vault`. The bare name `loci` belongs to an unrelated
 project, so the import package and the `loci` and `loci-mcp` commands keep their

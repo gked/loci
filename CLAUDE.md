@@ -210,7 +210,7 @@ make release-publish                       # tags the merged commit
 ```
 
 **The bump moves the version in two files** — `pyproject.toml`, and the
-version `uv.lock` records for the local `loci` package. `uv run` re-resolves
+version `uv.lock` records for the local `loci-vault` package. `uv run` re-resolves
 the lock the moment those disagree, and the first command to run `uv run`
 after a bump PR was `make release-publish` itself, which dirtied the tree its
 own clean-tree guard then refused to act on. `release.py` runs `uv lock` as

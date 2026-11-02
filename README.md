@@ -52,16 +52,15 @@ thinking accumulates, in a form no platform owns.
 
 ## Quick start
 
-Requires Python 3.13+, [uv](https://docs.astral.sh/uv/), and
-[`gh`](https://cli.github.com/) (`gh` is how the wheel downloads).
+Requires Python 3.13+ and [uv](https://docs.astral.sh/uv/).
 
-**1. Install the latest release**
+**1. Install from PyPI**
 
 ```bash
-rm -rf /tmp/loci-wheel
-gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
-uv tool install /tmp/loci-wheel/loci_vault-*.whl
+uv tool install loci-vault
 ```
+
+The package is `loci-vault`; the commands it installs are `loci` and `loci-mcp`.
 
 **2. Wire it into Claude Code**
 
@@ -85,7 +84,7 @@ What does my loci vault know about stoicism?
 
 **4. Run it**
 
-The wheel installs two console scripts, and they are separate processes:
+The package installs two console scripts, and they are separate processes:
 
 | Command | What it is |
 |---|---|
@@ -96,7 +95,7 @@ The wheel installs two console scripts, and they are separate processes:
 sets one). To use a specific vault for one run: `LOCI_VAULT_ROOT=~/vault loci`.
 
 Upgrading, running from a checkout, and sync are all in
-[docs/setup.md](docs/setup.md).
+[docs/setup.md](https://github.com/gked/loci/blob/main/docs/setup.md).
 
 ---
 
@@ -104,23 +103,23 @@ Upgrading, running from a checkout, and sync are all in
 
 | | |
 |---|---|
-| [The problem](docs/problem.md) | Why Loci exists, and why a Markdown folder or a PKM app alone doesn't cover it |
-| [Setup](docs/setup.md) | Wheel and checkout installs; upgrading; sync and backup |
-| [Examples](docs/examples.md) | One prompt per scenario: saving each kind of thing, retrieving, updating, extending the ontology |
-| [Using Loci](docs/usage.md) | How to think about it as a system, the scenarios it's built for, saving, querying, the UI, the vault layout |
-| [The ontology](docs/ontology.md) | Types, relations, schemes, and how the registries are versioned |
-| [Development](docs/development.md) | Repo layout, daily commands, testing, releasing |
-| [Status and roadmap](docs/roadmap.md) | What's stable, what's partial, what's next |
-| [File saving](docs/file-saving.md) · [Execution flows](docs/execution-flows.md) · [Diagrams](docs/diagrams.md) · [Testing](docs/testing.md) | Deeper reference |
+| [The problem](https://github.com/gked/loci/blob/main/docs/problem.md) | Why Loci exists, and why a Markdown folder or a PKM app alone doesn't cover it |
+| [Setup](https://github.com/gked/loci/blob/main/docs/setup.md) | Install from PyPI, a release wheel, or a checkout; upgrading; sync and backup |
+| [Examples](https://github.com/gked/loci/blob/main/docs/examples.md) | One prompt per scenario: saving each kind of thing, retrieving, updating, extending the ontology |
+| [Using Loci](https://github.com/gked/loci/blob/main/docs/usage.md) | How to think about it as a system, the scenarios it's built for, saving, querying, the UI, the vault layout |
+| [The ontology](https://github.com/gked/loci/blob/main/docs/ontology.md) | Types, relations, schemes, and how the registries are versioned |
+| [Development](https://github.com/gked/loci/blob/main/docs/development.md) | Repo layout, daily commands, testing, releasing |
+| [Status and roadmap](https://github.com/gked/loci/blob/main/docs/roadmap.md) | What's stable, what's partial, what's next |
+| [File saving](https://github.com/gked/loci/blob/main/docs/file-saving.md) · [Execution flows](https://github.com/gked/loci/blob/main/docs/execution-flows.md) · [Diagrams](https://github.com/gked/loci/blob/main/docs/diagrams.md) · [Testing](https://github.com/gked/loci/blob/main/docs/testing.md) | Deeper reference |
 
 Work in progress, and a personal one: the core is used every day, the edges
-are uneven. [Status](docs/roadmap.md) says which is which.
+are uneven. [Status](https://github.com/gked/loci/blob/main/docs/roadmap.md) says which is which.
 
 ---
 
 ## Licence
 
-[PolyForm Noncommercial 1.0.0](LICENSE).
+[PolyForm Noncommercial 1.0.0](https://github.com/gked/loci/blob/main/LICENSE).
 
 **Noncommercial use is free.** Personal use, research, teaching, and charities
 are all permitted purposes, including modifying and redistributing.
@@ -141,9 +140,9 @@ with it.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/gked/loci/blob/main/CONTRIBUTING.md).
 
-Pull requests are gated on a signed [Contributor Licence Agreement](CLA.md). A
+Pull requests are gated on a signed [Contributor Licence Agreement](https://github.com/gked/loci/blob/main/CLA.md). A
 bot posts the sentence to reply with; you sign once. You keep your copyright,
 and the grant is what keeps commercial licensing and a future move to AGPL or
 MIT possible.
