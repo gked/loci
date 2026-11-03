@@ -57,6 +57,16 @@ def test_readme_links_use_absolute_urls_so_they_work_on_pypi():
     assert relative == []
 
 
+def test_install_docs_name_the_package_loci_vault_and_warn_about_loci():
+    """`uv tool install loci` would install an unrelated PyPI project."""
+    for path in ("README.md", "docs/setup.md"):
+        text = (REPO_ROOT / path).read_text()
+
+        assert "uv tool install loci-vault" in text, path
+        assert "not `loci`" in text, path
+        assert "uv tool install loci\n" not in text, path
+
+
 def test_readme_images_use_absolute_urls_so_they_render_on_pypi():
     """PyPI shows the README out of context: a relative path is a broken image."""
     readme = (REPO_ROOT / "README.md").read_text()

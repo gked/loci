@@ -20,8 +20,9 @@ uv tool install loci-vault
 
 To pin a version: `uv tool install loci-vault==<version>`.
 
-The package is `loci-vault` because the bare name `loci` on PyPI belongs to an
-unrelated project. The commands and the import name are still `loci`.
+> **The PyPI package is `loci-vault`, not `loci`.** The bare name `loci` on PyPI
+> belongs to an unrelated project, so do not run `uv tool install loci` or
+> `pip install loci`. The commands and the import name are still `loci`.
 
 That puts both console scripts on your PATH — `loci-mcp` (the stdio MCP server)
 and `loci` (the HTTP API *and* the UI, from one process on
@@ -55,7 +56,7 @@ the latter only exists in a checkout, so `set_vault_root` is the wheel's way in.
 ### Upgrading
 
 ```bash
-uv tool upgrade loci-vault
+uv tool upgrade loci-vault      # the package name, not `loci`
 loci skills
 ```
 
