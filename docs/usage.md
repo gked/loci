@@ -204,8 +204,8 @@ the next server start.
 Three rules bound what a user type can be, and `define_type` refuses anything
 outside them:
 
-1. **It extends a canonical type.** `extends` must name one of the twelve
-   shipped types, never another user type, so the hierarchy stays exactly one
+1. **It extends a canonical type.** `extends` must name one of the shipped
+   types, never another user type, so the hierarchy stays exactly one
    level deep and every note is still recognisably one of the base kinds.
 2. **The name is new.** No collision with a canonical type or an existing
    user type.
@@ -333,7 +333,7 @@ The vault is **flat**: every node is a Markdown file at the vault root, named by
     .inbox-plan.yaml            ← work queue written by scan_inbox, consumed by execution
 ```
 
-`assets/` and `loci-stage/` are **siblings** of the vault, not inside it. The vault directory holds `.md` files only. See [docs/file-saving.md](file-saving.md) for the full write sequence.
+`assets/` and `loci-stage/` are **siblings** of the vault, not inside it. Loci creates them in the vault's parent folder — whatever folder that is. So choose a vault path one level inside a folder of its own (`~/loci/vault`, not `~/vault`). The vault directory holds `.md` files only. See [docs/file-saving.md](file-saving.md) for the full write sequence.
 
 ### Assets and locations
 

@@ -195,10 +195,11 @@ pulls `main` and pushes the tag — so it blocks for as long as the e2e suite
 runs. `main` is still never written to by hand: the version change lands as a
 PR like everything else. What is automated is the waiting and the merge.
 
-The wait is not a formality. `main` has no branch protection — the repo is
-private on a free plan, so GitHub will not enforce required checks — which
-means nothing server-side would refuse a merge on a red build. The wait in
-`scripts/release.py` is the only thing that does.
+The wait is not a formality. GitHub protects `main` with a ruleset: a PR is
+required, and the `Python unit tests`, `Browser e2e tests` and `cla` checks
+must pass. The wait in `scripts/release.py` is still what keeps the one-step
+release from tagging a commit whose checks then fail — it stops before the
+merge rather than leaving a red PR for the ruleset to refuse.
 
 The same release in halves, for when CI wants watching by hand or a one-step
 run died partway:
@@ -368,7 +369,7 @@ When a new registry is needed (parallel to `TypeRegistry` / `RelationRegistry`):
    `get_<name>_registry()` / `reset_<name>_registry()` singleton functions,
    mirroring the pattern in `src/loci/tools/relation_registry.py`
 3. Add the YAML to `META_FILES` in `vault_init.py` and bump `META_VERSION`
-4. Add the `read_meta` key in `api.py` and update the `server.py` docstring
+4. Add the `read_meta` key in `api.py` and update the `mcp_server.py` docstring
 5. Wire validation into `write_file.py` (block on write, warn on patch)
 6. Add a lint check in `vault_linter.py`
 7. Update any skill that should read or validate against the new registry

@@ -9,11 +9,11 @@ uneven. What that means concretely:
 |---|---|
 | Vault format, ontology, registries | Stable, in daily use |
 | MCP server and skills | Stable, in daily use |
-| Released wheel install | Stable, in daily use |
+| PyPI / released wheel install | Stable, in daily use |
 | Checkout setup (`setup.py`) | Stable |
 | Web UI | In daily use, read-only. No editing yet |
 | Test suite (unit + browser e2e) | Runs on every push and PR |
-| Packaging and releases | `make release` cuts the tag; CI builds and publishes the wheel |
+| Packaging and releases | `make release` cuts the tag; CI builds the wheel and publishes it to PyPI and a GitHub Release |
 | rclone sync | **Partial.** Manual script only, no scheduling or conflict handling, no tests |
 
 Nothing is deprecated or abandoned; the weak spots are just unfinished. Each is
@@ -49,9 +49,10 @@ also flagged where it is documented, so you don't have to remember this table.
 - [x] Web UI: React + Vite app over a FastAPI backend: vault index, type/tag filters, node reader, graph view, command palette
 - [x] Browser e2e suite: Playwright driving the real app against a real backend and vault
 - [x] CI + git hooks: `main` protected locally and on GitHub, both suites run on every push
-- [x] Release pipeline: `make release` cuts the tag, CI builds the wheel (UI inside) and publishes it to a GitHub Release
+- [x] Release pipeline: `make release` cuts the tag, CI builds the wheel (UI inside) and publishes it to PyPI (`loci-vault`) and a GitHub Release
 
 ### Next
+- [ ] Agent-neutral setup: install skills and register the MCP server for agents other than Claude (Codex and others) from `loci skills` and `setup.py`
 - [ ] Streamable HTTP transport (SSE is deprecated in the MCP spec)
 - [ ] Editing from the UI (currently read-only)
 - [ ] Real sync: scheduling, conflict handling, and tests for the rclone layer

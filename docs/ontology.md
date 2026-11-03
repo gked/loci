@@ -6,7 +6,7 @@ The user's guide to the ontology — what types, relations, and schemes are, how
 
 ## Type System
 
-Every vault node has a **type**. The right question when choosing one is not "what fields do I need?" but **"what question does this node answer?"**
+Every vault node has a **type**. There are twelve base types, plus `skill`, which extends `procedure` — thirteen in `ontology.yaml`. The right question when choosing one is not "what fields do I need?" but **"what question does this node answer?"**
 
 | Type | The question it answers |
 |---|---|
@@ -19,6 +19,7 @@ Every vault node has a **type**. The right question when choosing one is not "wh
 | `event` | What happened, and when? |
 | `entity` | Who or what is this real-world actor? |
 | `procedure` | How do I do X? |
+| `skill` | How does an agent do X? (extends `procedure`) |
 | `topic` | What organizes this domain? |
 | `asset` | What do I own? |
 | `log` | What was my experience of engaging with X? |
@@ -41,7 +42,7 @@ Types can declare **subtypes** that add fields (e.g. `asset` / `subtype: book` a
 
 ### Relations
 
-Edges are typed, directional, and drawn from a closed vocabulary of 27 relations in six groups:
+Edges are typed, directional, and drawn from a closed vocabulary of 27 relations in six groups. Most of them also have a named inverse (`basis-of`, `employs`, `mentioned-in`, …), so `relation-dictionary.yaml` holds 41 names in total:
 
 | Group | Relations |
 |---|---|
@@ -76,7 +77,7 @@ The config file tracks the `meta_version` the vault was last seeded at. On start
 
 1. Edit the relevant file in `src/loci/skills/references/`
 2. Increment `schema_version` in that file and `META_VERSION` in `vault_init.py`
-3. Add the `read_meta` key in `api.py` and update the `server.py` docstring if it's a new file
+3. Add the `read_meta` key in `api.py` and update the `mcp_server.py` docstring if it's a new file
 4. Update any skill that should read or validate against it
 
 ### Breaking changes (rename, remove, restructure)

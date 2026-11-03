@@ -8,7 +8,7 @@ becomes a vault node.
 ## Directory layout
 
 ```
-~/loci/                              ← loci_root  (_loci_root() in api.py)
+~/loci/                              ← loci_root: the parent of the vault folder (_loci_root() in api.py)
   ├── knowledge-vault/               ← vault_root  (_vault_root())
   │   └── *.md                       (markdown nodes — text & frontmatter only)
   ├── assets/                        ← binary files live here
@@ -52,7 +52,7 @@ context, or supply `content=<base64-string>` + `is_base64=True` via the MCP
 tool (the MCP layer decodes it before calling `api.py`).
 For large files (video, large PDFs) prefer the inbox workflow below.
 
-**What happens inside `save_asset` (`api.py:363-495`):**
+**What happens inside `save_asset` (`api.py`):**
 
 ```
 1. generate_uid()                          → e.g. "56bb363e"
@@ -60,10 +60,10 @@ For large files (video, large PDFs) prefer the inbox workflow below.
 3. compute paths
      asset_final  = assets/56bb363e.pdf
      asset_tmp    = assets/.pending/.56bb363e.pdf.tmp
-     vault_path   = knowledge-vault/<slug>--56bb363e.md
+     vault_path   = knowledge-vault/<slug>.md   (slug of the title; -2, -3, … if taken)
 4. write intent file                       → assets/.pending/56bb363e.json
-     (crash-recovery: if we crash here the intent file lets server.py
-      resume on next startup — server.py:64-95)
+     (crash-recovery: if we crash here, the intent file lets the MCP
+      server resume on next startup — asset_registry.recover_pending())
 5. write asset atomically
      asset_tmp.write_bytes(content)        ← stage to temp
      asset_tmp.rename(asset_final)         ← atomic rename
@@ -168,7 +168,7 @@ Supported schemes: `local`, `url`, `google-drive`, `gmail`, `nextcloud`,
 Between step 4 (intent file written) and step 8 (intent file deleted) a crash
 would leave an orphaned asset on disk with no vault node.
 
-On MCP server startup, `server.py:64-95` scans `assets/.pending/` for any
+On MCP server startup, `recover_pending()` (called from `mcp_server.py`) scans `assets/.pending/` for any
 leftover `.json` intent files and replays them — writing the missing vault
 node before accepting any tool calls.
 
@@ -176,13 +176,15 @@ node before accepting any tool calls.
 
 ## Key source locations
 
-| What | File | Lines |
-|------|------|-------|
-| `_loci_root`, `_stage_root` path helpers | `src/loci/api.py` | 49–55 |
-| `save_asset` implementation | `src/loci/api.py` | 363–495 |
-| Atomic asset write | `src/loci/api.py` | 443–444 |
-| Intent file schema | `src/loci/tools/asset_registry.py` | 35–60 |
-| Crash recovery on startup | `src/loci/mcp_server.py` | 64–95 |
-| Inbox scan | `src/loci/tools/inbox_scanner.py` | 16–169 |
-| Asset resolver dispatcher | `src/loci/tools/resolvers/dispatcher.py` | 38–49 |
-| Vault init creates `loci-stage/` | `src/loci/tools/vault_init.py` | 81–84 |
+Named by function, not line number, so the table does not go stale when the
+files change.
+
+| What | File | Function |
+|------|------|----------|
+| Path helpers | `src/loci/api.py` | `_vault_root()`, `_loci_root()`, `_stage_root()` |
+| Asset save, including the atomic write | `src/loci/api.py` | `save_asset()` |
+| Intent file schema | `src/loci/tools/asset_registry.py` | `write_intent()` |
+| Crash recovery | `src/loci/tools/asset_registry.py` | `recover_pending()` (called by `mcp_server.py` at startup) |
+| Inbox scan | `src/loci/tools/inbox_scanner.py` | `scan_stage()` |
+| Asset resolver dispatcher | `src/loci/tools/resolvers/dispatcher.py` | `dispatch_resolve()` |
+| Creates `assets/` and `loci-stage/` | `src/loci/tools/vault_init.py` | `create_vault_structure()` |

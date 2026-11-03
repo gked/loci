@@ -1,33 +1,48 @@
 # Loci Execution Flows
 
+What each install and upgrade path does, step by step. For the instructions
+themselves, see [setup.md](setup.md).
+
 ---
 
 ## 1. Brand New Installation
 
-### 1.1 Released wheel (the path for using Loci)
+### 1.1 From PyPI (the path for using Loci)
 
 ```
-gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
-uv tool install /tmp/loci-wheel/loci_vault-*.whl
+uv tool install loci-vault
   │
-  └─ puts `loci-mcp` and `loci` on PATH; the UI bundle is inside the wheel
+  └─ puts `loci-mcp` and `loci` on PATH; the UI bundle is inside the package
 
 loci skills                            # skills_install: stub per skill → ~/.claude/skills/
+                                       #   (--dir <folder> for another agent's skills folder)
 claude mcp add --scope user loci loci-mcp
   │
   └─ writes entry to ~/.claude.json
 
-User restarts Claude Code and says "point Loci at ~/vault"
+User restarts Claude Code and says "point Loci at ~/loci/vault"
   │
   └─ set_vault_root(path, create)      # records the path in ~/.config/loci/config.yml,
-                                       #   creates + seeds the vault, in one call
+                                       #   creates + seeds the vault, and creates
+                                       #   assets/ and loci-stage/ in the vault's
+                                       #   parent folder, in one call
 Claude Code spawns:  loci-mcp  (stdio transport)
 ```
 
 No default vault path exists: until `set_vault_root` runs, every vault-touching
 tool raises `LOCI_NOT_CONFIGURED` and the model asks for one.
 
-### 1.2 From a checkout (`setup.py`)
+### 1.2 From a release wheel
+
+The same as 1.1. Only the first step is different:
+
+```
+rm -rf /tmp/loci-wheel
+gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
+uv tool install /tmp/loci-wheel/loci_vault-*.whl
+```
+
+### 1.3 From a checkout (`setup.py`)
 
 ```
 git clone <repo>
@@ -35,13 +50,13 @@ uv run setup.py
   │
   ├─ uv sync                          # install deps into .venv
   │
-  ├─ vault_init()                     # create vault/ skeleton if absent
+  ├─ vault_init()                     # asks for the vault path; creates vault/ skeleton if absent
   │
   ├─ register_mcp_claude_code()
   │    └─ claude mcp add --scope user loci uv -- run --directory <project> loci-mcp
   │         → writes entry to ~/.claude.json
   │
-  ├─ register_mcp_claude_desktop()
+  ├─ register_mcp_claude_desktop()    # macOS path only
   │    └─ writes mcpServers.loci entry into
   │         ~/Library/Application Support/Claude/claude_desktop_config.json
   │
@@ -59,19 +74,26 @@ Claude Code spawns:  uv run loci-mcp  (stdio transport)
 
 ## 2. Update to Existing MCP
 
-### 2.1 Released wheel
+### 2.1 From PyPI
 
 ```
-rm -rf /tmp/loci-wheel
-gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
-uv tool install --force /tmp/loci-wheel/loci_vault-*.whl
+uv tool upgrade loci-vault
 loci skills                            # rewrites any stub whose frontmatter changed
 
 User restarts Claude Code / Claude Desktop
   └─ first tool call reseeds vault/meta/ if META_VERSION moved
 ```
 
-### 2.2 From a checkout
+### 2.2 From a release wheel
+
+```
+rm -rf /tmp/loci-wheel
+gh release download --repo gked/loci --pattern '*.whl' --dir /tmp/loci-wheel
+uv tool install --force /tmp/loci-wheel/loci_vault-*.whl
+loci skills
+```
+
+### 2.3 From a checkout
 
 ```
 git pull                               # fetch new code
@@ -99,9 +121,9 @@ User restarts Claude Code / Claude Desktop
 
 ## Summary
 
-| | Wheel | Checkout |
+| | PyPI / wheel | Checkout |
 |---|---|---|
-| Transport | stdio (Claude spawns process) | stdio (Claude spawns process) |
+| Transport | stdio (the agent spawns the process) | stdio (the agent spawns the process) |
 | Vault location | chosen in chat via `set_vault_root`; no default | asked by `setup.py`; no default |
-| Client registration | `claude mcp add --scope user loci loci-mcp` | `setup.py` handles it |
-| Updates | re-download + `uv tool install --force` + `loci skills` | `git pull` + `uv run setup.py` |
+| Client registration | `claude mcp add --scope user loci loci-mcp` (other agents: their own MCP command) | `setup.py` registers Claude Code and Claude Desktop |
+| Updates | `uv tool upgrade loci-vault` + `loci skills` | `git pull` + `uv run setup.py` |
