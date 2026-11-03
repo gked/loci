@@ -15,7 +15,8 @@ uv tool install loci-vault
   └─ puts `loci-mcp` and `loci` on PATH; the UI bundle is inside the package
 
 loci skills                            # skills_install: stub per skill → ~/.claude/skills/
-                                       #   (--dir <folder> for another agent's skills folder)
+                                       #   (--agent codex → $CODEX_HOME/skills;
+                                       #    --dir <folder> for any other agent)
 claude mcp add --scope user loci loci-mcp
   │
   └─ writes entry to ~/.claude.json
@@ -60,14 +61,18 @@ uv run setup.py
   │    └─ writes mcpServers.loci entry into
   │         ~/Library/Application Support/Claude/claude_desktop_config.json
   │
-  └─ install_skill_stubs()            # loci.skills_install
-       └─ ~/.claude/skills/loci-save/SKILL.md   # stub: packaged frontmatter over
-       └─ ~/.claude/skills/loci-query/SKILL.md  #   "call loci__read_skill and follow it"
-       └─ ... one per src/loci/skills/<name>/   # read_skill serves the procedure
-                                                #   + vault/skills/<name>.md
+  ├─ install_skill_stubs()            # loci.skills_install
+  │    └─ ~/.claude/skills/loci-save/SKILL.md   # stub: packaged frontmatter over
+  │    └─ ~/.claude/skills/loci-query/SKILL.md  #   "call loci__read_skill and follow it"
+  │    └─ ... one per src/loci/skills/<name>/   # read_skill serves the procedure
+  │                                             #   + vault/skills/<name>.md
+  │
+  └─ register_mcp_codex()             # only if the `codex` CLI is on PATH
+       └─ codex mcp add loci -- uv run --directory <project> loci-mcp
+       └─ install_skill_stubs($CODEX_HOME/skills)
 
-User restarts Claude Code / Claude Desktop
-Claude Code spawns:  uv run loci-mcp  (stdio transport)
+User restarts Claude Code / Claude Desktop (/ Codex)
+The agent spawns:  uv run loci-mcp  (stdio transport)
 ```
 
 ---

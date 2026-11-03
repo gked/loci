@@ -351,7 +351,8 @@ def test_run_installs_with_yes(skills_root, fake_package, monkeypatch):
 
     assert code == 0
     assert (skills_root / "loci-save" / "SKILL.md").is_file()
-    assert "Restart Claude Code" in out.getvalue()
+    # --dir can be any agent's folder, so the message cannot name one.
+    assert "Restart your agent" in out.getvalue()
 
 
 def test_run_refuses_to_write_without_a_terminal(skills_root, fake_package, monkeypatch):
@@ -429,6 +430,111 @@ def test_run_defaults_to_the_packaged_skills(skills_root, monkeypatch):
     assert code == 0
     assert (skills_root / "loci-save" / "SKILL.md").is_file()
     assert (skills_root / "loci-inbox" / "SKILL.md").is_file()
+
+
+# ---------------------------------------------------------------------------
+# Agents other than Claude Code
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def fake_home(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    # Bound at import time from the real home; point it at the fake one.
+    monkeypatch.setattr(skills_install, "DEFAULT_SKILLS_ROOT", home / ".claude" / "skills")
+    return home
+
+
+def test_codex_reads_skills_from_its_home(fake_home):
+    assert skills_install.agent_skills_root("codex") == fake_home / ".codex" / "skills"
+
+
+def test_codex_home_moves_the_codex_skills_dir(fake_home, tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "elsewhere"))
+    assert skills_install.agent_skills_root("codex") == tmp_path / "elsewhere" / "skills"
+
+
+def test_claude_is_the_default_agent(fake_home):
+    assert skills_install.agent_skills_root("claude") == fake_home / ".claude" / "skills"
+
+
+def test_an_unknown_agent_is_refused():
+    with pytest.raises(ValueError):
+        skills_install.agent_skills_root("notepad")
+
+
+def test_run_without_a_target_still_installs_for_claude_code(fake_home, fake_package, monkeypatch):
+    """No flag keeps the old behaviour: the git hooks and every doc rely on it."""
+    monkeypatch.setattr(skills_install, "SKILLS_SOURCE", fake_package)
+    out = io.StringIO()
+
+    code = skills_install.run(["--yes"], stdout=out)
+
+    assert code == 0
+    assert (fake_home / ".claude" / "skills" / "loci-save" / "SKILL.md").is_file()
+    assert not (fake_home / ".codex").exists()
+    assert "Restart Claude Code" in out.getvalue()
+
+
+def test_run_installs_for_codex(fake_home, fake_package, monkeypatch):
+    monkeypatch.setattr(skills_install, "SKILLS_SOURCE", fake_package)
+    out = io.StringIO()
+
+    code = skills_install.run(["--agent", "codex", "--yes"], stdout=out)
+
+    assert code == 0
+    assert (fake_home / ".codex" / "skills" / "loci-save" / "SKILL.md").is_file()
+    assert not (fake_home / ".claude").exists()
+    assert "Restart Codex" in out.getvalue()
+
+
+def test_run_installs_for_several_agents_in_one_go(fake_home, fake_package, monkeypatch):
+    monkeypatch.setattr(skills_install, "SKILLS_SOURCE", fake_package)
+    out = io.StringIO()
+
+    code = skills_install.run(
+        ["--agent", "claude", "--agent", "codex", "--agent", "codex", "--yes"], stdout=out
+    )
+
+    assert code == 0
+    for agent_dir in (".claude", ".codex"):
+        assert (fake_home / agent_dir / "skills" / "loci-query" / "SKILL.md").is_file()
+    # A repeated --agent is one target, not two passes over the same folder.
+    assert out.getvalue().count("Restart Codex") == 1
+
+
+def test_run_only_restarts_the_agents_it_changed(fake_home, fake_package, monkeypatch):
+    monkeypatch.setattr(skills_install, "SKILLS_SOURCE", fake_package)
+    skills_install.install_all(fake_home / ".claude" / "skills", fake_package)
+    out = io.StringIO()
+
+    code = skills_install.run(["--agent", "claude", "--agent", "codex", "--yes"], stdout=out)
+
+    assert code == 0
+    assert "Restart Codex" in out.getvalue()
+    assert "Restart Claude Code" not in out.getvalue()
+
+
+def test_agent_and_dir_cannot_be_combined(skills_root, fake_package, monkeypatch):
+    monkeypatch.setattr(skills_install, "SKILLS_SOURCE", fake_package)
+    with pytest.raises(SystemExit):
+        skills_install.run(["--agent", "codex", "--dir", str(skills_root), "--yes"])
+
+
+def test_an_unknown_agent_name_is_a_usage_error(fake_package, monkeypatch):
+    monkeypatch.setattr(skills_install, "SKILLS_SOURCE", fake_package)
+    with pytest.raises(SystemExit):
+        skills_install.run(["--agent", "notepad", "--yes"])
+
+
+def test_stub_explains_the_tool_name_differs_between_agents():
+    """Claude Code lists the tool as mcp__loci__read_skill, other agents differently;
+    the stub must not read as if only one client exists."""
+    stub = skills_install.stub("loci-save", _skill_md("loci-save"))
+    assert "`read_skill` tool of the `loci` MCP server" in stub
+    assert "Claude Code / Claude Desktop" not in stub
 
 
 # ---------------------------------------------------------------------------

@@ -59,11 +59,25 @@ Do this before running `loci`: with no vault configured the server refuses to
 start. The error it prints names `set_vault_root` first and `setup.py` second —
 the latter only exists in a checkout, so `set_vault_root` is the wheel's way in.
 
+### Other agents
+
+Loci is a standard MCP server, so any MCP client can use it. For Codex:
+
+```bash
+codex mcp add loci -- loci-mcp
+loci skills --agent codex          # $CODEX_HOME/skills, default ~/.codex/skills
+```
+
+For any other agent, register `loci-mcp` with its MCP command and, if it reads
+`SKILL.md` folders, run `loci skills --dir <its skills folder>`. An agent with
+no skills feature still gets the routing: the server sends instructions at
+connection telling it to call `read_skill` before it touches the vault.
+
 ### Upgrading
 
 ```bash
 uv tool upgrade loci-vault      # the package name, not `loci`
-loci skills
+loci skills                        # add --agent codex (etc.) for each agent you use
 ```
 
 Every release's notes open with whatever the upgrade asks of you, because
@@ -138,7 +152,8 @@ This will:
   (keep it outside the checkout; `~` is expanded for you)
 - Ask which rclone remote to use, if you want one
 - Create the vault folder structure and seed meta dictionaries
-- Register the MCP server with Claude Code and Claude Desktop
+- Register the MCP server with Claude Code and Claude Desktop, and with Codex
+  when the `codex` CLI is installed
 
 Answers are written to `~/.config/loci/config.yml` (or
 `$XDG_CONFIG_HOME/loci/config.yml`), outside the checkout so that an install

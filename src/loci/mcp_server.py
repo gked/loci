@@ -196,7 +196,27 @@ def requires_vault(fn: Callable) -> Callable:
     return wrapper
 
 
-mcp = FastMCP("loci")
+# Sent to every MCP client at initialize. Agents with a skills feature find the
+# loci-* skills through their installed stubs; this is the same pointer for
+# agents without one (and a reminder for those with it), so any MCP client
+# reaches the procedure — and the user's overlay — before it touches the vault.
+SERVER_INSTRUCTIONS = """\
+Loci is the user's personal knowledge vault: plain Markdown files with a
+declared ontology (types, fields, relations) that every write is validated
+against.
+
+Before you save to, read from, or change the vault, call `read_skill` with the
+matching skill and follow what it returns for the whole interaction:
+- loci-save: save or update anything (a note, article, task, book, person, …)
+- loci-query: answer what the vault knows, what is connected, what is recent
+- loci-inbox: process files the user dropped in loci-stage/
+- loci-ingest-directory: catalogue a folder in place, without copying it
+
+If a tool fails with LOCI_NOT_CONFIGURED, ask the user where the vault should
+live and call `set_vault_root`. Never guess a path.
+"""
+
+mcp = FastMCP("loci", instructions=SERVER_INSTRUCTIONS)
 
 
 @mcp.tool()

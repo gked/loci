@@ -8,6 +8,9 @@ What this does:
   3. Registers the Loci MCP server in Claude Code  (~/.claude.json, user scope via `claude mcp add`)
   4. Registers the Loci MCP server in Claude Desktop (~/Library/Application Support/Claude/claude_desktop_config.json)
   5. Installs the skill stubs into ~/.claude/skills/<skill>/
+  6. If the `codex` CLI is installed: registers the MCP server with Codex
+     (`codex mcp add`) and installs the stubs into $CODEX_HOME/skills/
+     (default ~/.codex/skills/). Skipped, with the manual command, otherwise.
 
 Usage (from the loci checkout):
   uv run setup.py
@@ -88,8 +91,38 @@ def register_mcp_claude_desktop(config_path: Path) -> None:
     print(f"  Registered: {config_path}")
 
 
-def install_skill_stubs() -> None:
-    """Install a stub for each packaged skill into ~/.claude/skills/.
+def register_mcp_codex() -> bool:
+    """Register loci MCP server with Codex using `codex mcp add`.
+
+    Returns True when Codex is installed and the registration succeeded, so the
+    caller installs Codex's skill stubs only for an agent that is really there.
+    """
+    uv = shutil.which("uv") or str(Path.home() / ".local" / "bin" / "uv")
+    codex = shutil.which("codex")
+    if not codex:
+        print("  Skipped: `codex` CLI not found.")
+        print("  To add Codex later: codex mcp add loci -- <uv-path> run --directory <project> loci-mcp")
+        print("                      uv run loci skills --agent codex")
+        return False
+
+    result = subprocess.run(
+        [
+            codex, "mcp", "add", "loci",
+            "--", uv, "run", "--directory", str(PROJECT_ROOT), "loci-mcp",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        print("  Registered via `codex mcp add`")
+        return True
+    print(f"  Warning: registration failed — {result.stderr.strip()}")
+    return False
+
+
+def install_skill_stubs(skills_root: Path | None = None) -> None:
+    """Install a stub for each packaged skill into ~/.claude/skills/, or into
+    `skills_root` for another agent.
 
     Delegates to loci.skills_install so the checkout path and the installed
     path share one implementation and cannot drift. Stubs, not symlinks, from
@@ -103,8 +136,10 @@ def install_skill_stubs() -> None:
     """
     from loci import skills_install
 
+    if skills_root is None:
+        skills_root = Path.home() / ".claude" / "skills"
     statuses = skills_install.plan(
-        skills_root=Path.home() / ".claude" / "skills",
+        skills_root=skills_root,
         source=SKILLS_DIR,
     )
     if not statuses:
@@ -181,11 +216,20 @@ def main() -> None:
     install_skill_stubs()
     print()
 
+    print("Step 5 — Codex (optional)")
+    codex_ready = register_mcp_codex()
+    if codex_ready:
+        from loci import skills_install
+        install_skill_stubs(skills_install.agent_skills_root("codex"))
+    print()
+
     print("Done.")
     print()
     print("Next steps:")
     print("  1. Restart Claude Code")
     print("  2. Restart Claude Desktop")
+    if codex_ready:
+        print("  3. Restart Codex")
 
     print_desktop_fallback()
 

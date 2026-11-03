@@ -10,7 +10,7 @@ src/loci/                   The installed package — imports are `loci.*`
   mcp_server.py             MCP tool definitions and docstrings; `loci-mcp` entry point
   http_server.py            FastAPI backend for the UI; `loci` entry point
   skill_assembly.py         read_skill/write_skill: procedure + user overlay
-  skills_install.py         `loci skills`: writes the stubs into ~/.claude/skills/
+  skills_install.py         `loci skills`: writes the stubs into ~/.claude/skills/ (--agent codex, --dir)
   tools/                    Core business logic (registries, linting, writing)
   skills/
     references/             Canonical meta files seeded to vault/meta/ on init

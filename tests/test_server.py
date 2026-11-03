@@ -460,3 +460,24 @@ def test_find_unregistered_assets_returns_list(tmp_vault):
     with patch("loci.mcp_server.vault.find_unregistered_assets", return_value=["assets/orphan.pdf"]):
         result = find_unregistered_assets()
     assert "assets/orphan.pdf" in result
+
+
+# ---------------------------------------------------------------------------
+# Server instructions — the route to the skills for agents without stubs
+# ---------------------------------------------------------------------------
+
+def test_the_server_sends_instructions_to_every_client():
+    """An MCP client with no skills feature never sees the stubs; the
+    initialize instructions are the one thing every client receives."""
+    assert server.mcp.instructions == server.SERVER_INSTRUCTIONS
+    assert "read_skill" in server.SERVER_INSTRUCTIONS
+    assert "set_vault_root" in server.SERVER_INSTRUCTIONS
+
+
+def test_the_instructions_name_every_packaged_skill():
+    """A skill added without a line here would be unreachable from an agent
+    that relies on the instructions alone."""
+    from loci import skills_install
+
+    for skill_dir in skills_install.packaged_skills():
+        assert skill_dir.name in server.SERVER_INSTRUCTIONS, skill_dir.name

@@ -49,10 +49,11 @@ also flagged where it is documented, so you don't have to remember this table.
 - [x] Web UI: React + Vite app over a FastAPI backend: vault index, type/tag filters, node reader, graph view, command palette
 - [x] Browser e2e suite: Playwright driving the real app against a real backend and vault
 - [x] CI + git hooks: `main` protected locally and on GitHub, both suites run on every push
+- [x] Agent-neutral install: `loci skills --agent claude|codex`, neutral stub text, MCP server instructions for clients without skills, Codex in `setup.py`
 - [x] Release pipeline: `make release` cuts the tag, CI builds the wheel (UI inside) and publishes it to PyPI (`loci-vault`) and a GitHub Release
 
 ### Next
-- [ ] Agent-neutral setup: install skills and register the MCP server for agents other than Claude (Codex and others) from `loci skills` and `setup.py`
+- [ ] Agent support: test Codex end to end; record the chosen agents in config so `loci skills` and the git hooks update every one of them
 - [ ] Streamable HTTP transport (SSE is deprecated in the MCP spec)
 - [ ] Editing from the UI (currently read-only)
 - [ ] Real sync: scheduling, conflict handling, and tests for the rclone layer

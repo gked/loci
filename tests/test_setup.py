@@ -92,3 +92,55 @@ def test_desktop_fallback_prints_the_stubs_not_the_procedures(capsys):
     for skill_name in setup.SKILLS:
         assert f'loci__read_skill(skill="{skill_name}")' in out
     assert "Ground rule" not in out
+
+
+# ---------------------------------------------------------------------------
+# Codex
+# ---------------------------------------------------------------------------
+
+def test_install_skill_stubs_can_target_another_agent(fake_home):
+    codex_skills = fake_home / ".codex" / "skills"
+
+    setup.install_skill_stubs(codex_skills)
+
+    for skill_name in setup.SKILLS:
+        assert (codex_skills / skill_name / "SKILL.md").is_file()
+    assert not (fake_home / ".claude").exists()
+
+
+def test_codex_is_skipped_with_the_manual_command_when_absent(monkeypatch, capsys):
+    monkeypatch.setattr(setup.shutil, "which", lambda name: None)
+
+    assert setup.register_mcp_codex() is False
+    out = capsys.readouterr().out
+    assert "codex mcp add loci" in out
+    assert "loci skills --agent codex" in out
+
+
+def test_codex_registration_runs_the_server_from_the_checkout(monkeypatch):
+    calls = []
+
+    class Done:
+        returncode = 0
+        stderr = ""
+
+    monkeypatch.setattr(setup.shutil, "which", lambda name: f"/bin/{name}")
+    monkeypatch.setattr(setup.subprocess, "run", lambda cmd, **kw: calls.append(cmd) or Done())
+
+    assert setup.register_mcp_codex() is True
+    (cmd,) = calls
+    assert cmd[:4] == ["/bin/codex", "mcp", "add", "loci"]
+    after = cmd[cmd.index("--") + 1:]
+    assert after == ["/bin/uv", "run", "--directory", str(setup.PROJECT_ROOT), "loci-mcp"]
+
+
+def test_a_failed_codex_registration_reports_and_installs_nothing(monkeypatch, capsys):
+    class Failed:
+        returncode = 1
+        stderr = "boom"
+
+    monkeypatch.setattr(setup.shutil, "which", lambda name: f"/bin/{name}")
+    monkeypatch.setattr(setup.subprocess, "run", lambda cmd, **kw: Failed())
+
+    assert setup.register_mcp_codex() is False
+    assert "boom" in capsys.readouterr().out

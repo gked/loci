@@ -1,5 +1,11 @@
 """
-Install the Loci skill stubs into a Claude Code skills directory.
+Install the Loci skill stubs into an agent's skills directory.
+
+Claude Code is the default target (`~/.claude/skills/`). `--agent codex`
+targets Codex (`$CODEX_HOME/skills`, default `~/.codex/skills`), and `--dir`
+any other agent that reads `SKILL.md` folders. The stub is the same for all of
+them: frontmatter with `name` and `description` — the open skill format — over
+an instruction to call the server's `read_skill` tool.
 
 This is how Claude Code learns the skills exist. Each packaged skill
 (`loci/skills/<name>/SKILL.md`) is the procedure the MCP server serves through
@@ -33,6 +39,7 @@ this installer could have created are ever removed; see _orphans().
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 from dataclasses import dataclass
@@ -50,6 +57,22 @@ SKILLS_SOURCE = Path(__file__).parent / "skills"
 NOT_SKILLS = frozenset({"references"})
 
 DEFAULT_SKILLS_ROOT = Path.home() / ".claude" / "skills"
+
+# The agents `--agent` knows by name. Each maps to its skills directory and the
+# name to print in "Restart … to pick up the change". Resolved at call time,
+# not import time, so HOME / CODEX_HOME set by a test or a shell are honoured.
+AGENT_LABELS = {"claude": "Claude Code", "codex": "Codex"}
+
+
+def agent_skills_root(agent: str) -> Path:
+    """The skills directory a named agent reads."""
+    if agent == "claude":
+        return DEFAULT_SKILLS_ROOT
+    if agent == "codex":
+        codex_home = os.environ.get("CODEX_HOME")
+        base = Path(codex_home).expanduser() if codex_home else Path.home() / ".codex"
+        return base / "skills"
+    raise ValueError(f"unknown agent {agent!r}; known: {', '.join(AGENT_LABELS)}")
 
 # Every skill Loci ships is named this way, and it is the only marker a stub
 # directory carries once it is out of the package. See _orphans().
@@ -69,13 +92,14 @@ the packaged procedure and your own additions kept in the vault, so the copy
 here never goes stale and never needs reinstalling.
 
 Call `loci__read_skill(skill="{name}")` and follow what it returns for the whole
-interaction.
+interaction. That is the `read_skill` tool of the `loci` MCP server; your agent
+may list it under a longer name, such as `mcp__loci__read_skill`.
 
 If the call is unavailable or errors, tell the user the Loci vault is not
 reachable, relay the tool's error text verbatim (it names the cause and the fix
 for this install), and stop. If there is no error text, the MCP server itself is
 not connected — the user needs to check their MCP client config and restart
-Claude Code / Claude Desktop.
+their agent.
 """
 
 
@@ -282,6 +306,18 @@ def _summary(statuses: list[SkillStatus]) -> str:
     return ", ".join(parts) if parts else "Everything is up to date."
 
 
+def _targets(args) -> list[tuple[Path, str]]:
+    """(skills directory, agent label) for each place this run installs into."""
+    if args.dir:
+        return [(Path(args.dir).expanduser(), "your agent")]
+    agents = args.agent or ["claude"]
+    seen = []
+    for agent in agents:
+        if agent not in seen:
+            seen.append(agent)
+    return [(agent_skills_root(a), AGENT_LABELS[a]) for a in seen]
+
+
 def run(argv: list[str] | None = None, stdin=None, stdout=None) -> int:
     """`loci skills`. Returns the process exit code."""
     out = stdout if stdout is not None else sys.stdout
@@ -289,21 +325,23 @@ def run(argv: list[str] | None = None, stdin=None, stdout=None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(argv)
-    skills_root = Path(args.dir).expanduser() if args.dir else DEFAULT_SKILLS_ROOT
+    targets = _targets(args)
 
-    statuses = plan(skills_root)
-    print(_render(statuses, skills_root), file=out)
-    print("", file=out)
-
-    pending = [s for s in statuses if s.writes]
-    if not pending:
+    plans = []
+    for skills_root, label in targets:
+        statuses = plan(skills_root)
+        plans.append((skills_root, label, statuses))
+        print(_render(statuses, skills_root), file=out)
+        print("", file=out)
         print(_summary(statuses), file=out)
+        print("", file=out)
+
+    if not any(s.writes for _, _, statuses in plans for s in statuses):
         return 0
 
-    print(_summary(statuses), file=out)
     if not args.yes:
         # A non-interactive run that would write is refused rather than assumed:
-        # this replaces files in the user's Claude Code config.
+        # this replaces files in the user's agent config.
         if not hasattr(stream, "isatty") or not stream.isatty():
             print("Not a terminal — re-run with --yes to install without asking.", file=out)
             return 1
@@ -312,23 +350,39 @@ def run(argv: list[str] | None = None, stdin=None, stdout=None) -> int:
             print("Nothing written.", file=out)
             return 1
 
-    written = apply(statuses)
-    print("", file=out)
-    for status in written:
-        print(f"  {status.action}: {status.dest}", file=out)
-    print("\nRestart Claude Code to pick up the change.", file=out)
+    for _, label, statuses in plans:
+        written = apply(statuses)
+        if not written:
+            continue
+        for status in written:
+            print(f"  {status.action}: {status.dest}", file=out)
+        print(f"\nRestart {label} to pick up the change.", file=out)
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="loci skills",
-        description="Install or update the Loci skill stubs in Claude Code.",
+        description=(
+            "Install or update the Loci skill stubs for your agent "
+            "(Claude Code by default)."
+        ),
     )
-    parser.add_argument(
+    target = parser.add_mutually_exclusive_group()
+    target.add_argument(
+        "--agent",
+        action="append",
+        choices=sorted(AGENT_LABELS),
+        default=None,
+        help=(
+            "Agent to install for. Repeat for more than one "
+            "(--agent claude --agent codex). Default: claude."
+        ),
+    )
+    target.add_argument(
         "--dir",
         default=None,
-        help=f"Skills directory to install into (default: {DEFAULT_SKILLS_ROOT}).",
+        help="Any other skills directory to install into, for an agent --agent does not name.",
     )
     parser.add_argument(
         "-y", "--yes", action="store_true",

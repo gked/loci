@@ -137,19 +137,28 @@ Loci is a standard MCP server. Any agent that supports MCP can use it.
 |---|---|
 | Claude Code | Fully supported and tested. The steps above install everything. |
 | Claude Desktop (macOS) | Supported. The checkout setup (`uv run setup.py`) registers it. |
-| Codex and other MCP clients | Expected to work. Not tested. Do the steps below. |
+| Codex | Supported by the installer. Not yet tested end to end. The checkout setup registers it when the `codex` CLI is installed. |
+| Other MCP clients | Expected to work. Not tested. Do the steps below. |
 
-For an agent other than Claude Code:
+For Codex:
 
-1. Register the MCP server with your agent. For Codex:
-   `codex mcp add loci -- loci-mcp`. For other agents, see their MCP
-   documentation. The command to start is `loci-mcp`.
+```bash
+codex mcp add loci -- loci-mcp
+loci skills --agent codex          # stubs into $CODEX_HOME/skills (default ~/.codex/skills)
+```
+
+For another agent:
+
+1. Register the MCP server with your agent. The command to start is
+   `loci-mcp`. See your agent's MCP documentation.
 2. If your agent supports skills (`SKILL.md` folders), install the skills into
-   its skills folder: `loci skills --dir <folder>`. For Codex, the folder is
-   usually `~/.codex/skills`.
-3. If your agent does not support skills, add this line to its instructions:
-   "Before you save to or read from Loci, call the `read_skill` tool of the
-   `loci` MCP server and follow the result."
+   its skills folder: `loci skills --dir <folder>`.
+3. If your agent does not support skills, you need not do more. The server
+   sends instructions to every MCP client at connection: before the agent
+   saves to or reads from the vault, it calls the `read_skill` tool and follows
+   the result.
+
+To install for more than one agent at a time: `loci skills --agent claude --agent codex`.
 
 **Your data and the model.** The vault stays on your machine. When your agent
 reads a note to answer you, the agent sends that note to its model provider,
