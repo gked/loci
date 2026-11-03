@@ -6,11 +6,11 @@
 
 ## Sources
 
-This system was synthesized from the Loci codebase. There is no pre-existing UI, brand, or visual identity — Loci today is a CLI / MCP server. The visual language here is invented from first principles, grounded in the project's etymology and one canonical artifact in the code:
+This system was synthesized from the Loci codebase at a time when Loci had no UI, brand, or visual identity — only a CLI / MCP server. The web app in `app/` is now built on it. The visual language here is invented from first principles, grounded in the project's etymology and one canonical artifact in the code:
 
-- **Codebase**: `gked/loci` (private GitHub repo)
+- **Codebase**: [`gked/loci`](https://github.com/gked/loci) (public, source-available)
 - **Type colors** defined in `colors_and_type.css`. These are the canonical swatches that color nodes by type in the topology graph.
-- **Vocabulary** from `src/loci/skills/references/ontology.yaml`, `type-dictionary.md`, and `relation-dictionary.md` — the type system (document, article, bookmark, conversation, project, task, event, entity, procedure, topic, asset) and relation types (depends-on, belongs-to, about, mentions, influences, supports, contradicts, …) drive the components.
+- **Vocabulary** from `src/loci/skills/references/ontology.yaml`, `type-dictionary.md`, and `relation-dictionary.md` — the type system (document, article, bookmark, conversation, project, task, event, entity, procedure, skill, topic, asset, log) and relation types (depends-on, belongs-to, about, mentions, influences, supports, contradicts, …) drive the components.
 - **README of gked/loci** (etymology, vault topology, capture flow) — anchors the classical/spatial metaphor.
 
 If you have access to the repo, read those files. If not: the relevant excerpts are inlined below where needed.

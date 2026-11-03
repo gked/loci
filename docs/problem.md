@@ -48,7 +48,7 @@ Loci sits in the middle on purpose: enough structure for an LLM to reason over t
 |---|---|
 | Scattered across silos | One vault. Notes, articles, tasks, books, people, and conversations are all nodes in the same graph. |
 | Renaming breaks references | Every node has a stable 8-character UID. Links point at UIDs, never filenames. |
-| "Related to" means nothing | A registry of 27 typed relations (`depends-on`, `contradicts`, `supersedes`, …). Unknown relations are rejected on write. |
+| "Related to" means nothing | A registry of 27 typed relations, plus their named inverses (`depends-on`, `contradicts`, `supersedes`, …). Unknown relations are rejected on write. |
 | Vocabulary drift | Types, fields, relations, and location schemes live in versioned registries. `lint_vault` catches whatever slips through. |
 | Files scattered across drives | A node records *where* a file is (`local`, `google-drive`, `nextcloud`, `url`, `gmail`, `s3`, …) instead of forcing you to copy everything into one place. |
 | Agents that guess | Loci ships as an MCP server with skills. Claude reads the ontology before writing, so it uses your vocabulary rather than inventing one. |

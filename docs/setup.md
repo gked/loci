@@ -46,8 +46,14 @@ the installed copy never goes stale.
 ### 3. Point it at a vault
 
 Restart Claude Code, then tell it where the vault should live — "point Loci at
-~/vault" — which is what the `set_vault_root` tool is for. The vault is seeded
-on first use; nothing is written until you name a path.
+~/loci/vault" — which is what the `set_vault_root` tool is for. The vault is
+seeded on first use; nothing is written until you name a path.
+
+Choose a vault folder that sits inside a folder of its own. Loci creates
+`assets/` and `loci-stage/` as **siblings** of the vault, in its parent folder
+(see [vault structure](usage.md#vault-structure)). With `~/loci/vault` the three
+sit together in `~/loci/`; with `~/vault` they land directly in your home
+folder.
 
 Do this before running `loci`: with no vault configured the server refuses to
 start. The error it prints names `set_vault_root` first and `setup.py` second —

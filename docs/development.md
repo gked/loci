@@ -88,7 +88,7 @@ loci/
 
   docs/
     problem.md                      ← why Loci exists
-    setup.md                        ← wheel and checkout; sync
+    setup.md                        ← PyPI, wheel and checkout; sync
     usage.md                        ← mental model, scenarios, saving, querying, the UI
     examples.md                     ← one prompt per scenario
     ontology.md                     ← registries and schema versioning (repo side)
@@ -141,8 +141,8 @@ make dev-ui         # Vite only:     cd app && npm run dev
 
 ### The two console scripts
 
-Loci installs as a package named `loci` and ships two commands. They are
-deliberately separate processes:
+Loci installs as the distribution `loci-vault` (import package `loci`) and
+ships two commands. They are deliberately separate processes:
 
 ```bash
 loci-mcp            # stdio MCP server — the MCP client spawns and kills this
@@ -218,10 +218,10 @@ It starts from a clean, up-to-date `main` and refuses otherwise, and it needs
 `gh` installed and authenticated. `BUMP` has no default, because whether a
 release is a patch or a minor is the one judgement the script leaves to you.
 
-**The wait is not a formality.** `main` has no branch protection — the repo is
-private on a free plan, so GitHub will not enforce required checks — which
-means nothing server-side would refuse a merge on a red build.
-`wait_for_checks()` in `scripts/release.py` is the only thing that does. If the
+**The wait is not a formality.** GitHub protects `main` with a ruleset: a PR
+is required, and the `Python unit tests`, `Browser e2e tests` and `cla` checks
+must pass before a merge. `wait_for_checks()` in `scripts/release.py` waits for
+the same checks, so the one-step release stops cleanly on a red build. If the
 checks fail, nothing is tagged and the PR is left open.
 
 The same release in halves, for when CI wants watching by hand or a one-step
@@ -311,4 +311,4 @@ report what the diff contains.
 
 ## Design Decisions
 
-Key decisions are documented in the Loci vault itself, in the requirements note for the project (`search_vault("locus requirements")`). If you are contributing or extending Loci, read that and [CLAUDE.md](../CLAUDE.md) first.
+The reasons behind the design are in [problem.md](problem.md) (why the vault is plain Markdown with a declared ontology), [ontology.md](ontology.md) (how the registries are versioned), and [CLAUDE.md](../CLAUDE.md) (packaging, the skill ↔ tool sync rule, and the stub-and-overlay skill design). Read those before you extend Loci.
