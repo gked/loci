@@ -60,7 +60,10 @@ Requires Python 3.13+ and [uv](https://docs.astral.sh/uv/).
 uv tool install loci-vault
 ```
 
-The package is `loci-vault`; the commands it installs are `loci` and `loci-mcp`.
+> **The PyPI package is `loci-vault`, not `loci`.** The name `loci` on PyPI is an
+> unrelated project. Do not run `uv tool install loci` or `pip install loci`.
+> What you install is `loci-vault`; the commands it gives you are `loci` and
+> `loci-mcp`.
 
 **2. Wire it into Claude Code**
 
