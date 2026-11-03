@@ -4,7 +4,7 @@
 # it cannot be published under. Anything that asks the installed metadata for
 # this distribution (api.app_version) must use this name, not the import name.
 name = "loci-vault"
-version = "0.6.0"
+version = "0.7.0"
 description = "A personal knowledge graph on plain Markdown files, with an MCP server for Claude and a local web app."
 readme = "README.md"
 # Source-available, not open source: noncommercial use is free, commercial use
