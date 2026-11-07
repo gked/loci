@@ -14,6 +14,7 @@ uv tool install loci-vault
   │
   └─ puts `loci-mcp` and `loci` on PATH; the UI bundle is inside the package
 
+loci setup                             # skills + register in one step (or the two below)
 loci skills                            # skills_install: stub per skill → ~/.claude/skills/
                                        #   (--dir <folder> for another agent's skills folder)
 claude mcp add --scope user loci loci-mcp

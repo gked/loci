@@ -33,6 +33,14 @@ shell.
 ### 2. Install the skills and register the server
 
 ```bash
+loci setup                                     # both of the commands below, one question
+```
+
+`loci setup` runs the two commands below for the agent(s) you pick (it asks
+once when it finds several; `--target claude|hermes|all` skips the question)
+and is safe to repeat. To do the halves yourself:
+
+```bash
 loci skills                                    # skill stubs → ~/.claude/skills/ or ~/.hermes/skills/
 loci register                                  # register the MCP server
 ```

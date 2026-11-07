@@ -676,7 +676,7 @@ def graph_data():
 # subparsers would have to redeclare every flag the subcommand owns, and
 # argparse.REMAINDER silently drops leading options, which is exactly the shape
 # `loci skills --yes` has.
-SUBCOMMANDS = frozenset({"skills", "register"})
+SUBCOMMANDS = frozenset({"skills", "register", "setup"})
 
 
 def split_command(argv: list[str]) -> tuple[str | None, list[str]]:
@@ -794,6 +794,11 @@ def main() -> None:  # pragma: no cover
         from loci import skills_install
 
         raise SystemExit(skills_install.run(rest))
+
+    if command == "setup":
+        from loci import quick_setup
+
+        raise SystemExit(quick_setup.run(rest))
 
     if command == "register":
         from loci import clients

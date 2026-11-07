@@ -85,14 +85,16 @@ uv tool install loci-vault
 **2. Connect it to your agent**
 
 ```bash
-loci skills
-loci register
+loci setup
 ```
 
-The first command installs the skills. The second registers the MCP server.
-If Loci finds one agent (Claude Code or Hermes), it uses it. If it finds
-several, it asks you which. To skip the question, add
-`--target claude`, `--target hermes`, or `--target all` to both commands.
+This installs the skills and registers the MCP server in one step. If Loci
+finds one agent (Claude Code or Hermes), it uses it. If it finds several, it
+asks you which. To skip the question, add `--target claude`,
+`--target hermes`, or `--target all`. It is safe to run again.
+
+Prefer the two halves? `loci skills` installs the skills and `loci register`
+registers the server; `loci setup` is those two with one question.
 For other agents, see [Agent support](#agent-support).
 
 **3. Choose a vault folder**
