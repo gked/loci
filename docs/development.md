@@ -26,6 +26,7 @@ loci/
     mcp_server.py                   ← MCP tool definitions and docstrings; `loci-mcp` entry point
     skill_assembly.py               ← read_skill: packaged procedure + the user's overlay
     skills_install.py               ← `loci skills`: writes the stubs into each agent's skills dir
+    quick_setup.py                  ← `loci setup`: skills + MCP registration in one command
     skills/
       loci-save/SKILL.md            ← saving content
       loci-query/SKILL.md           ← querying and traversal

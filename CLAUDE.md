@@ -12,6 +12,7 @@ src/loci/                   The installed package — imports are `loci.*`
   skill_assembly.py         read_skill/write_skill: procedure + user overlay
   skills_install.py         `loci skills`: writes the stubs into each agent's skills dir; `loci-mcp` also refreshes them on start
   clients.py                The agents (Claude Code, Hermes): paths, detection, target choice, `loci register`
+  quick_setup.py            `loci setup`: `loci skills` + `loci register` with one agent choice
   tools/                    Core business logic (registries, linting, writing)
   skills/
     references/             Canonical meta files seeded to vault/meta/ on init
