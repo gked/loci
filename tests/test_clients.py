@@ -221,9 +221,11 @@ class FakeRun:
 
     def __init__(self, registered=False):
         self.calls = []
+        self.timeouts = []
         self.registered = registered
 
-    def __call__(self, cmd, input=None, capture_output=None, text=None):
+    def __call__(self, cmd, input=None, capture_output=None, text=None, timeout=None):
+        self.timeouts.append(timeout)
         self.calls.append((cmd, input))
         if cmd[1:3] == ["config", "get"]:
             out = "command: loci-mcp\n" if self.registered else ""
@@ -272,7 +274,7 @@ def test_hermes_registration_leaves_an_existing_entry_alone(bins, monkeypatch):
 
 def test_hermes_registration_reports_a_silent_cancel(bins, monkeypatch):
     """`hermes mcp add` exits 0 when it cancels, so success is read from config."""
-    def cancelled(cmd, input=None, capture_output=None, text=None):
+    def cancelled(cmd, input=None, capture_output=None, text=None, timeout=None):
         return subprocess.CompletedProcess(cmd, 1 if cmd[1:3] == ["config", "get"] else 0, "", "")
 
     monkeypatch.setattr(clients.subprocess, "run", cancelled)
@@ -310,3 +312,167 @@ def test_run_register_target_hermes(bins, monkeypatch):
 
     assert clients.run_register(["--target", "hermes"], stdout=out) == 0
     assert "Hermes: registered" in out.getvalue()
+
+
+# -- review follow-ups -------------------------------------------------------
+
+def test_every_subprocess_is_bounded(bins, monkeypatch):
+    fake = FakeRun()
+    monkeypatch.setattr(clients.subprocess, "run", fake)
+
+    clients.register_mcp(HERMES)
+
+    assert fake.timeouts and all(t == clients.SUBPROCESS_TIMEOUT for t in fake.timeouts)
+
+
+def test_a_hung_hermes_is_a_reported_failure_not_a_hang(bins, monkeypatch):
+    def hang(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, kw["timeout"])
+
+    monkeypatch.setattr(clients.subprocess, "run", hang)
+
+    ok, message = clients.register_mcp(HERMES)
+
+    assert not ok
+    assert "timed out" in message and "hermes mcp add loci --command loci-mcp" in message
+
+
+def test_registered_check_reads_status_not_entry_text(bins, monkeypatch):
+    def get(out, rc):
+        return lambda cmd, **kw: subprocess.CompletedProcess(cmd, rc, out, "")
+
+    monkeypatch.setattr(clients.subprocess, "run", get("transport: stdio\nexe: loci-mcp\n", 0))
+    assert clients._hermes_registered()
+    monkeypatch.setattr(clients.subprocess, "run", get("Config key not set: mcp_servers.loci\n", 0))
+    assert not clients._hermes_registered()
+    monkeypatch.setattr(clients.subprocess, "run", get("", 0))
+    assert not clients._hermes_registered()
+    monkeypatch.setattr(clients.subprocess, "run", get("command: x\n", 1))
+    assert not clients._hermes_registered()
+
+
+def test_a_users_own_loci_skill_does_not_enrol_an_agent(fake_home):
+    _stub_dir(CLAUDE.skills_root(), "loci-my-own-thing")
+    assert not CLAUDE.installed()
+    assert clients.installed() == []
+
+
+def test_a_shipped_skill_enrols_an_agent(fake_home):
+    name = sorted(clients.packaged_skill_names())[0]
+    _stub_dir(HERMES.skills_root(), name)
+    assert HERMES.installed()
+
+
+def test_install_over_an_existing_stub_never_empties_the_directory(tmp_path, monkeypatch):
+    root = tmp_path / "skills"
+    skills_install.install_all(root, client=CLAUDE)
+    name = skills_install.packaged_skills()[0].name
+    (root / name / "SKILL.md").write_text("stale")
+    seen = []
+    real = skills_install.os.replace
+
+    def spy(src, dst):
+        seen.append((root / name / "SKILL.md").is_file())
+        return real(src, dst)
+
+    monkeypatch.setattr(skills_install.os, "replace", spy)
+    skills_install.install_all(root, client=CLAUDE)
+
+    assert seen and all(seen)  # SKILL.md existed right up to the swap
+    assert (root / name / "SKILL.md").read_text() != "stale"
+    assert [p.name for p in root.iterdir() if p.name.startswith(".")] == []
+
+
+def test_install_replaces_a_symlink_with_a_complete_directory(tmp_path):
+    root = tmp_path / "skills"
+    root.mkdir()
+    name = skills_install.packaged_skills()[0].name
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    (root / name).symlink_to(target, target_is_directory=True)
+
+    skills_install.install_all(root, client=CLAUDE)
+
+    assert not (root / name).is_symlink()
+    assert (root / name / "SKILL.md").is_file()
+    assert [p.name for p in root.iterdir() if p.name.startswith(".")] == []
+
+
+def test_concurrent_installs_all_succeed(tmp_path):
+    import threading
+
+    root = tmp_path / "skills"
+    errors = []
+
+    def go():
+        try:
+            for _ in range(10):
+                skills_install.install_all(root, client=CLAUDE)
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=go) for _ in range(6)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+
+    assert errors == []
+    assert all(s.action == skills_install.CURRENT for s in skills_install.plan(root, client=CLAUDE))
+
+
+def test_losing_the_rename_to_a_concurrent_install_is_not_an_error(tmp_path, monkeypatch):
+    root = tmp_path / "skills"
+    root.mkdir()
+    status = skills_install.plan(root, client=CLAUDE)[0]
+    real = skills_install.os.rename
+
+    def lose(src, dst):
+        real(src, dst)  # the "other process" wins...
+        raise FileExistsError(dst)  # ...and ours reports the clash
+
+    monkeypatch.setattr(skills_install.os, "rename", lose)
+    skills_install.install(status)
+
+    assert (status.dest / "SKILL.md").is_file()
+
+
+@pytest.fixture
+def desktop(fake_home, monkeypatch):
+    path = fake_home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+    return path
+
+
+def test_register_adds_claude_desktop_when_it_is_installed(desktop):
+    desktop.parent.mkdir(parents=True)
+    desktop.write_text('{"mcpServers": {"other": {"command": "x"}}}')
+
+    ok, _ = clients.register_claude_desktop()
+
+    import json
+    servers = json.loads(desktop.read_text())["mcpServers"]
+    assert ok and set(servers) == {"other", "loci"}
+
+
+def test_claude_desktop_is_skipped_when_absent_and_left_alone_when_set(desktop):
+    assert clients.register_claude_desktop() is None
+    desktop.parent.mkdir(parents=True)
+    desktop.write_text('{"mcpServers": {"loci": {"command": "uv"}}}')
+    ok, message = clients.register_claude_desktop()
+    assert ok and "already" in message
+    assert '"uv"' in desktop.read_text()
+
+
+def test_claude_desktop_with_broken_json_is_reported_not_overwritten(desktop):
+    desktop.parent.mkdir(parents=True)
+    desktop.write_text("{nope")
+    ok, _ = clients.register_claude_desktop()
+    assert not ok and desktop.read_text() == "{nope"
+
+
+def test_run_register_for_claude_also_reports_claude_desktop(desktop, monkeypatch):
+    desktop.parent.mkdir(parents=True)
+    monkeypatch.setattr(clients.shutil, "which", lambda n: f"/bin/{n}")
+    monkeypatch.setattr(clients.subprocess, "run", FakeRun())
+    out = io.StringIO()
+
+    assert clients.run_register(["--target", "claude"], stdout=out) == 0
+    assert "Claude Desktop: registered" in out.getvalue()

@@ -1,15 +1,17 @@
 """
 Install the Loci skill stubs into an agent's skills directory.
 
-The agents are listed in clients.py (Claude Code, Hermes). The rest of this
-docstring says "Claude Code" because that was the first; the mechanism is the
-same for each. This is how an agent learns the skills exist. Each packaged skill
+The agents are listed in clients.py (Claude Code, Hermes); the mechanism is the
+same for each, and "the agent" below means whichever one is being written. This
+is how an agent learns the skills exist. Each packaged skill
 (`loci/skills/<name>/SKILL.md`) is the procedure the MCP server serves through
 `read_skill`, assembled with the user's own additions from the vault (see
-skill_assembly.py). What goes into `~/.claude/skills/<name>/SKILL.md` is not
-that file but a stub generated from it: the same frontmatter — name and the
-trigger description Claude Code matches on — over a body that says "call
-`read_skill` and follow what it returns".
+skill_assembly.py). What goes into `<skills dir>/<name>/SKILL.md` (for Claude
+Code, `~/.claude/skills/`; for Hermes, `~/.hermes/skills/`) is not that file but
+a stub generated from it: the same frontmatter — name and the trigger
+description the agent matches on — over a body that says "call the
+`read_skill` tool and follow what it returns" (spelled the way that agent names
+the tool; see Client.read_skill_tool).
 
 A stub, not a copy, because a copy would run. The previous design installed
 the whole procedure and opened it with a version check that deferred to the
@@ -22,12 +24,12 @@ Two consequences. A change to the procedure needs no reinstall — the server
 reads the file on every call — so this command only has work to do when a
 stub itself would change: a new or removed skill, or a reworded trigger
 description. And there is no longer any reason to symlink: a link into the
-package would hand Claude Code the procedure directly, which is the exact
+package would hand the agent the procedure directly, which is the exact
 failure the stub exists to prevent, so a symlink found at the destination is
 replaced like any other stale install.
 
 What is no longer packaged is also taken out. A skill renamed or dropped
-upstream would otherwise sit in ~/.claude/skills/ forever with Claude Code
+upstream would otherwise sit in the skills directory forever with the agent
 still loading it — beside its replacement, in the rename case. Only entries
 this installer could have created are ever removed; see _orphans().
 """
@@ -35,8 +37,10 @@ this installer could have created are ever removed; see _orphans().
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -245,14 +249,70 @@ def uninstall(status: SkillStatus) -> None:
 
 
 def install(status: SkillStatus) -> None:
-    """Put one stub in place, replacing whatever is there."""
+    """Put one stub in place, replacing whatever is there.
+
+    Safe to run from several processes at once (every `loci-mcp` start does,
+    and an agent can start more than one) and while an agent reads the skill:
+    the directory is never emptied. A real directory has its SKILL.md replaced
+    by an atomic rename; anything else (nothing, a symlink, a stray file) is
+    swapped for a fully written directory by one rename. Losing that rename to
+    a concurrent install is fine, because both write the same stub.
+    """
     assert status.source is not None, "install() called on a removal"
-    status.dest.parent.mkdir(parents=True, exist_ok=True)
-    _clear(status.dest)
-    status.dest.mkdir()
-    (status.dest / "SKILL.md").write_text(
-        packaged_stub(status.source, status.client), encoding="utf-8"
-    )
+    dest = status.dest
+    text = packaged_stub(status.source, status.client)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    if not _replace_in_place(dest, text):
+        # Dot-prefixed so no agent (and no installed()/_orphans() prefix check)
+        # mistakes a half-built stub for a skill.
+        staging = Path(tempfile.mkdtemp(prefix=f".{dest.name}.", dir=dest.parent))
+        try:
+            (staging / "SKILL.md").write_text(text, encoding="utf-8")
+            # Only a symlink or stray file is cleared here. A real directory is
+            # never rmtree'd: if one appeared since the check, another install
+            # won the race and this one just writes into it.
+            if dest.is_symlink() or (dest.exists() and not dest.is_dir()):
+                dest.unlink(missing_ok=True)
+            try:
+                os.rename(staging, dest)
+            except OSError:
+                if not _replace_in_place(dest, text):
+                    raise
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+
+
+def _replace_in_place(dest: Path, text: str) -> bool:
+    """Swap SKILL.md inside an existing real directory. False if there is none.
+
+    The rename is atomic, so a reader sees the old stub or the new one, never
+    neither. Anything else in the directory (older installs copied the whole
+    skill folder) is removed afterwards.
+    """
+    if dest.is_symlink() or not dest.is_dir():
+        return False
+    _write_atomic(dest / "SKILL.md", text)
+    for child in dest.iterdir():
+        if child.name == "SKILL.md" or child.name.startswith(".SKILL.md."):
+            continue
+        shutil.rmtree(child, ignore_errors=True) if child.is_dir() and not child.is_symlink() \
+            else child.unlink(missing_ok=True)
+    return True
+
+
+def _write_atomic(path: Path, text: str) -> None:
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def apply(statuses: list[SkillStatus]) -> list[SkillStatus]:
@@ -282,8 +342,6 @@ def refresh_installed() -> list[SkillStatus]:
     enrolled here, and nothing is printed (stdout is the MCP protocol).
     Opt out with LOCI_SKIP_SKILL_REFRESH=1.
     """
-    import os
-
     if os.environ.get("LOCI_SKIP_SKILL_REFRESH") == "1":
         return []
     written: list[SkillStatus] = []

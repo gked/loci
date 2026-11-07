@@ -138,7 +138,7 @@ Loci is a standard MCP server. Any agent that supports MCP can use it.
 | Agent | Status |
 |---|---|
 | Claude Code | Fully supported and tested. The steps above install everything. |
-| Claude Desktop (macOS) | Supported. The checkout setup (`uv run setup.py`) registers it. |
+| Claude Desktop (macOS) | Supported. `loci register` (or the checkout setup, `uv run setup.py`) registers it. |
 | Hermes | Supported. `loci register --target hermes` and `loci skills --target hermes`. |
 | Codex and other MCP clients | Expected to work. Not tested. Do the steps below. |
 

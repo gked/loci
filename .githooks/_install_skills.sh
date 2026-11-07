@@ -52,7 +52,7 @@ cd "$(git rev-parse --show-toplevel)" || exit 0
 # `loci skills` compares each installed stub against the one it would write
 # and only touches the ones that differ, so a procedure-only change costs a
 # listing and nothing else.
-echo "githooks: skills changed — updating stubs in ~/.claude/skills/" >&2
+echo "githooks: skills changed — updating stubs in your agents' skills directories" >&2
 if ! uv run --quiet loci skills --yes >&2; then
 	echo "githooks: stub install failed. Run \`make skills\` when convenient." >&2
 fi

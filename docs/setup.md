@@ -42,6 +42,13 @@ Hermes), they ask which. Skip the question with `--target claude`,
 `--target hermes`, or `--target all`. By hand, the registration is
 `claude mcp add --scope user loci loci-mcp` or `hermes mcp add loci --command loci-mcp`.
 
+**Upgrading from a Claude-only Loci:** `loci skills` used to write to
+`~/.claude/skills/` unconditionally. It now looks for an agent first, and stops
+with "No supported agent found" when neither `~/.claude` nor `~/.hermes`
+exists and neither `claude` nor `hermes` is on PATH. `--target claude` installs
+anyway. `loci register` also adds Loci to Claude Desktop's config on macOS when
+Claude Desktop is installed, and leaves an existing `loci` entry alone.
+
 What lands in `~/.claude/skills/` is a stub per skill — its name and trigger
 description, over "call `read_skill` and follow it". The skill itself is
 served by the MCP server, assembled from the packaged procedure and

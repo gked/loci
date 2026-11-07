@@ -13,6 +13,7 @@ there is no real choice to make (see its docstring).
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -23,9 +24,29 @@ from typing import Callable
 # Same marker skills_install uses to recognise stubs this installer wrote.
 SKILL_NAME_PREFIX = "loci-"
 
+# How long one `hermes` / `claude` subprocess may run. `hermes mcp add` tries
+# to reach the server it is registering and then waits on prompts; without a
+# bound a stalled one hangs `loci register` and setup.py for good.
+SUBPROCESS_TIMEOUT = 60
+
 # Two newlines: `hermes mcp add` asks "enable all tools?" and, when it cannot
 # reach the server yet, "save anyway?". Both are yes for a fresh registration.
 _HERMES_ANSWERS = "y\ny\n"
+
+
+def packaged_skill_names() -> frozenset[str]:
+    """Names of the skills this package ships (`skills/<name>/SKILL.md`).
+
+    Read from the package tree so `Client.installed()` can tell Loci's stubs
+    from a user's own `loci-*` skill. `references/` is not a skill.
+    """
+    root = Path(__file__).parent / "skills"
+    if not root.is_dir():
+        return frozenset()
+    return frozenset(
+        d.name for d in root.iterdir()
+        if d.is_dir() and d.name != "references" and (d / "SKILL.md").is_file()
+    )
 
 
 def _hermes_home() -> Path:
@@ -51,14 +72,17 @@ class Client:
         return shutil.which(self.binary) is not None or self.home().is_dir()
 
     def installed(self) -> bool:
-        """True when Loci stubs are already in this agent's skills directory."""
+        """True when Loci stubs are already in this agent's skills directory.
+
+        Matches the skills this package ships by name, not the `loci-` prefix:
+        a user's own `loci-foo` skill must not enrol the agent in automatic
+        refreshes. (Cleaning up a skill Loci once shipped is skills_install's
+        job, once the agent is enrolled by any current stub.)
+        """
         root = self.skills_root()
         if not root.is_dir():
             return False
-        return any(
-            d.name.startswith(SKILL_NAME_PREFIX) and (d / "SKILL.md").is_file()
-            for d in root.iterdir()
-        )
+        return any((root / name / "SKILL.md").is_file() for name in packaged_skill_names())
 
 
 CLAUDE = Client(
@@ -179,16 +203,41 @@ def resolve_targets(spec: str | None, stdin=None, out=None) -> list[Client]:
 # MCP registration
 # ---------------------------------------------------------------------------
 
+TIMED_OUT = 124  # the shell convention for "killed by timeout"
+
+
 def _run(cmd: list[str], stdin_text: str | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, input=stdin_text, capture_output=True, text=True)
+    """Run a command with a bound on how long it may take.
+
+    A timeout is reported as a failed result (returncode 124, a stderr that
+    says so) rather than raised, so every caller already handles it as one
+    more way for the command to fail.
+    """
+    try:
+        return subprocess.run(
+            cmd, input=stdin_text, capture_output=True, text=True,
+            timeout=SUBPROCESS_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            cmd, TIMED_OUT, "", f"timed out after {SUBPROCESS_TIMEOUT}s"
+        )
 
 
 def _hermes_registered() -> bool:
+    """True when Hermes has a non-empty `mcp_servers.loci` config entry.
+
+    Reads the exit status and whether anything came back, not the text of the
+    entry: `hermes config get` exits non-zero ("Config key not set") for a
+    missing key, and which fields an entry prints (`command:`, `url:`, ...) is
+    Hermes's to change.
+    """
     binary = shutil.which("hermes")
     if not binary:
         return False
     result = _run([binary, "config", "get", "mcp_servers.loci"])
-    return result.returncode == 0 and ("command:" in result.stdout or "url:" in result.stdout)
+    out = result.stdout.strip()
+    return result.returncode == 0 and bool(out) and "not set" not in out.lower()
 
 
 def register_mcp(
@@ -223,13 +272,48 @@ def register_mcp(
         cmd = [binary, "mcp", "add", "loci", "--command", command]
         if args:
             cmd += ["--args", *args]
-        _run(cmd, _HERMES_ANSWERS)
+        added = _run(cmd, _HERMES_ANSWERS)
         # The command exits 0 even when it cancels, so ask the config.
         if _hermes_registered():
             return True, "registered (hermes config). Start a new session or run /reload-mcp."
-        return False, f"hermes did not save it. Run it yourself: {manual}"
+        why = "timed out" if added.returncode == TIMED_OUT else "did not save it"
+        return False, f"hermes {why}. Run it yourself: {manual}"
 
     return False, f"no registration recipe for {client.key}"
+
+
+def claude_desktop_config() -> Path:
+    return Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+
+
+def register_claude_desktop(
+    command: str = "loci-mcp", args: list[str] | None = None
+) -> tuple[bool, str] | None:
+    """Add Loci to Claude Desktop's config, the way setup.py does for a checkout.
+
+    Returns None when Claude Desktop is not there (no config directory), so a
+    machine without it prints nothing. An existing `loci` entry is left alone,
+    which keeps this idempotent and keeps a checkout's `uv run` entry from
+    being overwritten by the installed script's.
+    """
+    path = claude_desktop_config()
+    if not path.parent.is_dir():
+        return None
+    config: dict = {}
+    if path.exists():
+        try:
+            config = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return False, f"{path} is not valid JSON. Add the loci entry yourself."
+    servers = config.setdefault("mcpServers", {})
+    if "loci" in servers:
+        return True, "already registered"
+    servers["loci"] = {"command": shutil.which(command) or command, "args": args or []}
+    try:
+        path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    except OSError as e:
+        return False, f"could not write {path}: {e}"
+    return True, f"registered ({path}). Restart Claude Desktop."
 
 
 def run_register(argv: list[str] | None = None, stdin=None, stdout=None) -> int:
@@ -261,4 +345,9 @@ def run_register(argv: list[str] | None = None, stdin=None, stdout=None) -> int:
         ok, message = register_mcp(client)
         print(f"  {client.label}: {message}", file=out)
         code = code or (0 if ok else 1)
+        if client.key == "claude":
+            desktop = register_claude_desktop()
+            if desktop is not None:
+                print(f"  Claude Desktop: {desktop[1]}", file=out)
+                code = code or (0 if desktop[0] else 1)
     return code
