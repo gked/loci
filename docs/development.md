@@ -25,7 +25,7 @@ loci/
     http_server.py                  ← FastAPI backend for the web UI; `loci` entry point
     mcp_server.py                   ← MCP tool definitions and docstrings; `loci-mcp` entry point
     skill_assembly.py               ← read_skill: packaged procedure + the user's overlay
-    skills_install.py               ← `loci skills`: writes the stubs into ~/.claude/skills/
+    skills_install.py               ← `loci skills`: writes the stubs into each agent's skills dir
     skills/
       loci-save/SKILL.md            ← saving content
       loci-query/SKILL.md           ← querying and traversal

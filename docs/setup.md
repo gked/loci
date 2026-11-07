@@ -33,9 +33,21 @@ shell.
 ### 2. Install the skills and register the server
 
 ```bash
-loci skills                                    # skill stubs → ~/.claude/skills/
-claude mcp add --scope user loci loci-mcp      # register the MCP server
+loci skills                                    # skill stubs → ~/.claude/skills/ or ~/.hermes/skills/
+loci register                                  # register the MCP server
 ```
+
+With one agent installed, both commands use it. With several (Claude Code and
+Hermes), they ask which. Skip the question with `--target claude`,
+`--target hermes`, or `--target all`. By hand, the registration is
+`claude mcp add --scope user loci loci-mcp` or `hermes mcp add loci --command loci-mcp`.
+
+**Upgrading from a Claude-only Loci:** `loci skills` used to write to
+`~/.claude/skills/` unconditionally. It now looks for an agent first, and stops
+with "No supported agent found" when neither `~/.claude` nor `~/.hermes`
+exists and neither `claude` nor `hermes` is on PATH. `--target claude` installs
+anyway. `loci register` also adds Loci to Claude Desktop's config on macOS when
+Claude Desktop is installed, and leaves an existing `loci` entry alone.
 
 What lands in `~/.claude/skills/` is a stub per skill — its name and trigger
 description, over "call `read_skill` and follow it". The skill itself is
@@ -63,8 +75,12 @@ the latter only exists in a checkout, so `set_vault_root` is the wheel's way in.
 
 ```bash
 uv tool upgrade loci-vault      # the package name, not `loci`
-loci skills
 ```
+
+The next time your agent starts `loci-mcp`, it refreshes the skill stubs of every
+agent that already has Loci installed. It never adds Loci to an agent that does
+not have it. To turn this off, set `LOCI_SKIP_SKILL_REFRESH=1`. You can still run
+`loci skills` by hand.
 
 Every release's notes open with whatever the upgrade asks of you, because
 `scripts/release_notes.py` works it out by diffing against the previous tag:
@@ -73,7 +89,8 @@ Every release's notes open with whatever the upgrade asks of you, because
   next start. Nothing to do, but your vault changes underneath you. Your own
   `*-user.*` files, the skill additions among them, are never touched.
 - **A skill was added or its description reworded** — the stub in
-  `~/.claude/skills/` is stale until `loci skills` runs. A change to the
+  `~/.claude/skills/` (or `~/.hermes/skills/`) is stale until the next start of
+  `loci-mcp`, or until `loci skills` runs. A change to the
   procedure itself needs nothing: the server serves it live.
 
 Running `loci skills` regardless is the safe habit: it compares each installed

@@ -244,3 +244,12 @@ def test_overlay_seed_carries_no_rules(skill):
     assert rules == "_None yet._"
     assert skill in seed
     assert skill_assembly.PROTECTED in seed
+
+
+def test_preamble_says_tool_names_vary_by_client():
+    """Procedures write `loci__x`; Hermes shows `mcp_loci_x`, Claude `mcp__loci__x`.
+    The preamble is where the model learns they are the same tools."""
+    preamble = api.read_skill("loci-save").split("---", 1)[0]
+
+    assert "mcp_loci_<tool>" in preamble
+    assert "mcp__loci__<tool>" in preamble
