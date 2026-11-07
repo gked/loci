@@ -126,7 +126,9 @@ def _preamble(skill: str) -> str:
         "matter what the additions say. To change the additions, call "
         f'`loci__write_skill(skill="{skill}", content=...)` — `content` **replaces** '
         "the whole file, so pass `append=True` to add a rule and keep the ones "
-        "already there. The packaged procedure is not editable from here.\n"
+        "already there. The packaged procedure is not editable from here. Tools "
+        "are written `loci__<tool>` below; your client may show the same tool as "
+        "`mcp__loci__<tool>` or `mcp_loci_<tool>`.\n"
     )
 
 

@@ -8,6 +8,7 @@ What this does:
   3. Registers the Loci MCP server in Claude Code  (~/.claude.json, user scope via `claude mcp add`)
   4. Registers the Loci MCP server in Claude Desktop (~/Library/Application Support/Claude/claude_desktop_config.json)
   5. Installs the skill stubs into ~/.claude/skills/<skill>/
+  6. If Hermes is installed and you say yes: registers the MCP server and installs the stubs there too
 
 Usage (from the loci checkout):
   uv run setup.py
@@ -88,8 +89,9 @@ def register_mcp_claude_desktop(config_path: Path) -> None:
     print(f"  Registered: {config_path}")
 
 
-def install_skill_stubs() -> None:
-    """Install a stub for each packaged skill into ~/.claude/skills/.
+def install_skill_stubs(client=None) -> None:
+    """Install a stub for each packaged skill into the agent's skills directory
+    (~/.claude/skills/ unless `client` says otherwise).
 
     Delegates to loci.skills_install so the checkout path and the installed
     path share one implementation and cannot drift. Stubs, not symlinks, from
@@ -102,10 +104,13 @@ def install_skill_stubs() -> None:
     importable once sync_and_init_vault() has run `uv sync`.
     """
     from loci import skills_install
+    from loci.clients import CLAUDE
 
+    client = client or CLAUDE
     statuses = skills_install.plan(
-        skills_root=Path.home() / ".claude" / "skills",
+        skills_root=client.skills_root(),
         source=SKILLS_DIR,
+        client=client,
     )
     if not statuses:
         # Nothing packaged means nothing to install. Saying so beats silence:
@@ -118,6 +123,30 @@ def install_skill_stubs() -> None:
         print(f"  {status.action}: {status.dest}")
     if not any(s.writes for s in statuses):
         print("  Up to date.")
+
+
+def setup_hermes() -> None:
+    """Offer Hermes when it is installed. Never enrols it without being asked."""
+    import sys
+
+    from loci import clients
+
+    if not clients.HERMES.detected():
+        print("  Hermes not found — skipping.")
+        return
+    if not sys.stdin.isatty():
+        print("  Hermes found. Re-run in a terminal, or run: loci register --target hermes && loci skills --target hermes")
+        return
+    if input("  Hermes found. Set it up too? [y/N] ").strip().lower() not in ("y", "yes"):
+        print("  Skipped.")
+        return
+
+    uv = shutil.which("uv") or str(Path.home() / ".local" / "bin" / "uv")
+    ok, message = clients.register_mcp(
+        clients.HERMES, uv, ["run", "--directory", str(PROJECT_ROOT), "loci-mcp"]
+    )
+    print(f"  MCP: {message}")
+    install_skill_stubs(clients.HERMES)
 
 
 def print_desktop_fallback() -> None:
@@ -181,11 +210,16 @@ def main() -> None:
     install_skill_stubs()
     print()
 
+    print("Step 5 — Hermes (optional)")
+    setup_hermes()
+    print()
+
     print("Done.")
     print()
     print("Next steps:")
     print("  1. Restart Claude Code")
     print("  2. Restart Claude Desktop")
+    print("  3. Hermes, if you set it up: start a new session or run /reload-mcp")
 
     print_desktop_fallback()
 

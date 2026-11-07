@@ -676,7 +676,7 @@ def graph_data():
 # subparsers would have to redeclare every flag the subcommand owns, and
 # argparse.REMAINDER silently drops leading options, which is exactly the shape
 # `loci skills --yes` has.
-SUBCOMMANDS = frozenset({"skills"})
+SUBCOMMANDS = frozenset({"skills", "register"})
 
 
 def split_command(argv: list[str]) -> tuple[str | None, list[str]]:
@@ -768,7 +768,7 @@ def build_cli():
     parser = argparse.ArgumentParser(
         prog="loci",
         description="Serve the Loci API.",
-        epilog="Subcommands: skills — install or update the Loci skills in Claude Code.",
+        epilog="Subcommands: skills — install or update the Loci skills; register — add the MCP server to your agent.",
     )
     parser.add_argument("--host", default=os.environ.get("LOCI_UI_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("LOCI_UI_PORT", 8765)))
@@ -794,6 +794,11 @@ def main() -> None:  # pragma: no cover
         from loci import skills_install
 
         raise SystemExit(skills_install.run(rest))
+
+    if command == "register":
+        from loci import clients
+
+        raise SystemExit(clients.run_register(rest))
 
     args = build_cli().parse_args(rest)
 

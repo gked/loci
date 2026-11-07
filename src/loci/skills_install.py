@@ -1,7 +1,9 @@
 """
-Install the Loci skill stubs into a Claude Code skills directory.
+Install the Loci skill stubs into an agent's skills directory.
 
-This is how Claude Code learns the skills exist. Each packaged skill
+The agents are listed in clients.py (Claude Code, Hermes). The rest of this
+docstring says "Claude Code" because that was the first; the mechanism is the
+same for each. This is how an agent learns the skills exist. Each packaged skill
 (`loci/skills/<name>/SKILL.md`) is the procedure the MCP server serves through
 `read_skill`, assembled with the user's own additions from the vault (see
 skill_assembly.py). What goes into `~/.claude/skills/<name>/SKILL.md` is not
@@ -38,6 +40,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from loci import clients as clients_mod
+from loci.clients import CLAUDE, Client
 from loci.skill_assembly import split_frontmatter
 
 # The skills live beside this module, inside the package. Not a repo path:
@@ -53,7 +57,7 @@ DEFAULT_SKILLS_ROOT = Path.home() / ".claude" / "skills"
 
 # Every skill Loci ships is named this way, and it is the only marker a stub
 # directory carries once it is out of the package. See _orphans().
-SKILL_NAME_PREFIX = "loci-"
+SKILL_NAME_PREFIX = clients_mod.SKILL_NAME_PREFIX
 
 # What to do with each skill. Only INSTALL, UPDATE and REMOVE write anything.
 INSTALL = "install"
@@ -68,14 +72,14 @@ This file is a stub. The skill itself is assembled by the Loci MCP server from
 the packaged procedure and your own additions kept in the vault, so the copy
 here never goes stale and never needs reinstalling.
 
-Call `loci__read_skill(skill="{name}")` and follow what it returns for the whole
+Call `{read_skill}(skill="{name}")` and follow what it returns for the whole
 interaction.
 
 If the call is unavailable or errors, tell the user the Loci vault is not
 reachable, relay the tool's error text verbatim (it names the cause and the fix
 for this install), and stop. If there is no error text, the MCP server itself is
 not connected — the user needs to check their MCP client config and restart
-Claude Code / Claude Desktop.
+{restart}.
 """
 
 
@@ -91,13 +95,14 @@ class SkillStatus:
     source: Path | None
     dest: Path
     action: str
+    client: Client = CLAUDE
 
     @property
     def writes(self) -> bool:
         return self.action in (INSTALL, UPDATE, REMOVE)
 
 
-def stub(name: str, skill_md: str) -> str:
+def stub(name: str, skill_md: str, client: Client = CLAUDE) -> str:
     """The SKILL.md Claude Code gets, built from the packaged skill's frontmatter.
 
     The frontmatter is carried over verbatim: `name` and `description` are what
@@ -105,11 +110,13 @@ def stub(name: str, skill_md: str) -> str:
     exactly what the packaged skill says.
     """
     frontmatter, _ = split_frontmatter(skill_md)
-    return frontmatter + _STUB_BODY.format(name=name)
+    return frontmatter + _STUB_BODY.format(
+        name=name, read_skill=client.read_skill_tool, restart=client.restart
+    )
 
 
-def packaged_stub(skill_source: Path) -> str:
-    return stub(skill_source.name, (skill_source / "SKILL.md").read_text(encoding="utf-8"))
+def packaged_stub(skill_source: Path, client: Client = CLAUDE) -> str:
+    return stub(skill_source.name, (skill_source / "SKILL.md").read_text(encoding="utf-8"), client)
 
 
 def packaged_skills(source: Path | None = None) -> list[Path]:
@@ -156,7 +163,9 @@ def _installed_text(dest: Path) -> str | None:
         return None
 
 
-def _orphans(skills_root: Path, packaged: set[str], source_root: Path) -> list[SkillStatus]:
+def _orphans(
+    skills_root: Path, packaged: set[str], source_root: Path, client: Client = CLAUDE
+) -> list[SkillStatus]:
     """Installed skills Loci put there and no longer ships.
 
     A skill renamed or deleted upstream otherwise sits in ~/.claude/skills/
@@ -177,11 +186,15 @@ def _orphans(skills_root: Path, packaged: set[str], source_root: Path) -> list[S
         )
         if not ours:
             continue
-        stale.append(SkillStatus(name=dest.name, source=None, dest=dest, action=REMOVE))
+        stale.append(SkillStatus(dest.name, None, dest, REMOVE, client))
     return stale
 
 
-def plan(skills_root: Path | None = None, source: Path | None = None) -> list[SkillStatus]:
+def plan(
+    skills_root: Path | None = None,
+    source: Path | None = None,
+    client: Client = CLAUDE,
+) -> list[SkillStatus]:
     """Work out what installing would do, without touching anything."""
     skills_root = DEFAULT_SKILLS_ROOT if skills_root is None else skills_root
     statuses = []
@@ -196,12 +209,12 @@ def plan(skills_root: Path | None = None, source: Path | None = None) -> list[Sk
             # serves the procedure directly, and a link anywhere else is not
             # ours to trust. Either way the stub goes in its place.
             action = UPDATE
-        elif _installed_text(dest) == packaged_stub(skill_source):
+        elif _installed_text(dest) == packaged_stub(skill_source, client):
             action = CURRENT
         else:
             action = UPDATE
 
-        statuses.append(SkillStatus(name, skill_source, dest, action))
+        statuses.append(SkillStatus(name, skill_source, dest, action, client))
 
     if not statuses:
         # Nothing packaged means nothing to compare against, and every
@@ -212,7 +225,7 @@ def plan(skills_root: Path | None = None, source: Path | None = None) -> list[Sk
         return statuses
 
     packaged_names = {s.name for s in statuses}
-    return statuses + _orphans(skills_root, packaged_names, _source_root(source))
+    return statuses + _orphans(skills_root, packaged_names, _source_root(source), client)
 
 
 def _clear(dest: Path) -> None:
@@ -237,7 +250,9 @@ def install(status: SkillStatus) -> None:
     status.dest.parent.mkdir(parents=True, exist_ok=True)
     _clear(status.dest)
     status.dest.mkdir()
-    (status.dest / "SKILL.md").write_text(packaged_stub(status.source), encoding="utf-8")
+    (status.dest / "SKILL.md").write_text(
+        packaged_stub(status.source, status.client), encoding="utf-8"
+    )
 
 
 def apply(statuses: list[SkillStatus]) -> list[SkillStatus]:
@@ -251,18 +266,42 @@ def apply(statuses: list[SkillStatus]) -> list[SkillStatus]:
     return written
 
 
-def install_all(skills_root: Path | None = None, source: Path | None = None) -> list[SkillStatus]:
+def install_all(
+    skills_root: Path | None = None, source: Path | None = None, client: Client = CLAUDE
+) -> list[SkillStatus]:
     """Plan and apply in one call — the entry point for setup scripts."""
-    return apply(plan(skills_root, source))
+    return apply(plan(skills_root, source, client))
 
 
-def _render(statuses: list[SkillStatus], skills_root: Path) -> str:
+def refresh_installed() -> list[SkillStatus]:
+    """Bring the stubs of every agent that already has Loci up to date.
+
+    Called by `loci-mcp` on startup, which is how a `uv tool upgrade` reaches
+    the stubs: PyPI installs have no post-install hook, and the next time the
+    agent starts the server this runs. Agents without Loci stubs are never
+    enrolled here, and nothing is printed (stdout is the MCP protocol).
+    Opt out with LOCI_SKIP_SKILL_REFRESH=1.
+    """
+    import os
+
+    if os.environ.get("LOCI_SKIP_SKILL_REFRESH") == "1":
+        return []
+    written: list[SkillStatus] = []
+    for client in clients_mod.installed():
+        try:
+            written += install_all(client.skills_root(), client=client)
+        except OSError:
+            continue
+    return written
+
+
+def _render(statuses: list[SkillStatus], skills_root: Path, label: str = "Loci skills") -> str:
     """The table the user reads before deciding."""
     if not statuses:
         return f"No skills found in {SKILLS_SOURCE} — nothing to install."
 
     width = max(len(s.name) for s in statuses)
-    lines = [f"Loci skills → {skills_root}", ""]
+    lines = [f"{label} → {skills_root}", ""]
     for s in statuses:
         lines.append(f"  {s.name:<{width}}  {s.action}")
     return "\n".join(lines)
@@ -289,21 +328,35 @@ def run(argv: list[str] | None = None, stdin=None, stdout=None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(argv)
-    skills_root = Path(args.dir).expanduser() if args.dir else DEFAULT_SKILLS_ROOT
 
-    statuses = plan(skills_root)
-    print(_render(statuses, skills_root), file=out)
-    print("", file=out)
+    # --dir is one explicit folder (Codex and friends) and is written in the
+    # Claude Code stub style, as it always was. Otherwise the agents come from
+    # --target, or from detection — see clients.resolve_targets.
+    if args.dir:
+        destinations = [(CLAUDE, Path(args.dir).expanduser())]
+    else:
+        try:
+            targets = clients_mod.resolve_targets(args.target, stream, out)
+        except clients_mod.TargetError as e:
+            print(str(e), file=out)
+            return 1
+        destinations = [(c, c.skills_root()) for c in targets]
 
-    pending = [s for s in statuses if s.writes]
-    if not pending:
+    plans = []
+    for client, root in destinations:
+        statuses = plan(root, client=client)
+        plans.append((client, root, statuses))
+        print(_render(statuses, root, f"Loci skills ({client.label})"), file=out)
         print(_summary(statuses), file=out)
+        print("", file=out)
+
+    pending = any(s.writes for _, _, statuses in plans for s in statuses)
+    if not pending:
         return 0
 
-    print(_summary(statuses), file=out)
     if not args.yes:
         # A non-interactive run that would write is refused rather than assumed:
-        # this replaces files in the user's Claude Code config.
+        # this replaces files in the user's agent config.
         if not hasattr(stream, "isatty") or not stream.isatty():
             print("Not a terminal — re-run with --yes to install without asking.", file=out)
             return 1
@@ -312,23 +365,31 @@ def run(argv: list[str] | None = None, stdin=None, stdout=None) -> int:
             print("Nothing written.", file=out)
             return 1
 
-    written = apply(statuses)
-    print("", file=out)
-    for status in written:
-        print(f"  {status.action}: {status.dest}", file=out)
-    print("\nRestart Claude Code to pick up the change.", file=out)
+    for client, _root, statuses in plans:
+        written = apply(statuses)
+        if not written:
+            continue
+        for status in written:
+            print(f"  {status.action}: {status.dest}", file=out)
+        print(f"\nRestart {client.restart} to pick up the change.", file=out)
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="loci skills",
-        description="Install or update the Loci skill stubs in Claude Code.",
+        description="Install or update the Loci skill stubs in your agent (Claude Code, Hermes).",
+    )
+    parser.add_argument(
+        "--target",
+        default=None,
+        help="claude, hermes, a comma-separated list, or all. With none given, "
+        "a single detected agent is used and several are asked about.",
     )
     parser.add_argument(
         "--dir",
         default=None,
-        help=f"Skills directory to install into (default: {DEFAULT_SKILLS_ROOT}).",
+        help="Install into this skills directory instead (for an agent not listed).",
     )
     parser.add_argument(
         "-y", "--yes", action="store_true",

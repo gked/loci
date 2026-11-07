@@ -1,6 +1,6 @@
 """
 src/loci/mcp_server.py
-Loci MCP server — stdio (Claude Code / Claude Desktop) or SSE (remote).
+Loci MCP server — stdio (Claude Code / Claude Desktop / Hermes) or SSE (remote).
 
 Thin wrapper over api.py. All vault logic lives there.
 
@@ -20,6 +20,9 @@ Claude Desktop registration (~/Library/Application Support/Claude/claude_desktop
       }
     }
   }
+
+Hermes registration:
+  loci register --target hermes     (or: hermes mcp add loci --command loci-mcp)
 
 Run setup.py to register automatically. Restart Claude Code / Claude Desktop after any config change.
 """
@@ -1218,6 +1221,13 @@ def main() -> None:  # pragma: no cover
     """
     from loci.tools import vault_history
     vault_history.set_source("mcp")
+    # An upgrade from PyPI cannot run anything, so the first start of the new
+    # version brings the installed stubs up to date. Never blocks the server.
+    try:
+        from loci import skills_install
+        skills_install.refresh_installed()
+    except Exception:  # noqa: BLE001 — a stub refresh must not stop the server
+        pass
     transport = os.environ.get("LOCI_TRANSPORT", "stdio")
     if transport == "sse":
         import uvicorn
