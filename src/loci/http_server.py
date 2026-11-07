@@ -768,7 +768,10 @@ def build_cli():
     parser = argparse.ArgumentParser(
         prog="loci",
         description="Serve the Loci API.",
-        epilog="Subcommands: skills — install or update the Loci skills; register — add the MCP server to your agent.",
+        epilog=(
+            "Subcommands: setup — install skills and register the MCP server; "
+            "skills — install or update the Loci skills; register — add the MCP server to your agent."
+        ),
     )
     parser.add_argument("--host", default=os.environ.get("LOCI_UI_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("LOCI_UI_PORT", 8765)))

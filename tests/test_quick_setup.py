@@ -7,7 +7,7 @@ import pytest
 
 from loci import clients, quick_setup, skills_install
 from loci.clients import CLAUDE, HERMES
-from loci.http_server import split_command
+from loci.http_server import build_cli, split_command
 
 
 class Tty(io.StringIO):
@@ -40,6 +40,10 @@ def env(tmp_path, monkeypatch):
 
 def test_setup_is_a_subcommand():
     assert split_command(["setup", "--target", "all"]) == ("setup", ["--target", "all"])
+
+
+def test_cli_help_lists_setup():
+    assert "setup —" in build_cli().format_help()
 
 
 def test_target_all_installs_skills_and_registers_both(env):
@@ -93,6 +97,22 @@ def test_a_failed_registration_fails_the_command_but_skills_still_land(env, monk
     assert quick_setup.run(["--target", "claude"], stdout=out) == 1
     assert (home / ".claude" / "skills" / "loci-save").is_dir()
     assert "claude mcp add" in out.getvalue() and "safe to repeat" in out.getvalue()
+
+
+def test_skill_write_error_does_not_skip_registration(env, monkeypatch):
+    _, calls = env
+    out = io.StringIO()
+
+    def fail_install(*args, **kwargs):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(skills_install, "run", fail_install)
+
+    assert quick_setup.run(["--target", "claude"], stdout=out) == 1
+
+    assert any(c[1:3] == ["mcp", "add"] for c in calls)
+    assert "permission denied" in out.getvalue()
+    assert "Finished with problems" in out.getvalue()
 
 
 def test_setup_is_safe_to_repeat(env):

@@ -43,7 +43,11 @@ def run(argv: list[str] | None = None, stdin=None, stdout=None) -> int:
     spec = ",".join(c.key for c in targets)
 
     print("Skills", file=out)
-    code = skills_install.run(["--target", spec, "--yes"], stdin=stream, stdout=out)
+    try:
+        code = skills_install.run(["--target", spec, "--yes"], stdin=stream, stdout=out)
+    except OSError as e:
+        print(f"  Failed: {e}", file=out)
+        code = 1
     print("MCP server", file=out)
     code = clients.run_register(["--target", spec], stdin=stream, stdout=out) or code
 
