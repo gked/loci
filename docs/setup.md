@@ -1,5 +1,7 @@
 # Setup
 
+**Platform: macOS only, for now.** Linux runs in CI but is not supported, and Windows is not tested. Agent paths and the Claude Desktop registration assume macOS.
+
 Three ways to run Loci. **From PyPI** is the path for using it. A **release wheel** is the same package, downloaded from GitHub instead. **From a checkout** is what developing it needs.
 
 ---
@@ -108,23 +110,40 @@ How releases are built and published is [Releasing](development.md#releasing).
 
 ---
 
-## DeepSeek Harness
+## Other agents (DeepSeek Harness and others)
 
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) is
-**not set up by `loci register`.** It is a developer preview and its docs warn of
-compatibility-breaking changes, so Loci does not write its config files. These
-steps are **untested**: they come from DeepSeek Harness's documentation, not from
-a run on a real install. If they stop working, DeepSeek's docs win.
+`loci register` and `loci skills` set up Claude Code, Claude Desktop and Hermes.
+For any other agent, including [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
+(`dsh`), Loci does not write the agent's config files: they differ per agent, and
+some are developer previews that change. These steps are **untested**. If the
+agent's own docs disagree, the agent's docs win.
 
-**1. Skills.** DeepSeek reads skills from `$DSH_HOME/skills` (default
-`~/.dsh/skills`):
+**Ask the agent to set itself up.** Paste this into a session with the agent:
+
+> Set up Loci for yourself. Loci is an MCP server plus four skills.
+>
+> 1. Register an MCP server named `loci` that runs the command `loci-mcp` over
+>    stdio. Use this agent's current documentation for how, and check it first,
+>    since the format may have changed. If the config file is a list that
+>    currently holds only `[]`, replace the `[]` instead of appending below it.
+> 2. Find the folder where this agent reads skills (`<name>/SKILL.md`
+>    folders). Run `loci skills --dir <that folder>`.
+> 3. If this agent has no skills support, add this to its instructions:
+>    "Before you save to or read from Loci, call the `read_skill` tool of the
+>    `loci` MCP server and follow the result."
+> 4. Restart or reload, then confirm the `loci` tools are listed, and tell me
+>    what you did.
+
+**By hand, for DeepSeek Harness** (from its documentation; not run on a real
+install). Skills go in `$DSH_HOME/skills` (default `~/.dsh/skills`):
 
 ```bash
 loci skills --dir ~/.dsh/skills
 ```
 
-**2. MCP server.** There is no `dsh mcp add`. Put this in `~/.dsh/cordis.patch.yml`
-(every profile) or `~/.dsh/profiles/<profile>/cordis.patch.yml`:
+There is no `dsh mcp add`. Put this in `~/.dsh/cordis.patch.yml` (every profile)
+or `~/.dsh/profiles/<profile>/cordis.patch.yml`, replacing the `[]` a fresh file
+contains:
 
 ```yaml
 - insert:
@@ -136,24 +155,8 @@ loci skills --dir ~/.dsh/skills
         command: loci-mcp
 ```
 
-A freshly generated `cordis.patch.yml` contains just `[]`. **Replace** that `[]`
-with the block. Adding the block below it makes the file invalid YAML and `dsh`
-refuses to start. To try it once without editing any profile, save the block to a
-file and run `dsh web --patch <file>`.
-
-**3. Check.** `dsh --profile web --dump-config` should list the `loci` entry.
-The tools appear as `mcp__loci__<tool>`, the same names Claude uses.
-
-**Or ask DeepSeek to do it.** Paste this into a DeepSeek session:
-
-> Set up the Loci MCP server. Install the skills with `loci skills --dir ~/.dsh/skills`.
-> Then add a `@deepseek-ai/dsh-mcp-client` entry to `~/.dsh/cordis.patch.yml` with
-> `serverName: loci`, `transport: stdio`, `command: loci-mcp`, under `- insert:`.
-> If the file contains only `[]`, replace the `[]`. Check the current DeepSeek
-> Harness docs first, since the format may have changed. Then run
-> `dsh --profile web --dump-config` and tell me whether the entry loaded.
-
-Restart `dsh` afterwards.
+Then restart `dsh`. `dsh --profile web --dump-config` shows whether the entry
+loaded. Its tools appear as `mcp__loci__<tool>`.
 
 ---
 
