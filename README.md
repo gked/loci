@@ -68,8 +68,10 @@ tells you which parts.
 
 ## Quick start
 
-**Requirements:** Python 3.13+ and [uv](https://docs.astral.sh/uv/). The
-author uses Loci on macOS. CI runs on Linux. Windows is not tested.
+**Requirements:** macOS, Python 3.13+ and [uv](https://docs.astral.sh/uv/).
+**Loci supports macOS only for now.** The author uses it on macOS. CI runs the
+tests on Linux, but Linux is not a supported platform, and Windows is not
+tested.
 
 **1. Install from PyPI**
 
@@ -142,6 +144,7 @@ Loci is a standard MCP server. Any agent that supports MCP can use it.
 | Claude Code | Fully supported and tested. The steps above install everything. |
 | Claude Desktop (macOS) | Supported. `loci register` (or the checkout setup, `uv run setup.py`) registers it. |
 | Hermes | Supported. `loci register --target hermes` and `loci skills --target hermes`. |
+| DeepSeek Harness and other agents | Untested. Manual setup, or ask the agent to set itself up. [Steps](https://github.com/gked/loci/blob/main/docs/setup.md#other-agents-deepseek-harness-and-others). |
 | Codex and other MCP clients | Expected to work. Not tested. Do the steps below. |
 
 For an agent other than Claude Code:

@@ -1,5 +1,7 @@
 # Setup
 
+**Platform: macOS only, for now.** Linux runs in CI but is not supported, and Windows is not tested. Agent paths and the Claude Desktop registration assume macOS.
+
 Three ways to run Loci. **From PyPI** is the path for using it. A **release wheel** is the same package, downloaded from GitHub instead. **From a checkout** is what developing it needs.
 
 ---
@@ -105,6 +107,56 @@ Running `loci skills` regardless is the safe habit: it compares each installed
 stub against the one it would write and does nothing if nothing moved.
 
 How releases are built and published is [Releasing](development.md#releasing).
+
+---
+
+## Other agents (DeepSeek Harness and others)
+
+`loci register` and `loci skills` set up Claude Code, Claude Desktop and Hermes.
+For any other agent, including [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
+(`dsh`), Loci does not write the agent's config files: they differ per agent, and
+some are developer previews that change. These steps are **untested**. If the
+agent's own docs disagree, the agent's docs win.
+
+**Ask the agent to set itself up.** Paste this into a session with the agent:
+
+> Set up Loci for yourself. Loci is an MCP server plus four skills.
+>
+> 1. Register an MCP server named `loci` that runs the command `loci-mcp` over
+>    stdio. Use this agent's current documentation for how, and check it first,
+>    since the format may have changed. If the config file is a list that
+>    currently holds only `[]`, replace the `[]` instead of appending below it.
+> 2. Find the folder where this agent reads skills (`<name>/SKILL.md`
+>    folders). Run `loci skills --dir <that folder>`.
+> 3. If this agent has no skills support, add this to its instructions:
+>    "Before you save to or read from Loci, call the `read_skill` tool of the
+>    `loci` MCP server and follow the result."
+> 4. Restart or reload, then confirm the `loci` tools are listed, and tell me
+>    what you did.
+
+**By hand, for DeepSeek Harness** (from its documentation; not run on a real
+install). Skills go in `$DSH_HOME/skills` (default `~/.dsh/skills`):
+
+```bash
+loci skills --dir ~/.dsh/skills
+```
+
+There is no `dsh mcp add`. Put this in `~/.dsh/cordis.patch.yml` (every profile)
+or `~/.dsh/profiles/<profile>/cordis.patch.yml`, replacing the `[]` a fresh file
+contains:
+
+```yaml
+- insert:
+    - id: mcp-loci
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: loci
+        transport: stdio
+        command: loci-mcp
+```
+
+Then restart `dsh`. `dsh --profile web --dump-config` shows whether the entry
+loaded. Its tools appear as `mcp__loci__<tool>`.
 
 ---
 
