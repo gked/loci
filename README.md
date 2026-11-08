@@ -142,6 +142,7 @@ Loci is a standard MCP server. Any agent that supports MCP can use it.
 | Claude Code | Fully supported and tested. The steps above install everything. |
 | Claude Desktop (macOS) | Supported. `loci register` (or the checkout setup, `uv run setup.py`) registers it. |
 | Hermes | Supported. `loci register --target hermes` and `loci skills --target hermes`. |
+| DeepSeek Harness (`dsh`) | Untested, manual setup. It is a developer preview whose config may change, so Loci does not write its files. [Steps](https://github.com/gked/loci/blob/main/docs/setup.md#deepseek-harness). |
 | Codex and other MCP clients | Expected to work. Not tested. Do the steps below. |
 
 For an agent other than Claude Code:

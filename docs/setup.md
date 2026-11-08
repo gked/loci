@@ -108,6 +108,55 @@ How releases are built and published is [Releasing](development.md#releasing).
 
 ---
 
+## DeepSeek Harness
+
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) is
+**not set up by `loci register`.** It is a developer preview and its docs warn of
+compatibility-breaking changes, so Loci does not write its config files. These
+steps are **untested**: they come from DeepSeek Harness's documentation, not from
+a run on a real install. If they stop working, DeepSeek's docs win.
+
+**1. Skills.** DeepSeek reads skills from `$DSH_HOME/skills` (default
+`~/.dsh/skills`):
+
+```bash
+loci skills --dir ~/.dsh/skills
+```
+
+**2. MCP server.** There is no `dsh mcp add`. Put this in `~/.dsh/cordis.patch.yml`
+(every profile) or `~/.dsh/profiles/<profile>/cordis.patch.yml`:
+
+```yaml
+- insert:
+    - id: mcp-loci
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: loci
+        transport: stdio
+        command: loci-mcp
+```
+
+A freshly generated `cordis.patch.yml` contains just `[]`. **Replace** that `[]`
+with the block. Adding the block below it makes the file invalid YAML and `dsh`
+refuses to start. To try it once without editing any profile, save the block to a
+file and run `dsh web --patch <file>`.
+
+**3. Check.** `dsh --profile web --dump-config` should list the `loci` entry.
+The tools appear as `mcp__loci__<tool>`, the same names Claude uses.
+
+**Or ask DeepSeek to do it.** Paste this into a DeepSeek session:
+
+> Set up the Loci MCP server. Install the skills with `loci skills --dir ~/.dsh/skills`.
+> Then add a `@deepseek-ai/dsh-mcp-client` entry to `~/.dsh/cordis.patch.yml` with
+> `serverName: loci`, `transport: stdio`, `command: loci-mcp`, under `- insert:`.
+> If the file contains only `[]`, replace the `[]`. Check the current DeepSeek
+> Harness docs first, since the format may have changed. Then run
+> `dsh --profile web --dump-config` and tell me whether the entry loaded.
+
+Restart `dsh` afterwards.
+
+---
+
 ## From a release wheel
 
 The same package, downloaded from the [GitHub Release](https://github.com/gked/loci/releases)
