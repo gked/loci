@@ -68,8 +68,10 @@ tells you which parts.
 
 ## Quick start
 
-**Requirements:** Python 3.13+ and [uv](https://docs.astral.sh/uv/). The
-author uses Loci on macOS. CI runs on Linux. Windows is not tested.
+**Requirements:** macOS, Python 3.13+ and [uv](https://docs.astral.sh/uv/).
+**Loci supports macOS only for now.** The author uses it on macOS. CI runs the
+tests on Linux, but Linux is not a supported platform, and Windows is not
+tested.
 
 **1. Install from PyPI**
 

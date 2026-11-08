@@ -1,5 +1,7 @@
 # Setup
 
+**Platform: macOS only, for now.** Linux runs in CI but is not supported, and Windows is not tested. Agent paths and the Claude Desktop registration assume macOS.
+
 Three ways to run Loci. **From PyPI** is the path for using it. A **release wheel** is the same package, downloaded from GitHub instead. **From a checkout** is what developing it needs.
 
 ---
