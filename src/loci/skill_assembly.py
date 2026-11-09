@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from loci.language import DEFAULT_LANGUAGE
+
 SKILLS_DIR = Path(__file__).parent / "skills"
 REFERENCES_DIR = SKILLS_DIR / "references"
 
@@ -43,11 +45,20 @@ PROTECTED = "🔒"
 OVERLAY_HEADING = "Your additions"
 
 
-def canonical_path(skill: str) -> Path:
-    """The packaged SKILL.md for a skill; FileNotFoundError if it does not ship."""
+def canonical_path(skill: str, language: str | None = None) -> Path:
+    """The packaged SKILL.md for a skill; FileNotFoundError if it does not ship.
+
+    With a language other than English, the translation `SKILL.<language>.md`
+    beside it when there is one; a skill not translated yet serves the English
+    procedure rather than failing.
+    """
     p = SKILLS_DIR / skill / "SKILL.md"
     if not p.is_file():
         raise FileNotFoundError(f"Skill file not found: {p}")
+    if language and language != DEFAULT_LANGUAGE:
+        localized = p.with_name(f"SKILL.{language}.md")
+        if localized.is_file():
+            return localized
     return p
 
 
@@ -116,7 +127,21 @@ def read_overlay(vault_root: Path | None, skill: str) -> tuple[str, bool] | None
     return p.read_text(encoding="utf-8"), False
 
 
-def _preamble(skill: str) -> str:
+def _preamble(skill: str, language: str | None = None) -> str:
+    if language == "ru-RU":
+        return (
+            f"# {skill}\n\n"
+            "Следуйте этому документу на протяжении всего взаимодействия. В нём две "
+            "части: поставляемая процедура, затем **Your additions** — правила "
+            f"пользователя из {overlay_display(skill)}. Если части расходятся, "
+            f"приоритет у дополнений пользователя, кроме заголовков с меткой {PROTECTED}: "
+            "они действуют при любых дополнениях. Чтобы изменить дополнения, вызовите "
+            f'`loci__write_skill(skill="{skill}", content=...)` — `content` **заменяет** '
+            "весь файл, поэтому передайте `append=True`, чтобы добавить правило и сохранить "
+            "прежние. Поставляемая процедура отсюда не редактируется. Инструменты ниже "
+            "записаны как `loci__<tool>`; ваш клиент может показывать тот же инструмент "
+            "как `mcp__loci__<tool>` или `mcp_loci_<tool>`.\n"
+        )
     return (
         f"# {skill}\n\n"
         "Follow this document for the whole interaction. It has two parts: the "
@@ -132,12 +157,16 @@ def _preamble(skill: str) -> str:
     )
 
 
-def assemble(skill: str, vault_root: Path | None) -> str:
+def assemble(skill: str, vault_root: Path | None, language: str | None = None) -> str:
     """The text `read_skill` returns: preamble, packaged procedure, user additions."""
-    _, body = split_frontmatter(canonical_path(skill).read_text(encoding="utf-8"))
+    path = canonical_path(skill, language)
+    _, body = split_frontmatter(path.read_text(encoding="utf-8"))
     overlay = read_overlay(vault_root, skill)
+    # The preamble follows the procedure actually served, not the setting: a
+    # skill with no translation yet is English all the way through.
+    served = language if path.name != "SKILL.md" else None
 
-    parts = [_preamble(skill), "---\n", body.strip("\n") + "\n", "---\n"]
+    parts = [_preamble(skill, served), "---\n", body.strip("\n") + "\n", "---\n"]
     if overlay is None:
         parts.append(
             f"# {OVERLAY_HEADING}\n\n"

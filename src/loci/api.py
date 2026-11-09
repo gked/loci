@@ -21,6 +21,7 @@ from typing import Optional
 import yaml
 
 from loci import skill_assembly
+from loci.language import get_language
 from loci.tools.uid_generator import generate_uid as _generate_uid
 from loci.tools.vault_init import NOT_CONFIGURED_MESSAGE, load_config
 from loci.tools.write_file import (
@@ -1249,13 +1250,14 @@ def read_skill(skill: str = "loci-save") -> str:
     The assembled skill: packaged procedure plus the user's additions from
     vault/skills/<skill>.md. Works with no vault configured — the packaged
     half is what tells the model to ask for one — and says so in place of the
-    additions.
+    additions. The procedure is the translation when `language` is set to one
+    that ships (config.yml or LOCI_LANGUAGE) and the skill has been translated.
     """
     try:
         vault_root = _vault_root()
     except RuntimeError:
         vault_root = None
-    return skill_assembly.assemble(skill, vault_root)
+    return skill_assembly.assemble(skill, vault_root, get_language())
 
 
 def validate_type(name: str, extends: str, fields: list[dict] = None) -> dict:

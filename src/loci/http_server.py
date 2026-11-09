@@ -36,6 +36,7 @@ from loci.tools import vault_history
 from loci.tools.type_registry import get_registry
 from loci.tools.frontmatter import split_frontmatter
 from loci import api as vault_api
+from loci.language import get_language
 
 log = logging.getLogger(__name__)
 
@@ -505,6 +506,7 @@ def health():
         return {
             "status": "ok",
             "version": vault_api.app_version(),
+            "language": get_language(),
             "vault_root": str(vr),
             "node_count": g.number_of_nodes(),
             "history": _history_status(),
@@ -514,6 +516,7 @@ def health():
             "status": "error",
             "error": str(e),
             "version": vault_api.app_version(),
+            "language": get_language(),
             "vault_root": "",
             "node_count": 0,
             "history": {"state": "unknown", "detail": ""},

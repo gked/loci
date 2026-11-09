@@ -6,6 +6,7 @@ import { TypeDot } from "./TypeDot.jsx";
 import { Corners } from "./Corners.jsx";
 import { Reticle } from "./Reticle.jsx";
 import { Meridian } from "./Meridian.jsx";
+import { useI18n } from "../lib/I18nProvider.jsx";
 
 const KNOWN_FIELDS = new Set(["uid","type","title","status","created_at","updated_at","tags","domains","relations","body","asset"]);
 
@@ -46,14 +47,15 @@ const T_LATIN = {
 };
 
 export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology, paper }) {
+  const { t } = useI18n();
   if (!node) {
     return (
       <div data-testid="node-detail-empty" style={{ flex: 1, display: "grid", placeItems: "center" }} className="canvas">
         <Meridian/>
         <div style={{ textAlign: "center", position: "relative", zIndex: 2 }}>
-          <div className="smcaps" style={{ marginBottom: 14 }}>vacuum · empty</div>
+          <div className="smcaps" style={{ marginBottom: 14 }}>{t("vacuum · empty")}</div>
           <p style={{ fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 18, color: "var(--t-fg-mute)" }}>
-            Select a locus from the vault.
+            {t("Select a locus from the vault.")}
           </p>
         </div>
       </div>
@@ -88,15 +90,15 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
         zIndex: 3, position: "relative", flexShrink: 0,
       }}>
         <button onClick={onBack} className="t-btn" data-testid="node-back" style={{ padding: "4px 12px", fontSize: 11 }}>
-          ← back <span className="key">esc</span>
+          {t("← back")} <span className="key">esc</span>
         </button>
         <span className="tel">
           fol. · <b>{node.title?.slice(0, 32)}</b>
         </span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <span className="tel">{wordCount}w</span>
+          <span className="tel">{t("{n}w", { n: wordCount })}</span>
           <button onClick={onShowTopology} className="t-btn" style={{ padding: "4px 12px", fontSize: 11 }}>
-            traverse <span className="key">g</span>
+            {t("traverse")} <span className="key">g</span>
           </button>
         </div>
       </div>
@@ -169,7 +171,7 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
               color: paper ? "var(--t-bronze-d)" : "var(--t-bronze)",
               letterSpacing: "0.18em", textTransform: "lowercase",
               marginBottom: 14,
-            }}>corpus · body</div>
+            }}>{t("corpus · body")}</div>
             <div data-testid="node-body">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents} urlTransform={markdownUrlTransform}>
                 {node.body || ""}
@@ -185,7 +187,7 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
               outline: "0.5px solid var(--t-bronze-d)", outlineOffset: 3,
               background: paper ? "rgba(235,226,207,0.4)" : "rgba(10,16,32,0.5)",
             }}>
-              <div className="smcaps" style={{ marginBottom: 8 }}>res · asset</div>
+              <div className="smcaps" style={{ marginBottom: 8 }}>{t("res · asset")}</div>
               <div className="tel">{node.asset.mime_type} · {(node.asset.size_bytes / 1024).toFixed(1)} KB</div>
               <div className="tel" style={{ marginTop: 4, wordBreak: "break-all" }}>
                 <LocalFileLink href={node.asset.path}>{node.asset.path}</LocalFileLink>
@@ -199,7 +201,7 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
                   color: paper ? "var(--t-ink)" : "var(--t-fg)",
                 }}>
                   {node.asset.content.slice(0, 4000)}
-                  {node.asset.content.length > 4000 ? "\n… truncated" : ""}
+                  {node.asset.content.length > 4000 ? "\n" + t("… truncated") : ""}
                 </pre>
               )}
             </div>
@@ -217,7 +219,7 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
             letterSpacing: "0.18em", textTransform: "lowercase",
             marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "baseline",
           }}>
-            <span>nexus · outbound</span>
+            <span>{t("nexus · outbound")}</span>
             <span style={{ fontFamily: "var(--font-mono)", fontStyle: "normal", fontSize: 9, letterSpacing: "0.04em" }}>{outgoing.length}</span>
           </div>
 
@@ -278,7 +280,7 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
                 color: paper ? "var(--t-bronze-d)" : "var(--t-bronze)",
                 letterSpacing: "0.18em", textTransform: "lowercase",
                 margin: "20px 0 10px",
-              }}>← nexus inbound</div>
+              }}>{t("← nexus inbound")}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: 12 }}>
                 {incoming.map((r, i) => (
                   <button key={i} onClick={() => onOpenUid(r.uid)} style={{

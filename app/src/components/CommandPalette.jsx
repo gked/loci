@@ -3,8 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { TypeDot } from "./TypeDot.jsx";
 import { searchNodes, getRecentNodes } from "../lib/api.js";
 import { useDebounce } from "../hooks/useDebounce.js";
+import { useI18n } from "../lib/I18nProvider.jsx";
 
 export function CommandPalette({ open, onClose, onOpen }) {
+  const { t } = useI18n();
   const [q, setQ] = useState("");
   const inputRef = useRef();
   const debouncedQ = useDebounce(q, 150);
@@ -68,10 +70,10 @@ export function CommandPalette({ open, onClose, onOpen }) {
           fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 11,
           color: "var(--t-bronze)", letterSpacing: "0.18em", textTransform: "lowercase",
         }}>
-          <span>praeceptum · command</span>
+          <span>{t("praeceptum · command")}</span>
           <span style={{ flex: 1, height: 0, borderTop: "0.5px solid var(--t-bronze-d)" }}/>
           <span style={{ fontFamily: "var(--font-mono)", fontStyle: "normal", fontSize: 9, color: "var(--t-fg-faint)", letterSpacing: "0.04em" }}>
-            esc to close
+            {t("esc to close")}
           </span>
         </div>
 
@@ -82,8 +84,8 @@ export function CommandPalette({ open, onClose, onOpen }) {
             value={q}
             onChange={e => setQ(e.target.value)}
             onKeyDown={e => { if (e.key === "Escape") onClose(); }}
-            placeholder="search vault — title, tag, uid"
-            aria-label="search vault"
+            placeholder={t("search vault — title, tag, uid")}
+            aria-label={t("search vault")}
             data-testid="palette-input"
             className="t-input"
             style={{ fontSize: 20 }}
@@ -94,7 +96,7 @@ export function CommandPalette({ open, onClose, onOpen }) {
         <div style={{ flex: 1, overflowY: "auto", padding: "6px 0" }}>
           {results.length === 0 && debouncedQ.length >= 2 && (
             <div data-testid="palette-empty" style={{ padding: "24px 18px", fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 13, color: "var(--t-fg-faint)", textAlign: "center" }}>
-              vacuum · no results for "{debouncedQ}"
+              {t('vacuum · no results for "{q}"', { q: debouncedQ })}
             </div>
           )}
           {results.map((n, i) => (
@@ -128,9 +130,9 @@ export function CommandPalette({ open, onClose, onOpen }) {
           display: "flex", gap: 18, fontFamily: "var(--font-mono)", fontSize: 9,
           color: "var(--t-fg-mute)", letterSpacing: "0.06em", textTransform: "uppercase",
         }}>
-          <span>⏎ <span style={{ color: "var(--t-fg-faint)" }}>open</span></span>
+          <span>⏎ <span style={{ color: "var(--t-fg-faint)" }}>{t("open")}</span></span>
           <span style={{ marginLeft: "auto", fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 10, letterSpacing: "0.18em", textTransform: "lowercase", color: "var(--t-bronze)" }}>
-            {results.length} resultata
+            {t("{n} results", { n: results.length })}
           </span>
         </div>
       </div>

@@ -498,6 +498,10 @@ button { font-family: inherit; }
   gap: 8px;
   color: var(--t-fg-mute);
 }
+.rail-foot .lang { display: flex; gap: 6px; margin-top: 6px; }
+.rail-foot .lang button { all: unset; cursor: pointer; padding: 1px 6px; border: 1px solid var(--t-rule); letter-spacing: 0.08em; color: var(--t-fg-faint); }
+.rail-foot .lang button[data-active="true"] { color: var(--t-bronze); border-color: var(--t-bronze); }
+.rail-foot .lang button:focus-visible { outline: 1px solid var(--t-bronze); outline-offset: 2px; }
 .rail-foot .history { color: var(--t-fg-faint); }
 .rail-foot .undo { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; color: var(--t-fg-faint); }
 .rail-foot .undo button { all: unset; cursor: pointer; text-decoration: underline; }

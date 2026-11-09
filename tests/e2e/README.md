@@ -143,6 +143,7 @@ style-driven markup, so text selectors break on every design pass.
 | `undo` | `VaultRail.jsx` | `data-step` (`idle`, `confirm`, `done`, `error`) |
 | `undo-last`, `undo-confirm`, `undo-cancel`, `undo-dismiss` | `VaultRail.jsx` | the control's buttons, one per step |
 | `undo-subject`, `undo-result` | `VaultRail.jsx` | the change about to be undone; the outcome (`data-state` `done` or `error`) |
+| `lang-switch`, `lang-en`, `lang-ru-RU` | `VaultRail.jsx` | the rail's language switch; each button has `data-active`. The choice is kept in localStorage (`loci_language`) |
 | `node-detail` | `NodeDetail.jsx` | `data-uid` |
 | `node-detail-empty` | `NodeDetail.jsx` | shown while the node query is loading |
 | `node-title`, `node-body`, `node-frontmatter`, `node-back` | `NodeDetail.jsx` | — |

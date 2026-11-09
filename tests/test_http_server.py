@@ -386,6 +386,27 @@ class TestStartupPreflight:
         assert http_server._startup_error() is None
 
 
+class TestHealthLanguage:
+    """/api/health carries the configured language so the UI can open in it."""
+
+    def test_defaults_to_english(self, client, monkeypatch):
+        monkeypatch.delenv("LOCI_LANGUAGE", raising=False)
+        assert client.get("/api/health").json()["language"] == "en"
+
+    def test_reports_the_configured_language(self, client, monkeypatch):
+        monkeypatch.setenv("LOCI_LANGUAGE", "ru")
+        assert client.get("/api/health").json()["language"] == "ru-RU"
+
+    def test_error_payload_carries_it_too(self, client, monkeypatch):
+        monkeypatch.setenv("LOCI_LANGUAGE", "ru-RU")
+        monkeypatch.setattr(
+            http_server, "_vault_root", lambda: (_ for _ in ()).throw(RuntimeError("no vault"))
+        )
+        payload = client.get("/api/health").json()
+        assert payload["status"] == "error"
+        assert payload["language"] == "ru-RU"
+
+
 class TestHealthVersion:
     """
     /api/health carries the app version so the UI has one number to render.

@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { TYPES, TYPE_COLOR } from "../constants.js";
+import { useI18n } from "../lib/I18nProvider.jsx";
 
 const NIGHT = "#0a1020";
 const NIGHT_2 = "#15203a";
@@ -21,6 +22,7 @@ const TO_ROMAN = (n) => {
 };
 
 export function GraphView({ graphData, onOpen, focusUid }) {
+  const { t: tr } = useI18n();
   const { nodes: graphNodes, edges: graphEdges } = graphData;
   const W = 1200, H = 720;
   const CX = W / 2, CY = H / 2;
@@ -177,14 +179,14 @@ export function GraphView({ graphData, onOpen, focusUid }) {
         </Corner>
 
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, padding: "16px 22px 28px", display: "flex", alignItems: "center", gap: 14, zIndex: 4, pointerEvents: "none", background: `linear-gradient(to bottom, ${NIGHT} 50%, transparent)` }}>
-          <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 500, fontSize: 22, margin: 0, color: PARCHMENT, whiteSpace: "nowrap", letterSpacing: "0.01em" }}>Topology</h1>
+          <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 500, fontSize: 22, margin: 0, color: PARCHMENT, whiteSpace: "nowrap", letterSpacing: "0.01em" }}>{tr("Topology")}</h1>
           <span style={{ fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 13, color: BRONZE, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>— locorum chartæ —</span>
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: RAIL_MUTED, whiteSpace: "nowrap", marginLeft: "auto" }}>
-            {nodes.length} nodes · {visibleEdges.length} edges{selected ? ` · ${neighbours.size - 1}-hop` : ""}
+            {tr("{nodes} nodes · {edges} edges", { nodes: nodes.length, edges: visibleEdges.length })}{selected ? ` · ${tr("{n}-hop", { n: neighbours.size - 1 })}` : ""}
           </span>
           <div style={{ display: "flex", gap: 6, pointerEvents: "auto", flexShrink: 0 }}>
-            <GButton onClick={() => { if (!running) { alphaRef.current = 0.5; } setRunning(r => !r); }}>{running ? "⏸ pause" : "▶ resume"}</GButton>
-            <GButton onClick={() => { setSelected(null); setRelFilter(new Set()); }}>reset</GButton>
+            <GButton onClick={() => { if (!running) { alphaRef.current = 0.5; } setRunning(r => !r); }}>{running ? tr("⏸ pause") : tr("▶ resume")}</GButton>
+            <GButton onClick={() => { setSelected(null); setRelFilter(new Set()); }}>{tr("reset")}</GButton>
           </div>
         </div>
 
@@ -326,7 +328,7 @@ export function GraphView({ graphData, onOpen, focusUid }) {
 
       {/* right rail — dark legend / filter / inspector */}
       <aside style={{ width: 280, flexShrink: 0, borderLeft: `1px solid ${BRONZE_DARK}33`, background: NIGHT, display: "flex", flexDirection: "column", overflowY: "auto", color: PARCHMENT }}>
-        <DSection title="Types · Genera">
+        <DSection title={tr("Types · Genera")}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px" }}>
             {TYPES.filter(([t]) => counts[t] > 0).map(([t, c]) => (
               <div key={t} style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "var(--font-mono)", fontSize: 10, color: RAIL_FG, letterSpacing: "0.03em" }}>
@@ -338,7 +340,7 @@ export function GraphView({ graphData, onOpen, focusUid }) {
           </div>
         </DSection>
 
-        <DSection title="Relations · Vincula" subtitle={relFilter.size ? `${relFilter.size} active` : "click to isolate"}>
+        <DSection title={tr("Relations · Vincula")} subtitle={relFilter.size ? tr("{n} active", { n: relFilter.size }) : tr("click to isolate")}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {relationTypes.map(rt => {
               const on = relFilter.has(rt);
@@ -361,7 +363,7 @@ export function GraphView({ graphData, onOpen, focusUid }) {
           </div>
         </DSection>
 
-        <DSection title="Focus · Inspector">
+        <DSection title={tr("Focus · Inspector")}>
           {selected ? (() => {
             const n = byUid[selected];
             const inc = edges.filter(e => e.target === selected).length;
@@ -374,25 +376,25 @@ export function GraphView({ graphData, onOpen, focusUid }) {
                 </div>
                 <div style={{ fontFamily: "var(--font-display)", fontSize: 18, lineHeight: 1.25, color: PARCHMENT, marginBottom: 10 }}>{n.title}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 12 }}>
-                  <DStat label="degree" value={TO_ROMAN(inc + out)}/>
-                  <DStat label="out · in" value={`${TO_ROMAN(out) || "·"} · ${TO_ROMAN(inc) || "·"}`}/>
+                  <DStat label={tr("degree")} value={TO_ROMAN(inc + out)}/>
+                  <DStat label={tr("out · in")} value={`${TO_ROMAN(out) || "·"} · ${TO_ROMAN(inc) || "·"}`}/>
                 </div>
                 <button onClick={() => onOpen && onOpen(n.uid)} style={{
                   width: "100%", padding: "8px 10px", fontFamily: "var(--font-sans)", fontSize: 12,
                   background: BRONZE, color: NIGHT, border: 0, borderRadius: 3, cursor: "pointer", letterSpacing: "0.04em",
-                }}>open node →</button>
+                }}>{tr("open node →")}</button>
               </div>
             );
           })() : (
             <div style={{ fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 13, color: RAIL_MUTED, lineHeight: 1.5 }}>
-              Click a locus to isolate its first-degree neighbourhood. Drag to fix in place. Double-click to open.
+              {tr("Click a locus to isolate its first-degree neighbourhood. Drag to fix in place. Double-click to open.")}
             </div>
           )}
         </DSection>
 
         <div style={{ marginTop: "auto", padding: "12px 14px", borderTop: `1px solid ${BRONZE_DARK}33`, fontFamily: "var(--font-mono)", fontSize: 9, color: RAIL_MUTED, display: "flex", flexDirection: "column", gap: 3, letterSpacing: "0.04em" }}>
-          <span>drag · pin · dblclick · open</span>
-          <span>space · pause · esc · close</span>
+          <span>{tr("drag · pin · dblclick · open")}</span>
+          <span>{tr("space · pause · esc · close")}</span>
         </div>
       </aside>
     </div>

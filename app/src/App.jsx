@@ -5,9 +5,11 @@ import { VaultIndex } from "./components/VaultIndex.jsx";
 import { NodeDetail } from "./components/NodeDetail.jsx";
 import { GraphView } from "./components/GraphView.jsx";
 import { CommandPalette } from "./components/CommandPalette.jsx";
+import { useI18n } from "./lib/I18nProvider.jsx";
 import { getNodes, getNode, getNodeNeighbors, getRecentNodes, getGraph, getTypes } from "./lib/api.js";
 
 export default function App() {
+  const { t } = useI18n();
   const [selectedUid, setSelectedUid] = useState(null);
   const [section, setSection] = useState("all");
   // The rail row narrowing a type view: "s:<subtype>" or "u:<user type>", or null.
@@ -226,7 +228,7 @@ export default function App() {
             display: "flex", alignItems: "center", gap: 10,
           }}>
             <span>⚠</span>
-            <span>Cannot reach API — is <code>make dev-api</code> running?</span>
+            <span>{t("Cannot reach API — is")} <code>make dev-api</code>{t(" running?")}</span>
           </div>
         )}
         <div style={{ flex: 1, position: "relative", minWidth: 0, minHeight: 0, display: "flex" }}>
@@ -269,7 +271,7 @@ export default function App() {
               </span>
               <span style={{ flex: 1 }}/>
               <button onClick={() => setSection("all")} className="t-btn" style={{ padding: "4px 12px", fontSize: 11 }}>
-                ← back <span className="key">g</span>
+                {t("← back")} <span className="key">g</span>
               </button>
             </div>
             <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
@@ -284,7 +286,7 @@ export default function App() {
 
         {section === "graph" && !graphData && (
           <div style={{ flex: 1, display: "grid", placeItems: "center", background: "var(--t-bg)" }}>
-            <span className="tel">loading topology…</span>
+            <span className="tel">{t("loading topology…")}</span>
           </div>
         )}
 
@@ -295,18 +297,18 @@ export default function App() {
               background: "rgba(6,9,20,0.65)", flexShrink: 0,
               display: "flex", alignItems: "center", gap: 14,
             }}>
-              <span style={{ fontFamily: "var(--font-display)", fontWeight: 500, fontSize: 18, color: "var(--t-fg)" }}>Calibration</span>
-              <span className="latin-twin">calibratio · vault health</span>
+              <span style={{ fontFamily: "var(--font-display)", fontWeight: 500, fontSize: 18, color: "var(--t-fg)" }}>{t("Calibration")}</span>
+              <span className="latin-twin">{t("calibratio · vault health")}</span>
               <span style={{ flex: 1 }}/>
-              <span className="tel">vault · <b>{allNodes.length}</b> loci</span>
+              <span className="tel">{t("vault")} · <b>{allNodes.length}</b> loci</span>
             </div>
             <div style={{ flex: 1, display: "grid", placeItems: "center" }}>
               <div style={{ textAlign: "center" }}>
-                <div className="smcaps" style={{ marginBottom: 14 }}>valetudo · health</div>
+                <div className="smcaps" style={{ marginBottom: 14 }}>{t("valetudo · health")}</div>
                 <div style={{ fontFamily: "var(--font-display)", fontWeight: 500, fontSize: 72, color: "var(--t-fg)", lineHeight: 1 }}>
                   {allNodes.length}
                 </div>
-                <div className="tel" style={{ marginTop: 8 }}>loci in vault</div>
+                <div className="tel" style={{ marginTop: 8 }}>{t("loci in vault")}</div>
               </div>
             </div>
           </div>

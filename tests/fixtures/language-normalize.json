@@ -1,0 +1,9 @@
+{
+  "_comment": "Shared by tests/test_language.py (loci.language.normalize) and app/src/lib/i18n.test.js (normalizeLanguage). The two functions must agree; add a case here and both suites check it.",
+  "cases": [
+    ["ru", "ru-RU"], ["ru_RU", "ru-RU"], ["RU-ru", "ru-RU"], [" ru-RU ", "ru-RU"],
+    ["en", "en"], ["en-US", "en"], ["en_GB", "en"],
+    ["de", null], ["", null], [null, null], [5, null]
+  ],
+  "languages": ["en", "ru-RU"]
+}
