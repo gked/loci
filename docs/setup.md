@@ -339,6 +339,16 @@ is to put it inside a folder your existing sync client already manages
 
 ---
 
+## Language
+
+An optional `language` key in `config.yml` (or the environment variable
+`LOCI_LANGUAGE`) takes `en` (the default) or `ru-RU`, for example
+`language: ru-RU`. It makes the MCP server serve the Russian skill procedures to
+the agent (`read_skill`) and sets the web UI's default language. The UI also has
+a language switch in its header, and the browser remembers your choice.
+
+---
+
 ## Server environment variables
 
 Read by `src/loci/mcp_server.py`:
@@ -348,6 +358,7 @@ Read by `src/loci/mcp_server.py`:
 | `LOCI_TRANSPORT` | `stdio` (default) or `sse` |
 | `LOCI_VAULT_ROOT` | Path to the knowledge vault, overriding the config file |
 | `LOCI_CONFIG` | Path to the config file, overriding `~/.config/loci/config.yml` |
+| `LOCI_LANGUAGE` | `en` (default) or `ru-RU`, overriding `language` in the config file |
 | `LOCI_PORT` | SSE only, default `8000` |
 | `LOCI_TOKEN` | SSE only, optional bearer auth |
 

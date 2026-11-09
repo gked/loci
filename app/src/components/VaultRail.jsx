@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useI18n } from "../lib/I18nProvider.jsx";
+import { LANGUAGES, LANGUAGE_LABELS } from "../lib/i18n.js";
 import { getHealth, getLastChange, undoLastChange } from "../lib/api.js";
 
 // Undo takes two clicks: the first looks up what the newest change is and shows
 // it, the second does it. Nothing is written until the second.
 function UndoControl() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [step, setStep] = useState("idle"); // idle | confirm | done | error
   const [message, setMessage] = useState("");
@@ -52,21 +55,21 @@ function UndoControl() {
   return (
     <div className="undo" data-testid="undo" data-step={step}>
       {step === "idle" && (
-        <button onClick={ask} disabled={busy} data-testid="undo-last">revoca · undo last change</button>
+        <button onClick={ask} disabled={busy} data-testid="undo-last">{t("revoca · undo last change")}</button>
       )}
       {step === "confirm" && (
         <>
           <div data-testid="undo-subject">{message}</div>
-          <button onClick={confirm} disabled={busy} data-testid="undo-confirm">undo this</button>
-          <button onClick={() => { setStep("idle"); setShown(""); }} disabled={busy} data-testid="undo-cancel">cancel</button>
+          <button onClick={confirm} disabled={busy} data-testid="undo-confirm">{t("undo this")}</button>
+          <button onClick={() => { setStep("idle"); setShown(""); }} disabled={busy} data-testid="undo-cancel">{t("cancel")}</button>
         </>
       )}
       {(step === "done" || step === "error") && (
         <>
           <div data-testid="undo-result" data-state={step}>
-            {step === "done" ? `undone · ${message}` : message}
+            {step === "done" ? t("undone · {message}", { message }) : message}
           </div>
-          <button onClick={() => setStep("idle")} data-testid="undo-dismiss">ok</button>
+          <button onClick={() => setStep("idle")} data-testid="undo-dismiss">{t("ok")}</button>
         </>
       )}
     </div>
@@ -74,6 +77,7 @@ function UndoControl() {
 }
 
 function Row({ id, label, latin, icon, count, active, onNav }) {
+  const { t } = useI18n();
   return (
     <button
       className={`rail-row ${active === id ? "active" : ""}`}
@@ -86,7 +90,7 @@ function Row({ id, label, latin, icon, count, active, onNav }) {
         {icon}
       </span>
       <span style={{ flex: 1, display: "flex", flexDirection: "column", lineHeight: 1.05 }}>
-        <span>{label}</span>
+        <span>{t(label)}</span>
         {latin && (
           <span style={{ fontFamily: "var(--font-display)", fontStyle: "italic", fontSize: 9.5, color: "var(--t-fg-faint)", letterSpacing: "0.06em" }}>
             {latin}
@@ -135,6 +139,7 @@ function GroupLabel({ children }) {
 // A main type's group: collapsed until that type is chosen at the top (or here).
 // Clicking the open type's header clears the type, like its chip in the top bar.
 function TypeGroup({ type, userTypes, activeType, onNav, ...child }) {
+  const { t } = useI18n();
   const open = activeType === type.name;
   const mine = (type.subtypes || []);
   const yours = open ? userTypes : [];
@@ -159,13 +164,13 @@ function TypeGroup({ type, userTypes, activeType, onNav, ...child }) {
         <div id={bodyId}>
           {mine.length > 0 && (
             <div data-testid="subtype-strip">
-              <GroupLabel>subtypes</GroupLabel>
+              <GroupLabel>{t("subtypes")}</GroupLabel>
               {mine.map(st => <ChildRow key={st} kind="s" name={st} testid="subtype-filter" {...child}/>)}
             </div>
           )}
           {yours.length > 0 && (
             <div data-testid="usertype-strip">
-              <GroupLabel>yours</GroupLabel>
+              <GroupLabel>{t("yours")}</GroupLabel>
               {yours.map(name => <ChildRow key={name} kind="u" name={name} testid="usertype-filter" {...child}/>)}
             </div>
           )}
@@ -176,6 +181,7 @@ function TypeGroup({ type, userTypes, activeType, onNav, ...child }) {
 }
 
 export function VaultRail({ active, onNav, nodes, types = [], userTypes = [], activeType, childCounts = {}, activeChild, onChildSelect }) {
+  const { t, language, setLanguage } = useI18n();
   // The version comes from the backend, which reads it out of pyproject.toml.
   // Keeping a literal here is what let the rail drift to a "v0.4" that existed
   // nowhere else in the project. Until the request lands there is no number to
@@ -202,7 +208,7 @@ export function VaultRail({ active, onNav, nodes, types = [], userTypes = [], ac
 
       <div style={{ padding: "8px 0", display: "flex", flexDirection: "column", overflowY: "auto", flex: 1 }}>
         <div className="rail-section">
-          prima · primary <span className="roman">I</span>
+          {t("prima · primary")} <span className="roman">I</span>
         </div>
         <Row active={active} onNav={onNav} id="all"      label="All loci"  latin="omnia loca"  icon="∎" count={nodes.length}/>
         <Row active={active} onNav={onNav} id="recent"   label="Recent"    latin="recentia"    icon="↺"/>
@@ -211,7 +217,7 @@ export function VaultRail({ active, onNav, nodes, types = [], userTypes = [], ac
         {types.length > 0 && (
           <>
             <div className="rail-section">
-              genera · types <span className="roman">II</span>
+              {t("genera · types")} <span className="roman">II</span>
             </div>
             {types.map(t => (
               <TypeGroup key={t.name} type={t} userTypes={userTypes} activeType={activeType} onNav={onNav}
@@ -221,7 +227,7 @@ export function VaultRail({ active, onNav, nodes, types = [], userTypes = [], ac
         )}
 
         <div className="rail-section">
-          instrumenta · tools <span className="roman">{types.length > 0 ? "III" : "II"}</span>
+          {t("instrumenta · tools")} <span className="roman">{types.length > 0 ? "III" : "II"}</span>
         </div>
         <Row active={active} onNav={onNav} id="cmd"      label="Command"   latin="praeceptum"  icon="⌘"/>
         <Row active={active} onNav={onNav} id="settings" label="Settings"  latin="calibratio"  icon="⚙"/>
@@ -229,7 +235,7 @@ export function VaultRail({ active, onNav, nodes, types = [], userTypes = [], ac
 
       <div className="rail-foot">
         <div className="health" data-testid="rail-count" data-count={nodes.length}>
-          vault · {nodes.length} loci
+          {t("vault · {n} loci", { n: nodes.length })}
         </div>
         {history && history.state !== "unknown" && (
           <div className="history" data-testid="history-state" data-state={history.state}
@@ -238,6 +244,17 @@ export function VaultRail({ active, onNav, nodes, types = [], userTypes = [], ac
           </div>
         )}
         <UndoControl/>
+        <div className="lang" data-testid="lang-switch" role="group" aria-label={t("Language")}>
+          {LANGUAGES.map(l => (
+            <button
+              key={l}
+              onClick={() => setLanguage(l)}
+              data-testid={`lang-${l}`}
+              data-active={language === l ? "true" : "false"}
+              aria-pressed={language === l}
+            >{LANGUAGE_LABELS[l]}</button>
+          ))}
+        </div>
         <div style={{ color: "var(--t-fg-faint)", fontSize: 9 }}>~/loci</div>
       </div>
     </aside>

@@ -16,6 +16,8 @@
 ![vault: plain Markdown](https://img.shields.io/badge/vault-plain_Markdown-4a4a4a?style=flat)
 ![licence: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm_NC_1.0.0-a4421f?style=flat)
 
+![language: English](https://img.shields.io/badge/lang-en-1f3a68?style=flat) [![language: ru-RU](https://img.shields.io/badge/lang-ru--RU-a4421f?style=flat)](https://github.com/gked/loci/blob/main/README.ru.md)
+
 <br/>
 
 </div>

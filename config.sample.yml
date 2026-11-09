@@ -14,6 +14,7 @@
 vault_root: /absolute/path/to/knowledge-vault   # required; no default — setup asks until you give one
 sync_remote: nextcloud                      # rclone remote name (see sync/rclone.conf.sample)
 sync_remote_path: loci                      # path on the remote to sync knowledge-vault/ to/from
+language: en                                 # en | ru-RU — skill procedures and the web UI's default language (env: LOCI_LANGUAGE)
 created_at: 2026-03-21T14:32:00Z
 version: 1
 meta_version: 1                             # schema version used to seed knowledge-vault/meta/ — managed by vault_init.py

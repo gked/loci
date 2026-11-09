@@ -3,11 +3,13 @@ import { TypeDot } from "./TypeDot.jsx";
 import { HeaderStrip } from "./HeaderStrip.jsx";
 import { Meridian } from "./Meridian.jsx";
 import { Corners } from "./Corners.jsx";
+import { useI18n } from "../lib/I18nProvider.jsx";
 
 // Shown until /api/types answers; after that the registry's order wins.
 const FALLBACK_TYPES = ["project","topic","article","bookmark","conversation","procedure","entity","task","document","asset","log"];
 
 function ToggleSwitch({ active, onToggle, label }) {
+  const { t } = useI18n();
   return (
     <span
       onClick={onToggle}
@@ -36,12 +38,13 @@ function ToggleSwitch({ active, onToggle, label }) {
           transition: "left 0.15s, background 0.15s",
         }}/>
       </span>
-      {label}
+      {t(label)}
     </span>
   );
 }
 
 export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, types = [], showArchived, onToggleArchived, showGhost, onToggleGhost }) {
+  const { t } = useI18n();
   const [filterQ, setFilterQ] = useState("");
   const activeFilter = section?.startsWith("t:") ? section.slice(2) : "all";
   const filterTypes = ["all", ...(types.length ? types.map(t => t.name) : FALLBACK_TYPES)];
@@ -65,43 +68,43 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, types =
       <Meridian visible={false}/>
       <Corners
         bl={{ label: "focus · selectum", value: selectedUid || "—" }}
-        br={{ label: "gradus · zoom", value: "i · 100%" }}
+        br={{ label: t("gradus · zoom"), value: "i · 100%" }}
       />
 
       <HeaderStrip
-        label="All loci"
+        label={t("All loci")}
         latin="omnia loca"
         telemetry={
           <>
-            <b>{q ? displayNodes.length : nodes.length}</b>{q ? ` of ${nodes.length}` : ""} nodes · sorted by <b>updated</b> ↓
+            <b>{q ? displayNodes.length : nodes.length}</b>{q ? " " + t("of {n}", { n: nodes.length }) : ""} {t("nodes")} · {t("sorted by")} <b>{t("updated")}</b> ↓
             {showArchived && archivedCount > 0 && (
-              <span style={{ opacity: 0.55 }}> · <b>{archivedCount}</b> archived</span>
+              <span style={{ opacity: 0.55 }}> · {t("{n} archived", { n: archivedCount })}</span>
             )}
             {showGhost && ghostCount > 0 && (
-              <span style={{ opacity: 0.55 }}> · <b>{ghostCount}</b> ghost</span>
+              <span style={{ opacity: 0.55 }}> · {t("{n} ghost", { n: ghostCount })}</span>
             )}
           </>
         }
         right={
-          <span className="tel">⌘K to search</span>
+          <span className="tel">{t("⌘K to search")}</span>
         }
       />
 
       {/* filter strip */}
       <div style={{ padding: "8px 24px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--t-rule-soft)", flexShrink: 0, flexWrap: "wrap" }}>
-        <span className="smcaps">type</span>
-        {filterTypes.map((t) => (
+        <span className="smcaps">{t("type")}</span>
+        {filterTypes.map((ty) => (
           <span
-            key={t}
+            key={ty}
             className="t-chip type-chip"
-            onClick={() => onNav(t === "all" ? "all" : `t:${t}`)}
+            onClick={() => onNav(ty === "all" ? "all" : `t:${ty}`)}
             data-testid="type-filter"
-            data-type={t}
-            data-active={activeFilter === t ? "true" : "false"}
+            data-type={ty}
+            data-active={activeFilter === ty ? "true" : "false"}
             style={{ cursor: "pointer" }}
           >
-            {t !== "all" && <TypeDot type={t} size={6}/>}
-            {t}
+            {ty !== "all" && <TypeDot type={ty} size={6}/>}
+            {ty === "all" ? t("all") : ty}
           </span>
         ))}
         <span style={{ flex: 1 }}/>
@@ -109,14 +112,14 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, types =
           <input
             value={filterQ}
             onChange={e => setFilterQ(e.target.value)}
-            placeholder="filter by uid or title…"
+            placeholder={t("filter by uid or title…")}
             className="t-input"
             style={{ fontSize: 11, padding: "3px 22px 3px 8px", width: 180 }}
           />
           {filterQ && (
             <button
               onClick={() => setFilterQ("")}
-              aria-label="Clear filter"
+              aria-label={t("Clear filter")}
               style={{
                 position: "absolute", right: 6,
                 fontFamily: "var(--font-mono)", fontSize: 10,
@@ -139,10 +142,10 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, types =
         letterSpacing: "0.12em", textTransform: "uppercase", flexShrink: 0,
       }}>
         <span/>
-        <span>title <span style={{ fontFamily: "var(--font-display)", fontStyle: "italic", color: "var(--t-bronze-d)", letterSpacing: "0.04em", textTransform: "lowercase" }}>· titulus</span></span>
-        <span>type</span>
+        <span>{t("title")} <span style={{ fontFamily: "var(--font-display)", fontStyle: "italic", color: "var(--t-bronze-d)", letterSpacing: "0.04em", textTransform: "lowercase" }}>· titulus</span></span>
+        <span>{t("type")}</span>
         <span>uid</span>
-        <span>updated</span>
+        <span>{t("updated")}</span>
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
@@ -162,7 +165,7 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, types =
             <TypeDot type={n.type}/>
             <div>
               <div className="lr-title" style={isArchived ? { textDecoration: "line-through", textDecorationColor: "var(--t-fg-faint)" } : undefined}>
-                {isGhost ? <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.06em", color: "var(--t-fg-faint)", fontStyle: "italic" }}>missing node</span> : n.title}
+                {isGhost ? <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.06em", color: "var(--t-fg-faint)", fontStyle: "italic" }}>{t("missing node")}</span> : n.title}
               </div>
               {!isGhost && n.tags && n.tags.length > 0 && (
                 <div style={{ marginTop: 3, display: "flex", gap: 6 }}>
@@ -176,9 +179,9 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, types =
             </div>
             <span className="lr-type">
               {isGhost
-                ? <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--t-fg-faint)" }}>ghost</span>
+                ? <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--t-fg-faint)" }}>{t("ghost")}</span>
                 : isArchived
-                  ? <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--t-fg-faint)" }}>archived</span>
+                  ? <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--t-fg-faint)" }}>{t("archived")}</span>
                   : <>
                       {n.type}
                       {n.subtype && (
@@ -195,7 +198,7 @@ export function VaultIndex({ nodes, selectedUid, onOpen, section, onNav, types =
         })}
         {displayNodes.length === 0 && (
           <div data-testid="index-empty" style={{ padding: "48px 24px", textAlign: "center", fontFamily: "var(--font-display)", fontStyle: "italic", color: "var(--t-fg-faint)", fontSize: 14 }}>
-            {q ? `vacuum · no match for "${filterQ}"` : "vacuum · no loci found"}
+            {q ? t('vacuum · no match for "{q}"', { q: filterQ }) : t("vacuum · no loci found")}
           </div>
         )}
       </div>
