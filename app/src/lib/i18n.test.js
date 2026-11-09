@@ -1,6 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MESSAGES, normalizeLanguage, translate } from "./i18n.js";
+import { readFileSync } from "node:fs";
+import { LANGUAGES, MESSAGES, normalizeLanguage, translate } from "./i18n.js";
+
+// Shared with tests/test_language.py: this function and loci.language.normalize
+// must give the same answer for every case.
+const SHARED = JSON.parse(
+  readFileSync(new URL("../../../tests/fixtures/language-normalize.json", import.meta.url), "utf8"),
+);
+
+test("normalizeLanguage agrees with the Python normalizer on every shared case", () => {
+  for (const [raw, expected] of SHARED.cases) {
+    assert.equal(normalizeLanguage(raw), expected, JSON.stringify(raw));
+  }
+});
+
+test("the supported languages match the server's", () => {
+  assert.deepEqual(LANGUAGES, SHARED.languages);
+});
 
 test("English is the key: it returns itself, with variables filled in", () => {
   assert.equal(translate("All loci", "en"), "All loci");

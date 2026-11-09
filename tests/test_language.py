@@ -6,13 +6,14 @@ it and the tools match on (tool names, frontmatter fields, the skill
 frontmatter the host agent triggers on, the 🔒 headings) are not.
 """
 
+import json
 import re
 from pathlib import Path
 
 import pytest
 
 from loci import api, skill_assembly
-from loci.language import ENV_VAR, get_language, normalize
+from loci.language import ENV_VAR, SUPPORTED_LANGUAGES, get_language, normalize
 
 SKILLS = ["loci-save", "loci-query", "loci-inbox", "loci-ingest-directory"]
 SKILLS_DIR = Path(skill_assembly.SKILLS_DIR)
@@ -40,13 +41,20 @@ def _headings(text: str) -> list[tuple[int, bool]]:
 # Resolution
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("raw, expected", [
-    ("ru", "ru-RU"), ("ru_RU", "ru-RU"), ("RU-ru", "ru-RU"), (" ru-RU ", "ru-RU"),
-    ("en", "en"), ("en-US", "en"),
-    ("de", None), ("", None), (None, None), (5, None),
-])
+# Shared with app/src/lib/i18n.test.js: the Python and JavaScript normalizers
+# must give the same answer for every case.
+SHARED = json.loads(
+    (Path(__file__).parent / "fixtures" / "language-normalize.json").read_text(encoding="utf-8")
+)
+
+
+@pytest.mark.parametrize("raw, expected", SHARED["cases"])
 def test_normalize(raw, expected):
     assert normalize(raw) == expected
+
+
+def test_supported_languages_match_the_shared_list():
+    assert list(SUPPORTED_LANGUAGES) == SHARED["languages"]
 
 
 def test_default_is_english():

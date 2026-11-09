@@ -21,6 +21,8 @@ SUPPORTED_LANGUAGES = ("en", "ru-RU")
 ENV_VAR = "LOCI_LANGUAGE"
 
 
+# Mirrored by normalizeLanguage() in app/src/lib/i18n.js. Both are checked
+# against tests/fixtures/language-normalize.json; change them together.
 def normalize(value) -> str | None:
     """"ru", "ru_RU", "ru-ru" -> "ru-RU"; "en-US" -> "en"; anything else None."""
     if not isinstance(value, str):

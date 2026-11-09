@@ -13,6 +13,8 @@ export const DEFAULT_LANGUAGE = "en";
 export const LANGUAGE_LABELS = { "en": "EN", "ru-RU": "RU" };
 export const STORAGE_KEY = "loci_language";
 
+// Mirrors loci.language.normalize (src/loci/language.py); both are checked
+// against tests/fixtures/language-normalize.json — change them together.
 // "ru", "ru_RU", "ru-ru" -> "ru-RU"; anything unknown -> null.
 export function normalizeLanguage(value) {
   if (typeof value !== "string") return null;
