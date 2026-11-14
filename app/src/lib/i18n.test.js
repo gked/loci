@@ -26,7 +26,7 @@ test("English is the key: it returns itself, with variables filled in", () => {
 
 test("Russian returns the entry and fills variables", () => {
   assert.equal(translate("Recent", "ru-RU"), "Недавние");
-  assert.equal(translate("{n} active", "ru-RU", { n: 3 }), "3 активно");
+  assert.equal(translate("{n} active", "ru-RU", { n: 3 }), "активных: 3");
 });
 
 test("a string with no entry falls back to English", () => {

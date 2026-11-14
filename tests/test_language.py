@@ -159,6 +159,27 @@ def test_the_users_additions_are_still_appended_in_russian(tmp_vault, monkeypatc
     assert out.index("Always ask twice.") > out.index(f"# {skill_assembly.OVERLAY_HEADING}")
 
 
+def test_the_no_vault_notice_is_in_russian(monkeypatch, tmp_path):
+    monkeypatch.delenv("LOCI_VAULT_ROOT", raising=False)
+    monkeypatch.setenv("LOCI_CONFIG", str(tmp_path / "absent" / "config.yml"))
+    monkeypatch.setenv(ENV_VAR, "ru-RU")
+
+    out = api.read_skill("loci-save")
+
+    assert "Хранилище ещё не настроено" in out
+    assert "No vault is configured yet" not in out
+
+
+def test_the_seed_fallback_label_is_in_russian(tmp_vault, monkeypatch):
+    monkeypatch.setenv(ENV_VAR, "ru-RU")
+
+    out = api.read_skill("loci-save")
+    heading = next(l for l in out.splitlines() if l.startswith(f"# {skill_assembly.OVERLAY_HEADING}"))
+
+    assert "поставляемый вариант" in heading
+    assert "packaged default" not in heading
+
+
 def test_a_skill_without_a_translation_is_served_in_english(tmp_vault, monkeypatch):
     """No SKILL.<lang>.md must not fail, and must not get a Russian preamble over English text."""
     monkeypatch.setenv(ENV_VAR, "ru-RU")
