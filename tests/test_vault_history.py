@@ -18,6 +18,7 @@ from dulwich.repo import Repo
 
 from loci import api
 from loci.tools import nx_graph, vault_history
+from loci.tools.vault_init import config_path
 
 
 @pytest.fixture(autouse=True)
@@ -42,10 +43,19 @@ def repo(vault):
     return Repo(str(vault_history.history_dir(vault)))
 
 
+def tip(r):
+    """This computer's newest commit. HEAD names the legacy `main`, which no write moves."""
+    return r.refs[vault_history.own_ref()]
+
+
+def ref_lock(vault):
+    return vault_history.history_dir(vault) / (vault_history.own_ref().decode() + ".lock")
+
+
 def commits(vault):
     """Every commit, newest first."""
     r = repo(vault)
-    return [e.commit for e in r.get_walker(include=[r.head()])]
+    return [e.commit for e in r.get_walker(include=[tip(r)])]
 
 
 def log(vault):
@@ -77,7 +87,7 @@ def blob_at(vault, commit, rel):
 def in_head(vault, rel):
     r = repo(vault)
     try:
-        tree_lookup_path(r.object_store.__getitem__, r[r.head()].tree, rel.encode())
+        tree_lookup_path(r.object_store.__getitem__, r[tip(r)].tree, rel.encode())
         return True
     except KeyError:
         return False
@@ -268,7 +278,7 @@ def test_an_interrupted_first_write_is_rebuilt_on_the_next_one(tmp_vault, monkey
 
 def test_a_held_branch_lock_is_retried(tmp_vault, monkeypatch):
     save("History One")
-    lock = vault_history.history_dir(tmp_vault) / "refs" / "heads" / "main.lock"
+    lock = ref_lock(tmp_vault)
     lock.write_text("")
     monkeypatch.setattr(vault_history.time, "sleep", lambda s: lock.unlink(missing_ok=True))
     save("History Two")
@@ -277,13 +287,13 @@ def test_a_held_branch_lock_is_retried(tmp_vault, monkeypatch):
 
 def test_a_lock_that_never_clears_is_logged_and_the_write_still_succeeds(tmp_vault, monkeypatch, caplog):
     save("History One")
-    lock = vault_history.history_dir(tmp_vault) / "refs" / "heads" / "main.lock"
+    lock = ref_lock(tmp_vault)
     lock.write_text("")
     monkeypatch.setattr(vault_history.time, "sleep", lambda s: None)
     with caplog.at_level(logging.WARNING):
         result = save("History Two")
     assert result["uid"]
-    assert "main.lock" in caplog.text and "delete that file" in caplog.text
+    assert ref_lock(tmp_vault).name in caplog.text and "delete that file" in caplog.text
     assert subjects(tmp_vault)[0].startswith("Add document: History One")
     assert vault_history.status(tmp_vault)["state"] == "error"
 
@@ -370,9 +380,9 @@ def test_the_store_is_a_valid_git_repository(tmp_vault):
     store = str(vault_history.history_dir(tmp_vault))
     run = lambda *a: subprocess.run(["git", "--git-dir", store, *a], capture_output=True, text=True)
     assert run("fsck").returncode == 0
-    assert run("log", "-1", "--format=%an|%s").stdout.startswith("loci|Add document: History One")
+    assert run("log", "--all", "-1", "--format=%an|%s").stdout.startswith("loci|Add document: History One")
     # The timezone sign is easy to get backwards: git must read back our own offset.
-    assert run("log", "-1", "--format=%ai").stdout.split()[-1] == time.strftime("%z")
+    assert run("log", "--all", "-1", "--format=%ai").stdout.split()[-1] == time.strftime("%z")
 
 
 def test_status_says_what_state_history_is_in(tmp_vault, monkeypatch):
@@ -442,7 +452,7 @@ def test_two_first_commits_cannot_both_win(tmp_vault):
     second = vault_history._commit(repo_, None, {}, {}, "two", vault_history.SERVICE_AUTHOR, force=True)[0]
     assert vault_history._advance(repo_, None, first.id) is True
     assert vault_history._advance(repo_, None, second.id) is False
-    assert repo_.refs[vault_history.BRANCH] == first.id
+    assert repo_.refs[vault_history.own_ref()] == first.id
 
 
 def test_a_second_process_creating_the_store_first_is_not_an_error(tmp_vault, monkeypatch):
@@ -509,7 +519,11 @@ def test_a_file_that_vanishes_during_the_scan_does_not_stop_the_write(tmp_vault,
         def __enter__(self): return (Entry(e) for e in self._s.__enter__())
         def __exit__(self, *a): return self._s.__exit__(*a)
 
-    monkeypatch.setattr(vault_history.os, "scandir", Scan)
+    # Only the vault walk is faked: dulwich lists the refs folder through the same call.
+    monkeypatch.setattr(
+        vault_history.os, "scandir",
+        lambda path: real_scan(path) if ".loci" in str(path) else Scan(path),
+    )
     save("History One")
     assert subjects(tmp_vault)[0].startswith("Add document: History One")
     assert vault_history.status(tmp_vault)["state"] == "on"
@@ -561,7 +575,7 @@ def test_a_skipped_walk_still_commits_the_written_file(tmp_vault, monkeypatch):
 
 def test_a_held_lock_gets_one_retry_not_a_slow_series(tmp_vault, monkeypatch):
     save("History One")
-    lock = vault_history.history_dir(tmp_vault) / "refs" / "heads" / "main.lock"
+    lock = ref_lock(tmp_vault)
     lock.write_text("")
     sleeps = []
     monkeypatch.setattr(vault_history.time, "sleep", lambda s: sleeps.append(s))
@@ -583,7 +597,7 @@ def test_the_next_good_write_clears_a_failure_shown_by_another_process(tmp_vault
     vault_history._last_error.clear()
     save("History Two")
     assert vault_history.status(tmp_vault)["state"] == "on"
-    assert not (tmp_vault / vault_history.STATUS_FILE).exists()
+    assert not vault_history.status_path(tmp_vault).exists()
 
 
 def test_an_edit_that_keeps_the_size_and_restores_the_time_is_still_seen(tmp_vault):
@@ -597,7 +611,7 @@ def test_an_edit_that_keeps_the_size_and_restores_the_time_is_still_seen(tmp_vau
     os.utime(hand, ns=(stat.st_atime_ns, stat.st_mtime_ns))   # the old modification time, as rsync -t does
     save("History Three")
     r = repo(tmp_vault)
-    assert blob_at(tmp_vault, r[r.head()], "by-hand.md") == "bbbb"
+    assert blob_at(tmp_vault, r[tip(r)], "by-hand.md") == "bbbb"
 
 
 def test_obsidians_settings_folder_is_never_recorded(tmp_vault):
@@ -654,7 +668,7 @@ def test_a_failure_cleared_by_another_process_is_not_shown_again(tmp_vault):
     save("History One")
     vault_history._set_error(tmp_vault, "transient")
     assert vault_history.status(tmp_vault)["state"] == "error"
-    (tmp_vault / vault_history.STATUS_FILE).unlink()       # the MCP server's next good write does this
+    vault_history.status_path(tmp_vault).unlink()       # the MCP server's next good write does this
     assert vault_history.status(tmp_vault)["state"] == "on"
 
 
@@ -701,12 +715,12 @@ def test_opening_the_store_puts_head_back_on_main(tmp_vault):
     store = Repo(str(vault_history.history_dir(tmp_vault)))
     store.refs.set_symbolic_ref(b"HEAD", b"refs/heads/master")
     vault_history._open(tmp_vault)
-    assert Repo(str(vault_history.history_dir(tmp_vault))).refs.follow(b"HEAD")[0][-1] == vault_history.BRANCH
+    assert Repo(str(vault_history.history_dir(tmp_vault))).refs.follow(b"HEAD")[0][-1] == vault_history.LEGACY_BRANCH
 
 
 def test_a_history_that_cannot_be_read_shows_as_an_error(tmp_vault, monkeypatch):
     saved = save("History One")
-    monkeypatch.setattr(vault_history, "_head", lambda r: (_ for _ in ()).throw(OSError("corrupt object")))
+    monkeypatch.setattr(vault_history, "_tips", lambda r: (_ for _ in ()).throw(OSError("corrupt object")))
     assert vault_history.history(tmp_vault, saved["path"]) == []
     assert vault_history.status(tmp_vault) == {"state": "error", "detail": "corrupt object"}
 
@@ -717,7 +731,7 @@ def test_a_history_that_cannot_be_read_shows_as_an_error(tmp_vault, monkeypatch)
 
 def head_short(vault):
     r = repo(vault)
-    return r.head().decode("ascii")[:7]
+    return tip(r).decode("ascii")[:7]
 
 
 def test_write_results_carry_the_commit(tmp_vault):
@@ -898,8 +912,8 @@ def test_a_hash_prefix_that_names_two_commits_is_refused(tmp_vault):
 def test_a_full_hash_resolves_directly_and_an_unknown_one_is_refused(tmp_vault):
     save("History One")
     repo_ = repo(tmp_vault)
-    full = repo_.head().decode()
-    assert vault_history._resolve(repo_, full) == repo_.head()
+    full = tip(repo_).decode()
+    assert vault_history._resolve(repo_, full) == tip(repo_)
     with pytest.raises(vault_history.HistoryError, match="No commit"):
         vault_history._resolve(repo_, "0" * 40)
 
@@ -1516,3 +1530,295 @@ def test_the_history_caches_keep_only_the_newest_vaults():
         vault_history._remember(cache, f"v{n}", n)
     assert len(cache) == vault_history._CACHE_VAULTS
     assert "v0" not in cache and f"v{vault_history._CACHE_VAULTS + 2}" in cache
+
+
+# ---------------------------------------------------------------------------
+# Several computers writing one synced vault
+#
+# A second computer is a second config folder: the computer id lives beside
+# config.yml, so pointing LOCI_CONFIG elsewhere makes this process write as
+# another computer into the same vault folder, as a sync tool would leave it.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def as_computer(tmp_path, monkeypatch):
+    def switch(name):
+        monkeypatch.setenv("LOCI_CONFIG", str(tmp_path / f"cfg-{name}" / "config.yml"))
+        return vault_history.computer_id().encode()
+    return switch
+
+
+def branches(vault):
+    return {n: s for n, s in repo(vault).refs.as_dict(b"refs/heads").items()}
+
+
+def parents_of(vault, sha):
+    return repo(vault)[sha].parents
+
+
+def test_the_computer_id_is_made_once_and_kept_outside_the_vault(tmp_vault, as_computer):
+    first = as_computer("a")
+    assert as_computer("a") == first
+    assert as_computer("b") != first
+    save("History One")
+    assert not any(first.decode() in p.name for p in tmp_vault.rglob("*") if p.is_file() and ".loci/history/" not in p.as_posix())
+    assert (config_path().parent / "computer-id").read_text().strip() == vault_history.computer_id()
+
+
+def test_a_damaged_computer_id_file_is_replaced(tmp_vault, as_computer):
+    as_computer("a")
+    (config_path().parent / "computer-id").write_text("not an id")
+    vault_history._computer_ids.clear()
+    assert vault_history.computer_id().startswith("c-")
+
+
+def test_each_computer_writes_only_its_own_branch(tmp_vault, as_computer):
+    a = as_computer("a")
+    save("Alpha")
+    a_tip = branches(tmp_vault)[a]
+
+    b = as_computer("b")
+    save("Beta")
+
+    found = branches(tmp_vault)
+    assert set(found) == {a, b}
+    assert found[a] == a_tip                    # B's write never moved A's pointer
+    assert b"main" not in found                 # and nobody writes the legacy line
+
+
+def test_head_is_the_same_on_every_computer(tmp_vault, as_computer):
+    as_computer("a")
+    save("Alpha")
+    head_a = (vault_history.history_dir(tmp_vault) / "HEAD").read_text()
+    as_computer("b")
+    save("Beta")
+    assert (vault_history.history_dir(tmp_vault) / "HEAD").read_text() == head_a == "ref: refs/heads/main\n"
+
+
+def test_a_vault_with_the_legacy_main_branch_is_taken_over(tmp_vault, as_computer):
+    a = as_computer("a")
+    first = save("Before")
+    r = repo(tmp_vault)
+    old = r.refs[b"refs/heads/" + a]
+    r.refs.add_if_new(b"refs/heads/main", old)          # a store written before per-computer branches
+    r.refs.remove_if_equals(b"refs/heads/" + a, old)
+    assert set(branches(tmp_vault)) == {b"main"}
+
+    save("After")
+
+    found = branches(tmp_vault)
+    assert found[b"main"] == old                        # the old line is left as it was
+    assert parents_of(tmp_vault, found[a])              # this computer continues from it
+    listed = vault_history.history(tmp_vault, first["path"])
+    assert [c["subject"].split(" (")[0] for c in listed] == ["Add document: Before"]
+
+
+def test_a_new_computer_starts_from_the_commits_that_are_already_there(tmp_vault, as_computer):
+    as_computer("a")
+    save("Alpha")
+    as_computer("b")
+    save("Beta")
+    assert "Baseline: vault before history tracking" not in subjects(tmp_vault)[:2]
+    assert subjects(tmp_vault)[-1] == "Baseline: vault before history tracking"
+    assert len([s for s in subjects(tmp_vault) if s.startswith("Baseline")]) == 1
+
+
+def sync_in(tmp_vault, as_computer):
+    """Computer A saves Alpha, B saves Beta on top of it, and the vault folder
+    holds both files while A's branch still lacks Beta: what A finds after the
+    sync tool has copied B's files over."""
+    a = as_computer("a")
+    alpha = save("Alpha")
+    b = as_computer("b")
+    beta = save("Beta")
+    as_computer("a")
+    return a, b, alpha, beta
+
+
+def test_files_that_arrive_from_another_computer_are_a_merge_not_an_outside_edit(tmp_vault, as_computer):
+    a, b, alpha, beta = sync_in(tmp_vault, as_computer)
+
+    save("Gamma")
+
+    found = branches(tmp_vault)
+    merge = repo(tmp_vault)[repo(tmp_vault)[found[a]].parents[0]]
+    assert merge.message.decode().splitlines()[0] == f"Synced from {b.decode()}"
+    assert merge.parents[1] == found[b]                  # the other computer's line is the second parent
+    assert vault_history.OUTSIDE_MESSAGE not in subjects(tmp_vault)
+    assert vault_history.find_path(tmp_vault, beta["uid"]) == rel(tmp_vault, beta)
+
+
+def test_the_merge_commit_holds_exactly_what_the_other_computer_changed(tmp_vault, as_computer):
+    a, b, alpha, beta = sync_in(tmp_vault, as_computer)
+
+    save("Gamma")
+
+    found = branches(tmp_vault)
+    merge = repo(tmp_vault)[repo(tmp_vault)[found[a]].parents[0]]
+    assert files_changed(tmp_vault, merge) == [rel(tmp_vault, beta)]
+
+
+def test_a_local_edit_made_while_files_arrive_is_still_an_outside_edit(tmp_vault, as_computer):
+    a, b, alpha, beta = sync_in(tmp_vault, as_computer)
+    (tmp_vault / "by-hand.md").write_text("typed in Obsidian")
+
+    save("Gamma")
+
+    subs = subjects(tmp_vault)
+    assert f"Synced from {b.decode()}" in subs
+    assert vault_history.OUTSIDE_MESSAGE in subs
+    outside = next(c for c in commits(tmp_vault) if c.message.decode().startswith(vault_history.OUTSIDE_MESSAGE))
+    assert files_changed(tmp_vault, outside) == ["by-hand.md"]   # and Beta is not in it
+
+
+def test_another_computers_line_is_not_joined_until_all_of_it_has_arrived(tmp_vault, as_computer):
+    a = as_computer("a")
+    save("Alpha")
+    b = as_computer("b")
+    first = save("Beta")
+    second = save("Delta")
+    as_computer("a")
+    held_back = Path(second["path"])
+    text = held_back.read_text()
+    held_back.unlink()                                   # the sync tool has not delivered it yet
+
+    save("Gamma")
+
+    assert f"Synced from {b.decode()}" not in subjects(tmp_vault)
+    assert vault_history.OUTSIDE_MESSAGE in subjects(tmp_vault)   # Beta is recorded as what it looks like
+
+    held_back.write_text(text)                           # now it arrives
+    save("Epsilon")
+
+    merge = next(c for c in commits(tmp_vault) if c.message.decode().startswith("Synced from"))
+    assert merge.parents[1] == branches(tmp_vault)[b]
+    assert files_changed(tmp_vault, merge) == [rel(tmp_vault, second)]
+
+
+def test_a_second_write_does_not_join_the_same_line_twice(tmp_vault, as_computer):
+    sync_in(tmp_vault, as_computer)
+    save("Gamma")
+    save("Delta")
+    assert len([s for s in subjects(tmp_vault) if s.startswith("Synced from")]) == 1
+
+
+def test_a_line_that_the_vault_contradicts_is_not_joined(tmp_vault, as_computer):
+    """Both computers changed one note: the sync tool keeps one version, so the
+    vault matches only one line, and recording a merge would lie."""
+    a = as_computer("a")
+    note = save("Shared")
+    as_computer("b")
+    api.patch(rel(tmp_vault, note), updates={"summary": "from b"})
+    as_computer("a")
+    Path(note["path"]).write_text(Path(note["path"]).read_text().replace("from b", "from a"))   # the other version won
+
+    save("Gamma")
+
+    assert not any(s.startswith("Synced from") for s in subjects(tmp_vault))
+
+
+def test_the_history_shows_every_computers_commits(tmp_vault, as_computer):
+    a, b, alpha, beta = sync_in(tmp_vault, as_computer)
+    listed = vault_history.history(tmp_vault, beta["path"])
+    assert [c["subject"].split(" (")[0] for c in listed] == ["Add document: Beta"]
+    save("Gamma")
+    # The merge only carries Beta's file over unchanged, so, as in `git log <file>`,
+    # the commit that wrote it is the one the file's history shows.
+    again = vault_history.history(tmp_vault, beta["path"])
+    assert [c["subject"].split(" (")[0] for c in again] == ["Add document: Beta"]
+
+
+def test_a_hash_from_another_computers_line_resolves(tmp_vault, as_computer):
+    a, b, alpha, beta = sync_in(tmp_vault, as_computer)
+    theirs = branches(tmp_vault)[b].decode()
+    assert vault_history._resolve(repo(tmp_vault), theirs[:8]) == theirs.encode()
+    assert "Beta" in vault_history.show(tmp_vault, theirs[:8], beta["path"])
+
+
+def test_head_means_this_computers_branch(tmp_vault, as_computer):
+    a, b, alpha, beta = sync_in(tmp_vault, as_computer)
+    assert vault_history._resolve(repo(tmp_vault), "HEAD") == branches(tmp_vault)[a]
+
+
+def test_undo_refuses_a_commit_that_holds_another_computers_changes(tmp_vault, as_computer):
+    a, b, alpha, beta = sync_in(tmp_vault, as_computer)
+    assert vault_history.before_write(tmp_vault, [beta["path"]]) is None   # joins the line, adds no outside commit
+    with pytest.raises(vault_history.HistoryError, match="another computer"):
+        vault_history.head_changes(tmp_vault)
+
+
+def test_an_error_on_one_computer_does_not_show_on_another(tmp_vault, as_computer):
+    as_computer("a")
+    save("Alpha")
+    vault_history._set_error(tmp_vault, "disk full")
+    assert vault_history.status(tmp_vault)["state"] == "error"
+    as_computer("b")
+    assert vault_history.status(tmp_vault)["state"] == "on"
+
+
+def test_a_branch_whose_objects_have_not_arrived_is_ignored(tmp_vault, as_computer):
+    as_computer("a")
+    save("Alpha")
+    ghost = vault_history.history_dir(tmp_vault) / "refs" / "heads" / "c-deadbeef"
+    ghost.write_text("1" * 40 + "\n")                      # the ref arrived before its commit
+
+    saved = save("Beta")
+
+    assert vault_history.status(tmp_vault)["state"] == "on"
+    assert saved.get("commit")
+    assert b"c-deadbeef" not in vault_history._tips(repo(tmp_vault))
+
+
+def test_two_computers_never_share_a_file_that_both_write(tmp_vault, as_computer):
+    """The point of the design: after each has written, no path in the store is
+    one that both computers rewrote, so a sync tool has nothing to clash on."""
+    a = as_computer("a")
+    save("Alpha")
+    before = {p: p.read_bytes() for p in vault_history.history_dir(tmp_vault).rglob("*") if p.is_file()}
+    b = as_computer("b")
+    save("Beta")
+    changed = [p for p, data in before.items() if p.read_bytes() != data]
+    assert changed == []        # B's write only added files
+
+
+def test_reads_work_while_a_branch_is_missing_older_commits(tmp_vault, as_computer):
+    """A sync tool can bring a branch and its newest commit before the older
+    commits. The reads answer from the lines that are whole, and keep nothing
+    from the partial walk, so the full answer returns once the sync ends."""
+    as_computer("a")
+    alpha = save("Alpha")
+    b = as_computer("b")
+    save("Beta")
+    save("Gamma")
+    store = vault_history.history_dir(tmp_vault) / "objects"
+    parent = repo(tmp_vault)[branches(tmp_vault)[b]].parents[0].decode()
+    object_file = store / parent[:2] / parent[2:]
+    kept = object_file.read_bytes()
+    object_file.unlink()                                 # B's tip stays; its parent has not arrived
+    vault_history._commit_ids_cache.clear()
+    vault_history._uid_index.clear()
+
+    listed = vault_history.history(tmp_vault, alpha["path"])
+    assert [c["subject"].split(" (")[0] for c in listed] == ["Add document: Alpha"]
+    assert vault_history.find_path(tmp_vault, alpha["uid"]) == rel(tmp_vault, alpha)
+    assert vault_history._uid_index == {}                # the partial answer was not kept
+
+    object_file.write_bytes(kept)                        # the sync ends
+    assert vault_history.find_path(tmp_vault, alpha["uid"]) == rel(tmp_vault, alpha)
+    assert vault_history._uid_index
+
+
+def test_a_write_works_while_another_computers_line_is_missing_older_commits(tmp_vault, as_computer):
+    as_computer("a")
+    save("Alpha")
+    b = as_computer("b")
+    save("Beta")
+    save("Gamma")
+    parent = repo(tmp_vault)[branches(tmp_vault)[b]].parents[0].decode()
+    (vault_history.history_dir(tmp_vault) / "objects" / parent[:2] / parent[2:]).unlink()
+    as_computer("a")
+
+    saved = save("Delta")
+
+    assert saved.get("commit")
+    assert vault_history.status(tmp_vault)["state"] == "on"

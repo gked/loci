@@ -8,8 +8,18 @@ user keeps in the vault, and is read and written with dulwich, a pure-Python
 Git library. Nothing here runs the `git` command, so the history works on a
 machine that has no Git installed. The repository has no index and no working
 tree of its own: a commit is built straight from the files on disk, so
-`git --git-dir vault/.loci/history log` and `show` read it, and a second
+`git --git-dir vault/.loci/history log --all` and `show` read it, and a second
 process can write beside the first without an index lock.
+
+The vault can sync across computers (Nextcloud, say), and a sync tool cannot
+merge two writers of one file. So each computer writes only its own branch,
+refs/heads/<computer id>; the id is made once and kept beside the config, never
+in the vault. Commit objects are named by their hash and never change, so they
+sync safely. The history reads every branch together. When files arrive from
+another computer, they are recorded as a merge commit that has that computer's
+branch as its second parent, not as an edit made outside Loci. HEAD never moves:
+it names refs/heads/main, the line every store had before this, so the one
+file every computer shares is the same on all of them.
 
 Every API write calls record() once, after the file is on disk. record() makes
 one commit that holds exactly the paths that write touched. Before that it
@@ -37,14 +47,16 @@ import os
 import re
 import threading
 import time
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
 from dulwich.diff_tree import tree_changes
+from dulwich.errors import MissingCommitError
 from dulwich.file import FileLocked
-from dulwich.graph import can_fast_forward
+from dulwich.graph import can_fast_forward, find_merge_base
 from dulwich.index import commit_tree
 from dulwich.object_store import iter_tree_contents, tree_lookup_path
 from dulwich.objects import ZERO_SHA, Blob, Commit
@@ -56,13 +68,17 @@ log = logging.getLogger(__name__)
 
 SERVICE_AUTHOR = "loci <loci@localhost>"
 HISTORY_DIR = Path(".loci") / "history"
-BRANCH = b"refs/heads/main"
+LEGACY_BRANCH = b"refs/heads/main"   # HEAD names it on every computer; no write moves it
+COMPUTER_ID_FILE = "computer-id"
+_ID_RE = re.compile(r"c-[0-9a-f]{8}")
 BASELINE_MESSAGE = "Baseline: vault before history tracking"
 OUTSIDE_MESSAGE = "Changes made outside Loci"
+SYNCED_MESSAGE = "Synced from"     # + the other computer's id
 
 # The MCP and UI servers are separate processes that can commit to the same
-# repository. The branch is moved with a compare-and-swap, so the loser of a
-# race rebuilds its commit on the winner's and tries again.
+# repository, on the same computer, so on the same branch. The branch is moved
+# with a compare-and-swap, so the loser of a race rebuilds its commit on the
+# winner's and tries again.
 _RACE_ATTEMPTS = 3
 _RACE_WAIT_SECONDS = 0.2
 
@@ -95,13 +111,14 @@ _stat_cache: dict[tuple[str, bytes], tuple[tuple[int, int, int], bytes]] = {}
 
 # vault root -> why the last attempt failed. Cleared by the next success. The MCP
 # and UI servers are separate processes, so the reason is also written to
-# STATUS_FILE, where the other one reads it; this dict is the fallback for a
+# status_path(), where the other one reads it; this dict is the fallback for a
 # disk that will not take that file either.
 _last_error: dict[str, str] = {}
 # Bumped by every _set_error in this process, so two stamps of the same reason
 # still differ when the status file has no usable mtime.
 _error_count = 0
-STATUS_FILE = Path(".loci") / "history-status.json"
+# One file per computer: a failure on one computer must not show on another.
+STATUS_DIR = Path(".loci")
 
 
 # A commit as the agent names it: a hash, optionally stepped back ("abc123~1" is
@@ -114,19 +131,70 @@ class HistoryError(Exception):
     version. The message is for the agent to read."""
 
 
+_computer_ids: dict[str, str] = {}     # id file path -> id, so a write does not re-read it
+
+
+def computer_id() -> str:
+    """This computer's id, made on first use and kept in the config folder next
+    to config.yml. It is never in the vault, because a vault that syncs would
+    hand one computer's id to all the others. The hostname is no substitute: it
+    changes, and two computers can share one. When the file cannot be written
+    the id lasts for this process only, which costs a branch per run."""
+    from loci.tools.vault_init import config_path
+    path = config_path().parent / COMPUTER_ID_FILE
+    key = str(path)
+    known = _computer_ids.get(key)
+    if known:
+        return known
+
+    def read() -> str:
+        try:
+            return path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+
+    found = read()
+    if not _ID_RE.fullmatch(found):
+        found = "c-" + uuid.uuid4().hex[:8]
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with open(path, "x", encoding="utf-8") as handle:   # two processes starting at once agree
+                    handle.write(found + "\n")
+            except FileExistsError:
+                other = read()
+                if _ID_RE.fullmatch(other):
+                    found = other
+                else:                                               # a damaged file: replace it
+                    path.write_text(found + "\n", encoding="utf-8")
+        except OSError as e:
+            log.warning("computer id cannot be saved (%s); using %s for this run only", e, found)
+    _computer_ids[key] = found
+    return found
+
+
+def own_ref() -> bytes:
+    """The branch this computer writes."""
+    return b"refs/heads/" + computer_id().encode("ascii")
+
+
+def status_path(vault_root: Path) -> Path:
+    return Path(vault_root) / STATUS_DIR / f"history-status.{computer_id()}.json"
+
+
 def _short(commit_id: bytes) -> str:
     return commit_id.decode("ascii")[:7]
 
 
 def _set_error(vault_root: Path, reason: str) -> None:
-    """Show `reason` to every process through STATUS_FILE. Only when that file
+    """Show `reason` to every process through status_path(). Only when that file
     cannot be written does this process keep the reason to itself: a copy kept
     beside a working file would outlive the other process clearing it."""
     global _error_count
     _error_count += 1
     root = str(Path(vault_root).resolve())
     try:
-        path = Path(vault_root) / STATUS_FILE
+        path = status_path(vault_root)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"error": reason}), encoding="utf-8")
         _last_error.pop(root, None)
@@ -137,14 +205,14 @@ def _set_error(vault_root: Path, reason: str) -> None:
 def _clear_error(vault_root: Path) -> None:
     _last_error.pop(str(Path(vault_root).resolve()), None)
     try:
-        (Path(vault_root) / STATUS_FILE).unlink()
+        status_path(vault_root).unlink()
     except OSError:
         pass
 
 
 def _read_error(vault_root: Path) -> Optional[str]:
     try:
-        reason = json.loads((Path(vault_root) / STATUS_FILE).read_text(encoding="utf-8")).get("error")
+        reason = json.loads(status_path(vault_root).read_text(encoding="utf-8")).get("error")
         if reason:
             return reason
     except (OSError, ValueError, AttributeError):
@@ -160,7 +228,7 @@ def error_stamp(vault_root: Path) -> Optional[tuple[str, Optional[int], int]]:
     if not reason:
         return None
     try:
-        return reason, (Path(vault_root) / STATUS_FILE).stat().st_mtime_ns, _error_count
+        return reason, status_path(vault_root).stat().st_mtime_ns, _error_count
     except OSError:
         return reason, None, _error_count
 
@@ -219,10 +287,11 @@ def _open(vault_root: Path, create: bool = False) -> Optional[Repo]:
     if is_repo(vault_root):
         repo = Repo(str(path))
         # A process that stopped between init_bare and set_symbolic_ref leaves
-        # HEAD on "master", and `git log` on the store would show nothing.
+        # HEAD on "master". HEAD is one file every computer shares, so it must
+        # be the same everywhere: it names the legacy line and no write moves it.
         names, _ = repo.refs.follow(b"HEAD")
-        if names[-1] != BRANCH:
-            repo.refs.set_symbolic_ref(b"HEAD", BRANCH)
+        if names[-1] != LEGACY_BRANCH:
+            repo.refs.set_symbolic_ref(b"HEAD", LEGACY_BRANCH)
         return repo
     if not create:
         return None
@@ -232,7 +301,7 @@ def _open(vault_root: Path, create: bool = False) -> Optional[Repo]:
     except FileExistsError:
         # The other process (MCP and UI both write) created the store first.
         return Repo(str(path))
-    repo.refs.set_symbolic_ref(b"HEAD", BRANCH)
+    repo.refs.set_symbolic_ref(b"HEAD", LEGACY_BRANCH)
     return repo
 
 
@@ -292,12 +361,33 @@ def _scan(vault_root: Path) -> dict[bytes, tuple[int, int, int]]:
     return found
 
 
-def _head(repo: Repo) -> tuple[Optional[bytes], dict[bytes, tuple[int, bytes]]]:
-    """(commit id, {key: (mode, blob id)}) for the branch, or (None, {}) before
-    the first commit."""
+def _usable(repo: Repo, sha: bytes) -> bool:
+    """True when `sha` is a commit whose tree is in the store. A sync tool copies
+    files in any order, so a branch can arrive before the objects it names."""
     try:
-        head = repo.refs[BRANCH]
+        commit = repo.object_store[sha]
+        return isinstance(commit, Commit) and commit.tree in repo.object_store
     except KeyError:
+        return False
+
+
+def _tips(repo: Repo) -> dict[bytes, bytes]:
+    """Every branch of every computer, and the legacy `main`: id -> commit id. A
+    branch whose objects have not all arrived is left out until they do."""
+    return {name: sha for name, sha in repo.refs.as_dict(b"refs/heads").items() if _usable(repo, sha)}
+
+
+def _head(repo: Repo) -> tuple[Optional[bytes], dict[bytes, tuple[int, bytes]]]:
+    """(commit id, {key: (mode, blob id)}) for this computer's branch, or
+    (None, {}) before the first commit. A computer with no branch of its own yet
+    starts from the newest commit of any other: its first write then continues
+    that line, which is how a vault from before per-computer branches is taken
+    over, and how a new computer joins."""
+    tips = _tips(repo)
+    head = tips.get(computer_id().encode("ascii"))
+    if head is None and tips:
+        head = max(tips.values(), key=lambda sha: (repo.object_store[sha].commit_time, sha))
+    if head is None:
         return None, {}
     tree = repo.object_store[head].tree
     return head, {e.path: (e.mode, e.sha) for e in iter_tree_contents(repo.object_store, tree)}
@@ -364,9 +454,11 @@ def _commit(
     author: str,
     *,
     force: bool = False,
+    also: tuple[bytes, ...] = (),
 ) -> Optional[tuple[Commit, dict[bytes, tuple[int, bytes]]]]:
     """Commit `entries` with `changes` applied. None when that is the tree the
-    parent already has (nothing to commit), unless `force` asks for it anyway."""
+    parent already has (nothing to commit), unless `force` asks for it anyway.
+    `also` names more parents: the other computers' commits a merge joins."""
     new = dict(entries)
     for key, blob in changes.items():
         if blob is None:
@@ -382,7 +474,7 @@ def _commit(
     offset = time.localtime(now).tm_gmtoff or 0
     commit = Commit()
     commit.tree = tree_id
-    commit.parents = [parent] if parent is not None else []
+    commit.parents = ([parent] if parent is not None else []) + list(also)
     commit.author = commit.committer = f"{name} <{email}>".encode("utf-8")
     commit.author_time = commit.commit_time = now
     commit.author_timezone = commit.commit_timezone = offset
@@ -393,11 +485,102 @@ def _commit(
 
 
 def _advance(repo: Repo, old: Optional[bytes], new: bytes) -> bool:
-    """Move the branch from `old` to `new`. False when another process moved it
-    first. Raises FileLocked when something holds the branch lock."""
-    # dulwich skips the comparison for None; ZERO_SHA means "must not exist
-    # yet", so two first commits cannot both win.
-    return repo.refs.set_if_equals(BRANCH, ZERO_SHA if old is None else old, new)
+    """Move this computer's branch from `old` to `new`. False when another
+    process moved it first. Raises FileLocked when something holds the branch
+    lock. A branch that does not exist yet is created, whatever `old` is: `old`
+    is then another computer's commit that this one starts from."""
+    ref = own_ref()
+    try:
+        current = repo.refs[ref]
+    except KeyError:
+        current = None
+    if current is None:
+        # dulwich skips the comparison for None; ZERO_SHA means "must not exist
+        # yet", so two first commits cannot both win.
+        return repo.refs.set_if_equals(ref, ZERO_SHA, new)
+    if old is None:
+        return False
+    return repo.refs.set_if_equals(ref, old, new)
+
+
+# (store, commit id) pairs this computer's branch is known to contain. A commit
+# stays an ancestor once it is one, so a write never walks the graph for it twice.
+_joined: set[tuple[str, bytes]] = set()
+
+
+def _incoming(
+    repo: Repo,
+    vault_root: Path,
+    head: bytes,
+    entries: dict[bytes, tuple[int, bytes]],
+    tip: bytes,
+    skip: frozenset[bytes],
+) -> Optional[dict[bytes, Optional[Blob]]]:
+    """What the vault still lacks of another computer's line, when the vault now
+    holds every change that line made since it forked from this one: key -> Blob
+    for a file to take, key -> None for one to drop. None when any of those
+    changes has not reached the vault, or when it clashes with the write in
+    progress. Joining a line before it has fully arrived would let a later
+    three-way merge mistake the missing change for a revert."""
+    bases = find_merge_base(repo, [head, tip])
+    base_tree = repo.object_store[bases[0]].tree if bases else None
+    theirs: dict[bytes, Optional[bytes]] = {}
+    for change in tree_changes(repo.object_store, base_tree, repo.object_store[tip].tree):
+        theirs[change.new.path or change.old.path] = change.new.sha
+    if skip & theirs.keys():
+        return None
+    on_disk = _differences(vault_root, entries, only=theirs.keys())
+    take: dict[bytes, Optional[Blob]] = {}
+    for key, sha in theirs.items():
+        if key in on_disk:
+            blob = on_disk[key]
+            have = blob.id if blob is not None else None
+            take[key] = blob
+        else:
+            have = entries.get(key, (None, None))[1]
+        if have != sha:
+            return None
+    return take
+
+
+def _merge_incoming(
+    repo: Repo,
+    vault_root: Path,
+    head: bytes,
+    entries: dict[bytes, tuple[int, bytes]],
+    advance,
+    skip: frozenset[bytes] = frozenset(),
+) -> Optional[tuple[bytes, dict[bytes, tuple[int, bytes]]]]:
+    """Record the files that arrived from other computers as a merge commit with
+    that computer's branch as the second parent, not as an edit made outside
+    Loci. Returns the new (head, entries), or None when another process moved the
+    branch first and the caller must start again. `advance(old, new)` moves the
+    branch and says whether it worked."""
+    own = computer_id().encode("ascii")
+    store = str(repo.path)
+    pending = []
+    for name, tip in _tips(repo).items():
+        if name == own or tip == head or (store, tip) in _joined:
+            continue
+        if _descends(repo, tip, head):
+            _joined.add((store, tip))
+            continue
+        pending.append((repo.object_store[tip].commit_time, name, tip))
+    for _, name, tip in sorted(pending):
+        try:
+            take = _incoming(repo, vault_root, head, entries, tip, skip)
+        except KeyError:
+            continue    # objects of that line are still arriving
+        if take is None:
+            continue
+        made = _commit(repo, head, entries, take,
+                       f"{SYNCED_MESSAGE} {name.decode('utf-8', 'replace')}\n\nSource: sync",
+                       SERVICE_AUTHOR, force=True, also=(tip,))
+        if not advance(head, made[0].id):
+            return None
+        head, entries = made[0].id, made[1]
+        _joined.add((store, tip))
+    return head, entries
 
 
 def record(
@@ -441,6 +624,11 @@ def record(
                 time.sleep(_RACE_WAIT_SECONDS)
             locked = False
             head, entries = _head(repo)
+            if head is not None:
+                joined = _merge_incoming(repo, vault_root, head, entries, advance, frozenset(specs))
+                if joined is None:
+                    continue
+                head, entries = joined
 
             # Whatever else changed since the last commit. The write in
             # progress stays out of it so that write gets its own commit.
@@ -472,7 +660,7 @@ def record(
                 _clear_error(vault_root)
                 return _short(made[0].id)
         if locked:
-            lock = history_dir(vault_root) / "refs" / "heads" / "main.lock"
+            lock = history_dir(vault_root) / (own_ref().decode("ascii") + ".lock")
             raise OSError(f"the history branch is locked by {lock}; "
                           "if no Loci process is running, delete that file")
         raise OSError("another process kept moving the history branch")
@@ -529,6 +717,12 @@ def before_write(vault_root: Path, paths: Iterable[Path | str]) -> Optional[str]
             if attempt:
                 time.sleep(_RACE_WAIT_SECONDS)
             head, entries = _head(repo)
+            if head is None:
+                return None
+            joined = _merge_incoming(repo, vault_root, head, entries, lambda old, new: _advance(repo, old, new))
+            if joined is None:
+                continue
+            head, entries = joined
             made = _commit(repo, head, entries, _differences(vault_root, entries, only=specs),
                            OUTSIDE_MESSAGE, SERVICE_AUTHOR)
             if made is None:
@@ -542,8 +736,8 @@ def before_write(vault_root: Path, paths: Iterable[Path | str]) -> Optional[str]
 
 
 def history(vault_root: Path, path: Path | str, limit: int = 50) -> list[dict]:
-    """Commits that touched `path`, newest first:
-    [{commit, author, date, subject}]. Raises HistoryError when the vault has no
+    """Commits that touched `path`, on every computer's branch together, newest
+    first: [{commit, author, date, subject}]. Raises HistoryError when the vault has no
     store; an empty list means the store has no commit for the path."""
     _require_repo(Path(vault_root))
     try:
@@ -552,11 +746,12 @@ def history(vault_root: Path, path: Path | str, limit: int = 50) -> list[dict]:
         specs = _relative(vault_root, [path])
         if repo is None or not specs:
             return []
-        head, _ = _head(repo)
-        if head is None:
+        tips = _tips(repo)
+        if not tips:
             return []
         out = []
-        for entry in repo.get_walker(include=[head], paths=[specs[0]], max_entries=int(limit)):
+        entries, _ = _walk(repo, list(tips.values()), paths=[specs[0]], max_entries=int(limit))
+        for entry in entries:
             c = entry.commit
             when = datetime.fromtimestamp(c.author_time, timezone(timedelta(seconds=c.author_timezone)))
             out.append({
@@ -583,10 +778,10 @@ def _require_repo(vault_root: Path) -> None:
         raise HistoryError("The vault has no history yet: nothing has been written since tracking began.")
 
 
-# Every commit id reachable from HEAD, per vault: built by one walk and then only
-# extended by the commits added since, so a short hash never walks the history
-# again. The sync HTTP endpoints run in a thread pool, so the lock guards it.
-_commit_ids_cache: dict[str, tuple[bytes, list[bytes]]] = {}
+# Every commit id reachable from any branch, per vault: built by one walk and
+# then only extended by the commits added since, so a short hash never walks the
+# history again. The sync HTTP endpoints run in a thread pool, so the lock guards it.
+_commit_ids_cache: dict[str, tuple[tuple[bytes, ...], list[bytes]]] = {}
 _commit_ids_lock = threading.Lock()
 _CACHE_VAULTS = 8       # vaults a process keeps cached; the oldest is dropped past this
 
@@ -611,23 +806,65 @@ def _descends(repo: Repo, old: bytes, new: bytes) -> bool:
         return False
 
 
-def _commit_ids(repo: Repo, head: bytes) -> list[bytes]:
+# dulwich's walker raises MissingCommitError for a parent that is not in the store;
+# its other lookups raise KeyError.
+_MISSING = (KeyError, MissingCommitError)
+
+
+def _walk(repo: Repo, include: list[bytes], **kwargs) -> tuple[list, bool]:
+    """(walk entries, complete) for the commits reachable from `include`. A sync
+    tool can bring a branch and its newest commit before the older commits, so a
+    walk can hit a parent that is not in the store yet. The walk then covers only
+    the tips whose whole line is present, and `complete` is False: the caller
+    must not cache that answer, because the same tips will give a fuller one once
+    the sync ends."""
+    try:
+        return list(repo.get_walker(include=include, **kwargs)), True
+    except _MISSING:
+        pass
+    sound = []
+    for tip in include:
+        try:
+            for _ in repo.get_walker(include=[tip]):
+                pass
+            sound.append(tip)
+        except _MISSING:
+            continue
+    if not sound:
+        return [], False
+    try:
+        return list(repo.get_walker(include=sound, **kwargs)), False
+    except _MISSING:
+        return [], False
+
+
+def _tip_key(repo: Repo) -> tuple[bytes, ...]:
+    return tuple(sorted(set(_tips(repo).values())))
+
+
+def _commit_ids(repo: Repo, tips: tuple[bytes, ...]) -> list[bytes]:
     key = str(repo.path)
     with _commit_ids_lock:
         known = _commit_ids_cache.get(key)
-        if known is not None and known[0] == head:
+        if known is not None and known[0] == tips:
             return known[1]
-        if known is not None and _descends(repo, known[0], head):
-            ids = known[1] + [e.commit.id for e in repo.get_walker(include=[head], exclude=[known[0]])]
+        if known is not None and all(old in repo.object_store for old in known[0]):
+            # Everything reachable from the old tips is already in the list, so
+            # only what the new tips add is walked.
+            entries, complete = _walk(repo, list(tips), exclude=list(known[0]))
+            ids = known[1] + [e.commit.id for e in entries]
         else:
-            ids = [e.commit.id for e in repo.get_walker(include=[head])]
-        _remember(_commit_ids_cache, key, (head, ids))
+            entries, complete = _walk(repo, list(tips))
+            ids = [e.commit.id for e in entries]
+        if complete:
+            _remember(_commit_ids_cache, key, (tips, ids))
         return ids
 
 
 def _resolve(repo: Repo, commit: str) -> bytes:
-    """The commit id a reference names: a hash or hash prefix, or HEAD, then `~n`
-    steps back along the first parent. Raises HistoryError for anything else,
+    """The commit id a reference names: a hash or hash prefix (found on any
+    computer's branch), or HEAD (this computer's branch), then `~n` steps back
+    along the first parent. Raises HistoryError for anything else,
     and for a prefix that names more than one commit."""
     ref = (commit or "").strip().lower()
     if ref.startswith("head"):
@@ -636,9 +873,8 @@ def _resolve(repo: Repo, commit: str) -> bytes:
         raise HistoryError(f"Not a commit reference: {commit!r}. Use a hash from history_vault, "
                            "e.g. 'a1b2c3d' or 'a1b2c3d~1'.")
     base, _, back = ref.partition("~")
-    try:
-        head = repo.refs[BRANCH]
-    except KeyError:
+    head, _ = _head(repo)
+    if head is None:
         raise HistoryError("The vault has no history yet: nothing has been written since tracking began.")
     if base == "HEAD":
         found = head
@@ -647,7 +883,7 @@ def _resolve(repo: Repo, commit: str) -> bytes:
         if found not in repo.object_store or not isinstance(repo[found], Commit):
             raise HistoryError(f"No commit {base!r} in the history. Use a hash from history_vault.")
     else:
-        matches = [c for c in _commit_ids(repo, head) if c.decode("ascii").startswith(base)]
+        matches = [c for c in _commit_ids(repo, _tip_key(repo)) if c.decode("ascii").startswith(base)]
         if not matches:
             raise HistoryError(f"No commit {base!r} in the history. Use a hash from history_vault.")
         if len(matches) > 1:
@@ -681,11 +917,13 @@ def _spec(vault_root: Path, path: Path | str) -> bytes:
     return specs[0]
 
 
-# uid -> vault-relative path of the file that last carried it, per vault, built
-# by one walk of the history and then only extended: a lookup never walks again.
+# uid -> (vault-relative path of the file that last carried it, commit time), per
+# vault, built by one walk of the history and then only extended: a lookup never
+# walks again. The time is kept because a line that arrives from another computer
+# can hold commits older than ones already indexed, and the newest must win.
 # The sync HTTP endpoints run in a thread pool, so the lock guards every use.
 _UID_LINE = re.compile(rb"(?m)^uid:[ \t]*['\"]?([^\s'\"]+)['\"]?[ \t]*$")
-_uid_index: dict[str, tuple[bytes, dict[str, str]]] = {}
+_uid_index: dict[str, tuple[tuple[bytes, ...], dict[str, tuple[str, int]]]] = {}
 _uid_index_lock = threading.Lock()
 
 
@@ -694,35 +932,49 @@ def find_path(vault_root: Path, uid: str) -> Optional[str]:
     file is gone. None when history never saw it."""
     _require_repo(vault_root)
     repo = _open(vault_root)
-    head, _ = _head(repo)
-    if head is None:
+    tips = _tip_key(repo)
+    if not tips:
         return None
     root = str(Path(vault_root))
     with _uid_index_lock:
         known = _uid_index.get(root)
-        if known is None or known[0] != head:
-            _remember(_uid_index, root, (head, _extend_uid_index(repo, head, known)))
-        return _uid_index[root][1].get(uid)
+        if known is None or known[0] != tips:
+            index, complete = _extend_uid_index(repo, tips, known)
+            if not complete:    # part of a line is still arriving: answer, but do not keep it
+                found = index.get(uid)
+                return found[0] if found else None
+            _remember(_uid_index, root, (tips, index))
+        found = _uid_index[root][1].get(uid)
+        return found[0] if found else None
 
 
-def _extend_uid_index(repo: Repo, head: bytes, known: Optional[tuple[bytes, dict[str, str]]]) -> dict[str, str]:
-    """The index as of `head`: `known` plus the commits added since it was built,
-    or a fresh walk when `known` is not an ancestor of `head`."""
-    if known is not None and _descends(repo, known[0], head):
+def _extend_uid_index(
+    repo: Repo,
+    tips: tuple[bytes, ...],
+    known: Optional[tuple[tuple[bytes, ...], dict[str, tuple[str, int]]]],
+) -> tuple[dict[str, tuple[str, int]], bool]:
+    """(index, complete) as of `tips`: `known` plus the commits added since it was
+    built, or a fresh walk when the old tips are no longer all in the store.
+    `complete` is False when part of a line has not arrived yet."""
+    if known is not None and all(old in repo.object_store for old in known[0]):
         index = dict(known[1])
-        entries = repo.get_walker(include=[head], exclude=[known[0]])
+        entries, complete = _walk(repo, list(tips), exclude=list(known[0]))
     else:
         index = {}
-        entries = repo.get_walker(include=[head])
-    # Newest first, so the first commit to name a uid owns it — except that a
-    # commit added to a known index overrides what is already there.
+        entries, complete = _walk(repo, list(tips))
+    # Newest first, so the first commit to name a uid owns it among the commits of
+    # this walk. Against what is already indexed, only a commit that is not older
+    # takes over.
     seen: set[str] = set()
     for entry in entries:
+        when = entry.commit.commit_time
         for uid, path in _uids_in(repo, entry.commit).items():
             if uid not in seen:
                 seen.add(uid)
-                index[uid] = path
-    return index
+                current = index.get(uid)
+                if current is None or when >= current[1]:
+                    index[uid] = (path, when)
+    return index, complete
 
 
 def _uids_in(repo: Repo, commit: Commit) -> dict[str, str]:
@@ -837,7 +1089,7 @@ def write_lock(vault_root: Path, required: bool = False):
         return
     lock_dir = Path(vault_root) / ".loci"
     try:
-        handle = open(lock_dir / "undo.lock", "a")
+        handle = open(lock_dir / f"{computer_id()}.undo.lock", "a")
     except OSError as e:    # a lock file that cannot be made must not stop a plain write
         if required:
             raise HistoryError(
@@ -904,6 +1156,11 @@ def head_changes(vault_root: Path) -> tuple[str, str, list[tuple[str, str]]]:
         raise HistoryError(
             f"The newest commit ({_short(head)}) holds edits made outside Loci, not a Loci write. "
             "Undoing it would remove those edits. Use history_vault and restore_vault on the one node instead."
+        )
+    if subject.startswith(SYNCED_MESSAGE):
+        raise HistoryError(
+            f"The newest commit ({_short(head)}) holds changes that arrived from another computer, not a Loci write. "
+            "Undoing it would remove that computer's edits. Use history_vault and restore_vault on the one node instead."
         )
     status = {"add": "A", "delete": "D", "modify": "M"}
     rows = [
