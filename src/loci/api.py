@@ -961,6 +961,8 @@ def list_items(type: str = None) -> dict:
     vault_root = _vault_root()
     result: dict = {}
     for path in sorted(vault_root.glob("*.md")):
+        if node_merge.is_conflicted_copy(path):
+            continue    # a sync tool's copy of a node, not a node
         fm, _ = load_frontmatter(path.read_text(encoding="utf-8"))
         if fm is None:
             continue
@@ -1137,13 +1139,14 @@ def conflict_count() -> int:
     return len(node_merge.conflicted_copies(_vault_root()))
 
 
-def resolve_conflicted_copy(copy: str, choices: list = None) -> dict:
+def resolve_conflicted_copy(copy: str, choices: list = None, token: str = None) -> dict:
     """
     Merge a conflicted copy into the note it came from and delete the copy, as one
     recorded change. `choices` holds "a" (the kept file) or "b" (the copy) for each
-    clash `conflicted_copies` listed for it, in order. Raises node_merge.MergeError.
+    clash `conflicted_copies` listed for it, in order. `token` is the one listed with
+    those clashes; the merge is refused if they have changed since. Raises node_merge.MergeError.
     """
-    return node_merge.resolve(_vault_root(), copy, choices)
+    return node_merge.resolve(_vault_root(), copy, choices, token)
 
 
 def app_version() -> str:

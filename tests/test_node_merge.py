@@ -101,7 +101,9 @@ def test_line_endings_are_kept():
 
 
 def test_a_missing_final_newline_is_not_an_edit():
-    assert merge3("a\nb\n", "a\nb", "A\nb\n") == ["A\nb\n"]
+    # The missing newline is no clash, and the result ends as the kept file (the second argument) does.
+    assert merge3("a\nb\n", "a\nb", "A\nb\n") == ["A\nb"]
+    assert merge3("a\nb\n", "a\nb\n", "A\nb") == ["A\nb\n"]
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +297,40 @@ def test_without_history_both_files_are_clashes_for_the_user(tmp_vault, monkeypa
     assert described["kind"] == "conflict"
 
 
+def test_a_merge_gets_no_final_newline_the_kept_file_lacks():
+    merged = "".join(merge3("a\nb\nc", "a\nB\nc", "a\nb\nc"))
+    assert merged == "a\nB\nc"
+    # With a final newline in the kept file, the result keeps it.
+    assert "".join(merge3("a\nb\nc\n", "a\nB\nc\n", "a\nb\nc\n")) == "a\nB\nc\n"
+
+
+def test_list_items_does_not_list_a_conflicted_copy(tmp_vault, as_computer):
+    node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("two", "mine"), b=BASE.replace("two", "theirs"))
+    listed = [name for names in api.list_items().values() for name in names]
+    assert node.name in listed
+    assert copy.name not in listed
+
+
+def test_choices_for_clashes_that_changed_are_refused(tmp_vault, as_computer):
+    node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("two", "mine"), b=BASE.replace("two", "theirs"))
+    token = node_merge.describe(tmp_vault, copy.name)["token"]
+    # New edits arrive after the page loaded. There is still one clash, but a different one.
+    copy.write_text(copy.read_text().replace("theirs", "other"))
+    before = node.read_text()
+
+    with pytest.raises(MergeError, match="changed since"):
+        node_merge.resolve(tmp_vault, copy.name, ["b"], token=token)
+
+    assert node.read_text() == before and copy.exists()
+
+
+def test_choices_with_the_current_token_are_applied(tmp_vault, as_computer):
+    node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("two", "mine"), b=BASE.replace("two", "theirs"))
+    token = node_merge.describe(tmp_vault, copy.name)["token"]
+    node_merge.resolve(tmp_vault, copy.name, ["b"], token=token)
+    assert "theirs" in node.read_text() and not copy.exists()
+
+
 # ---------------------------------------------------------------------------
 # HTTP
 # ---------------------------------------------------------------------------
@@ -325,6 +361,23 @@ class TestConflictEndpoints:
         assert response.status_code == 200
         assert "theirs" in node.read_text() and not copy.exists()
         assert client.get("/api/conflicts").json() == []
+
+    def test_a_stale_token_is_a_409_and_changes_nothing(self, client, tmp_vault, as_computer):
+        node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("two", "mine"), b=BASE.replace("two", "theirs"))
+        token = client.get("/api/conflicts").json()[0]["token"]
+        copy.write_text(copy.read_text().replace("theirs", "other"))
+        response = client.post("/api/conflicts/resolve", headers=self.HEADERS,
+                               json={"file": copy.name, "choices": ["b"], "token": token})
+        assert response.status_code == 409
+        assert copy.exists()
+
+    def test_a_failed_count_is_logged(self, client, monkeypatch, caplog):
+        def boom():
+            raise OSError("vault unreadable")
+        monkeypatch.setattr(http_server.vault_api, "conflict_count", boom)
+        with caplog.at_level("WARNING"):
+            assert http_server._conflict_count() == 0
+        assert "counting conflicted copies failed" in caplog.text
 
     def test_resolve_needs_the_token(self, client, tmp_vault, as_computer):
         node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("two", "mine"), b=BASE.replace("two", "theirs"))

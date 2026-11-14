@@ -498,6 +498,7 @@ def _conflict_count() -> int:
     try:
         return vault_api.conflict_count()
     except Exception:
+        log.warning("counting conflicted copies failed", exc_info=True)
         return 0
 
 
@@ -543,6 +544,7 @@ def conflicts_list():
 class ResolveConflict(BaseModel):
     file: str
     choices: list[str] = []
+    token: str | None = None
 
 
 @app.post("/api/conflicts/resolve")
@@ -557,7 +559,7 @@ def conflicts_resolve(
     copy) for each clash /api/conflicts listed, in order."""
     _authorize_local_request(origin, x_loci_token, host)
     try:
-        return vault_api.resolve_conflicted_copy(body.file, body.choices)
+        return vault_api.resolve_conflicted_copy(body.file, body.choices, body.token)
     except (node_merge.MergeError, vault_history.HistoryError) as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     except OSError as e:

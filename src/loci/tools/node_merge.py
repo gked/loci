@@ -9,8 +9,8 @@ vault history: the file as it was where the two computers' branches forked.
 
 Edits to different lines merge on their own. Edits to the same lines are left to
 the user, one choice per clash. Nothing is written until `resolve` runs, and
-`resolve` computes the merge again from the files on disk, so a stale page can
-never write a result the files no longer support.
+`resolve` computes the merge again from the files on disk. A caller that passes
+the `token` from `describe` is refused when the clashes have changed since.
 
 Four cases, from `describe`:
   merged    both sides merge with no clash
@@ -21,6 +21,7 @@ Four cases, from `describe`:
 """
 
 import difflib
+import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -78,6 +79,16 @@ def _lines(text: str) -> list[str]:
     return lines
 
 
+def _end_like(segments: list, kept: str) -> list:
+    """The merge works on whole lines, so its text always ends with a newline.
+    Give it the kept file's ending: no final newline there, none in the result."""
+    if kept.endswith(("\n", "\r")) or not segments or not isinstance(segments[-1], str):
+        return segments
+    last = segments[-1]
+    segments[-1] = last[:-2] if last.endswith("\r\n") else last[:-1]
+    return segments
+
+
 def _matches(base: list[str], other: list[str]) -> dict[int, int]:
     """base line index -> other line index, for the lines both share."""
     found: dict[int, int] = {}
@@ -128,7 +139,7 @@ def merge3(base: str, a: str, b: str) -> list:
             else:
                 segments.append(line)
         prev_base, prev_a, prev_b = anchor + 1, end_a + 1, end_b + 1
-    return segments
+    return _end_like(segments, a)
 
 
 def _same_updated_at(base: str, a: str, b: str) -> tuple[str, str, str, Optional[str]]:
@@ -212,10 +223,21 @@ def _plan(vault_root: Path, copy_name: str) -> dict:
             "segments": merge3(base, a_n, b_n)}
 
 
+def _token(clashes: list) -> str:
+    """A fingerprint of the clashes the user is shown. `resolve` takes it back, so
+    choices made for one set of clashes are never applied to another."""
+    digest = hashlib.sha256()
+    for c in clashes:
+        for part in ("".join(c.base), "".join(c.a), "".join(c.b)):
+            digest.update(part.encode("utf-8") + b"\0")
+        digest.update(b"\1")
+    return digest.hexdigest()[:16]
+
+
 def describe(vault_root: Path, copy_name: str) -> dict:
     """What resolving `copy_name` would do. Reads only. For `conflict`, `clashes`
     lists each clash as {a, b, base} text; the user picks "a" (the kept file) or
-    "b" (the copy) for each."""
+    "b" (the copy) for each. `token` names those clashes: give it to `resolve`."""
     plan = _plan(vault_root, copy_name)
     out = {"copy": copy_name, "original": plan["original"], "kind": plan["kind"]}
     if plan["kind"] == "restore":
@@ -228,6 +250,7 @@ def describe(vault_root: Path, copy_name: str) -> dict:
         clashes = [s for s in plan["segments"] if isinstance(s, Clash)]
         out["kind"] = "conflict" if clashes else "merged"
         if clashes:
+            out["token"] = _token(clashes)
             out["clashes"] = [{"a": "".join(c.a), "b": "".join(c.b), "base": "".join(c.base)} for c in clashes]
             out["segments"] = [
                 {"text": s} if isinstance(s, str) else {"clash": sum(isinstance(x, Clash) for x in plan["segments"][:i])}
@@ -238,10 +261,13 @@ def describe(vault_root: Path, copy_name: str) -> dict:
     return out
 
 
-def resolve(vault_root: Path, copy_name: str, choices: Optional[list[str]] = None) -> dict:
+def resolve(vault_root: Path, copy_name: str, choices: Optional[list[str]] = None,
+            token: Optional[str] = None) -> dict:
     """Merge the copy into the kept file, record it in the history, delete the
     copy. `choices` holds "a" or "b" for each clash, in file order; it must be
-    given exactly when `describe` reports `conflict`. Raises MergeError."""
+    given exactly when `describe` reports `conflict`. `token` is the one `describe`
+    returned with the clashes the choices answer; when it is given and the files
+    have changed so that the clashes differ, nothing is written. Raises MergeError."""
     # Imported here: api imports a great deal, and this module is also used by the linter.
     from loci import api
 
@@ -272,6 +298,8 @@ def resolve(vault_root: Path, copy_name: str, choices: Optional[list[str]] = Non
                     f"{plan['original']} has {len(clashes)} clashing edit(s); "
                     f"give one choice, 'a' or 'b', for each (got {len(choices)})."
                 )
+            if token is not None and token != _token(clashes):
+                raise MergeError(f"{plan['original']} changed since you looked at it. Open it again.")
             picks = iter(choices)
             text = "".join(s if isinstance(s, str) else "".join(s.a if next(picks) == "a" else s.b)
                            for s in segments)

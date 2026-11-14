@@ -143,11 +143,11 @@ export function getConflicts() {
 
 // Merge one copy into its note. `choices` is "a" (the kept file) or "b" (the
 // copy) for each clash getConflicts listed, in order.
-export async function resolveConflict(file, choices = [], fetchImpl = fetch) {
+export async function resolveConflict(file, choices = [], token = null, fetchImpl = fetch) {
   const res = await fetchImpl(`${BASE}/conflicts/resolve`, {
     method: "POST",
     headers: { [TOKEN_HEADER]: getApiToken(), "Content-Type": "application/json" },
-    body: JSON.stringify({ file, choices }),
+    body: JSON.stringify({ file, choices, token }),
   });
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`;

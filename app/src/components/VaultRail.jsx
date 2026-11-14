@@ -91,7 +91,7 @@ function ConflictItem({ item, onDone }) {
     setBusy(true);
     setError("");
     try {
-      await resolveConflict(item.copy, picks);
+      await resolveConflict(item.copy, picks, item.token);
       onDone();
     } catch (e) {
       setError(e.message);
@@ -157,7 +157,7 @@ function ConflictPanel({ count }) {
       <button onClick={() => setOpen(!open)} aria-expanded={open} data-testid="conflicts-toggle">
         {t("{n} conflicted copies · merge", { n: count })}
       </button>
-      {open && items.map(item => <ConflictItem key={item.copy} item={item} onDone={refresh}/>)}
+      {open && items.map(item => <ConflictItem key={`${item.copy}:${item.token || ""}`} item={item} onDone={refresh}/>)}
     </div>
   );
 }
