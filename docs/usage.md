@@ -362,6 +362,7 @@ Every write Loci makes is recorded as one commit in `knowledge-vault/.loci/histo
 - **Your own `.git`**, if you keep the vault in a repository, is never touched. History skips it, and skips editor litter (`.DS_Store`, `*.swp`, `*~`) and Obsidian's `.obsidian/` settings folder.
 - **Assets are not in it.** They live beside the vault; only the nodes that point at them are.
 - **It travels with the vault.** Move, back up or sync the vault folder and the history goes with it.
-- **You can read it with Git**, if you have it: `git --git-dir knowledge-vault/.loci/history log`. Use `log`, `show` and `diff` between commits. The store has no working tree, so `git status` is not meaningful.
+- **Several computers can share it.** Each computer writes its own branch, named by an id Loci makes once and keeps next to `config.yml`, outside the vault. A sync tool such as Nextcloud then never has two computers writing one file. Files that arrive from another computer are recorded as one "Synced from …" commit, not as an edit made outside Loci. The history view and `history_vault` show every computer's commits together; undo and `HEAD` mean this computer's branch.
+- **You can read it with Git**, if you have it: `git --git-dir knowledge-vault/.loci/history log --all`. Use `log --all`, `show` and `diff` between commits; plain `git log` shows nothing, because `HEAD` names a branch no write moves. The store has no working tree, so `git status` is not meaningful.
 - **The rail shows its state** (`historia · on`). If history is off or a write could not be recorded, the rail turns the line orange and the MCP startup notice says so.
 - **Turn it off** with `LOCI_VAULT_HISTORY=0`.
