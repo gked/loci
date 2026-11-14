@@ -131,14 +131,14 @@ def _preamble(skill: str, language: str | None = None) -> str:
     if language == "ru-RU":
         return (
             f"# {skill}\n\n"
-            "Следуйте этому документу на протяжении всего взаимодействия. В нём две "
-            "части: поставляемая процедура, затем **Your additions** — правила "
-            f"пользователя из {overlay_display(skill)}. Если части расходятся, "
-            f"приоритет у дополнений пользователя, кроме заголовков с меткой {PROTECTED}: "
-            "они действуют при любых дополнениях. Чтобы изменить дополнения, вызовите "
+            "Следуйте этому документу на протяжении всего взаимодействия. Он состоит из "
+            "двух частей: поставляемая процедура, а затем **Your additions** — правила "
+            f"пользователя из {overlay_display(skill)}. Если они расходятся, главнее "
+            "дополнения пользователя; исключение — разделы под заголовками с меткой "
+            f"{PROTECTED}, они действуют всегда. Чтобы изменить дополнения, вызовите "
             f'`loci__write_skill(skill="{skill}", content=...)` — `content` **заменяет** '
-            "весь файл, поэтому передайте `append=True`, чтобы добавить правило и сохранить "
-            "прежние. Поставляемая процедура отсюда не редактируется. Инструменты ниже "
+            "файл целиком, поэтому, чтобы добавить правило и сохранить прежние, передайте "
+            "`append=True`. Поставляемую процедуру отсюда не изменить. Инструменты ниже "
             "записаны как `loci__<tool>`; ваш клиент может показывать тот же инструмент "
             "как `mcp__loci__<tool>` или `mcp_loci_<tool>`.\n"
         )
@@ -167,19 +167,29 @@ def assemble(skill: str, vault_root: Path | None, language: str | None = None) -
     served = language if path.name != "SKILL.md" else None
 
     parts = [_preamble(skill, served), "---\n", body.strip("\n") + "\n", "---\n"]
+    russian = served == "ru-RU"
     if overlay is None:
         parts.append(
             f"# {OVERLAY_HEADING}\n\n"
-            "_No vault is configured yet, so the user's additions could not be "
-            "loaded. They apply from the next call once `loci__set_vault_root` "
-            "has run._\n"
+            + (
+                "_Хранилище ещё не настроено, поэтому дополнения пользователя загрузить "
+                "не удалось. Они начнут действовать со следующего вызова — после "
+                "`loci__set_vault_root`._\n"
+                if russian
+                else "_No vault is configured yet, so the user's additions could not be "
+                "loaded. They apply from the next call once `loci__set_vault_root` "
+                "has run._\n"
+            )
         )
     else:
         text, from_vault = overlay
         where = overlay_display(skill)
         if not from_vault:
             where = (
-                f"packaged default — {where} is not in the vault yet, so the "
+                f"поставляемый вариант — файла {where} в хранилище пока нет, "
+                "поэтому правила пользователя могли не загрузиться"
+                if russian
+                else f"packaged default — {where} is not in the vault yet, so the "
                 "user may have rules that could not be loaded"
             )
         parts.append(f"# {OVERLAY_HEADING} ({where})\n\n" + text.strip("\n") + "\n")
