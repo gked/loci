@@ -11,6 +11,8 @@ Checks performed:
     - invalid enum values (status, priority, format, platform, subtype)
     - malformed uid (not 8-char hex)
     - duplicate uids across the vault
+    - a "(conflicted copy …)" file left by a sync tool: the same node was edited
+      on two computers (listed apart from the nodes; resolve it in the UI)
 
   Warnings:
     - dangling relations (uid not found in vault)
@@ -41,6 +43,7 @@ from loci.tools.type_registry import TypeRegistry, get_registry, REFERENCES_DIR
 from loci.tools.relation_registry import RelationRegistry, get_relation_registry
 from loci.tools.scheme_registry import SchemeRegistry, get_scheme_registry, has_asset_issues
 from loci.tools import tag_hygiene
+from loci.tools.node_merge import conflicted_copies, original_name
 
 # TODO: derive BASE_STATE_VALUES from ontology.yaml once the loader supports enum extraction
 BASE_STATE_VALUES = {"active", "archived"}
@@ -196,7 +199,10 @@ def lint_vault(vault_root: Path) -> dict:
     registry = get_registry(vault_root)
     relation_registry = get_relation_registry(vault_root)
     scheme_reg = get_scheme_registry(vault_root)
-    md_files = sorted(f for f in vault_root.glob("*.md"))
+    copies = conflicted_copies(vault_root)
+    # A conflicted copy shares its uid with the file it came from. Linting it as a
+    # node would report a duplicate for what is really one problem, reported below.
+    md_files = sorted(f for f in vault_root.glob("*.md") if f not in copies)
 
     # Pass 1: collect all uids and detect duplicates; keep the parsed
     # frontmatter for the tag checks, which need every node's tags and the
@@ -251,6 +257,12 @@ def lint_vault(vault_root: Path) -> dict:
         source = "relation-dictionary.yaml" if relation_registry.is_canonical(rel_name) else "relation-dictionary-user.yaml"
         all_issues.append(LintIssue(f"meta/{source}", "warning", code, message))
 
+    for copy in copies:
+        all_issues.append(LintIssue(copy.name, "error", "conflicted-copy",
+            f"The sync tool kept two versions of {original_name(copy.name)}: the same node was edited "
+            "on two computers. Merge the copy into the node in the Loci app; "
+            "nothing is lost until then."))
+
     errors = [i for i in all_issues if i.severity == "error"]
     warnings = [i for i in all_issues if i.severity == "warning"]
 
@@ -259,6 +271,7 @@ def lint_vault(vault_root: Path) -> dict:
         "warnings": [i.as_dict() for i in warnings],
         "stats": {
             "files_checked": len(md_files),
+            "conflicted_copies": len(copies),
             "error_count": len(errors),
             "warning_count": len(warnings),
             "tags": {

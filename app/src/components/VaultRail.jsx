@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "../lib/I18nProvider.jsx";
 import { LANGUAGES, LANGUAGE_LABELS } from "../lib/i18n.js";
-import { getHealth, getLastChange, undoLastChange } from "../lib/api.js";
+import { getConflicts, getHealth, getLastChange, resolveConflict, undoLastChange } from "../lib/api.js";
 
 // Undo takes two clicks: the first looks up what the newest change is and shows
 // it, the second does it. Nothing is written until the second.
@@ -72,6 +72,92 @@ function UndoControl() {
           <button onClick={() => setStep("idle")} data-testid="undo-dismiss">{t("ok")}</button>
         </>
       )}
+    </div>
+  );
+}
+
+// A sync tool saved a second version of a note: the same note was edited on two
+// computers. Edits to different lines merge on their own; for lines both sides
+// changed, the user picks a side. Nothing is written until "merge".
+function ConflictItem({ item, onDone }) {
+  const { t } = useI18n();
+  const clashes = item.clashes || [];
+  const [picks, setPicks] = useState(() => clashes.map(() => ""));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const ready = picks.every(Boolean);
+
+  const apply = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await resolveConflict(item.copy, picks);
+      onDone();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const summary = {
+    merged: t("edits to different lines · merges on its own"),
+    conflict: t("both computers changed the same lines · choose"),
+    restore: t("deleted on one computer, edited on the other · the edit is kept"),
+    "keep-both": t("two different notes share this name · both are kept"),
+    error: item.detail,
+  }[item.kind] || item.kind;
+
+  return (
+    <div className="conflict" data-testid="conflict-item" data-copy={item.copy} data-kind={item.kind}>
+      <div data-testid="conflict-name">{item.original}</div>
+      <div data-testid="conflict-summary">{summary}</div>
+      {clashes.map((c, i) => (
+        <div key={i} data-testid="conflict-clash" data-index={i} role="group" aria-label={t("clash {n}", { n: i + 1 })}>
+          {[["a", t("this file")], ["b", t("the copy")]].map(([side, label]) => (
+            <button
+              key={side}
+              onClick={() => setPicks(picks.map((v, j) => (j === i ? side : v)))}
+              data-testid={`conflict-pick-${side}`}
+              data-active={picks[i] === side ? "true" : "false"}
+              aria-pressed={picks[i] === side}
+              disabled={busy}
+            >
+              <span>{label}</span>
+              <pre>{c[side] || "∅"}</pre>
+            </button>
+          ))}
+        </div>
+      ))}
+      {error && <div data-testid="conflict-error">{error}</div>}
+      {item.kind !== "error" && (
+        <button onClick={apply} disabled={busy || !ready} data-testid="conflict-apply">{t("merge")}</button>
+      )}
+    </div>
+  );
+}
+
+function ConflictPanel({ count }) {
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const { data: items = [] } = useQuery({
+    queryKey: ["conflicts"],
+    queryFn: getConflicts,
+    enabled: open,
+  });
+  if (!count) return null;
+
+  const refresh = () => {
+    queryClient.invalidateQueries();
+  };
+
+  return (
+    <div className="conflicts" data-testid="merge-conflicts" data-count={count}>
+      <button onClick={() => setOpen(!open)} aria-expanded={open} data-testid="conflicts-toggle">
+        {t("{n} conflicted copies · merge", { n: count })}
+      </button>
+      {open && items.map(item => <ConflictItem key={item.copy} item={item} onDone={refresh}/>)}
     </div>
   );
 }
@@ -243,6 +329,7 @@ export function VaultRail({ active, onNav, nodes, types = [], userTypes = [], ac
             historia · {history.state}
           </div>
         )}
+        <ConflictPanel count={health?.conflicts || 0}/>
         <UndoControl/>
         <div className="lang" data-testid="lang-switch" role="group" aria-label={t("Language")}>
           {LANGUAGES.map(l => (

@@ -134,3 +134,29 @@ export async function undoLastChange(commit, fetchImpl = fetch) {
   }
   return res.json();
 }
+
+// The "(conflicted copy …)" notes a sync tool left in the vault, each with what
+// merging it does: [{copy, original, kind, clashes?, text?, new_name?}].
+export function getConflicts() {
+  return request("/conflicts");
+}
+
+// Merge one copy into its note. `choices` is "a" (the kept file) or "b" (the
+// copy) for each clash getConflicts listed, in order.
+export async function resolveConflict(file, choices = [], fetchImpl = fetch) {
+  const res = await fetchImpl(`${BASE}/conflicts/resolve`, {
+    method: "POST",
+    headers: { [TOKEN_HEADER]: getApiToken(), "Content-Type": "application/json" },
+    body: JSON.stringify({ file, choices }),
+  });
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {
+      // Keep the HTTP status when the response has no JSON error body.
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}

@@ -34,7 +34,7 @@ from loci.tools.relation_registry import get_relation_registry
 from loci.tools.frontmatter import load_frontmatter
 from loci.tools import nx_graph as graph
 from loci.tools import tag_hygiene
-from loci.tools import vault_history
+from loci.tools import node_merge, vault_history
 from loci.tools.vault_linter import lint_vault as _lint_vault
 from loci.tools import asset_registry as ar
 from loci.tools.resolvers.dispatcher import dispatch_resolve
@@ -70,11 +70,11 @@ def _before_write(*paths) -> None:
     vault_history.before_write(_vault_root(), paths)
 
 
-def _record(message: str, *paths, into: dict = None) -> None:
+def _record(message: str, *paths, into: dict = None, settled=()) -> None:
     """Commit what a write just changed. History never fails the write — see
     vault_history. When `into` is given, the commit's short hash is added to it
     as `commit`, so the caller can name the change it just made."""
-    commit = vault_history.record(_vault_root(), message, paths)
+    commit = vault_history.record(_vault_root(), message, paths, settled=settled)
     if into is not None and commit:
         into["commit"] = commit
 
@@ -1115,6 +1115,37 @@ def history_status() -> dict:
     return vault_history.status(_vault_root())
 
 
+def conflicted_copies() -> list:
+    """
+    The "(conflicted copy …)" notes a sync tool left in the vault, each with what
+    resolving it would do (see node_merge.describe). Empty when there are none.
+    A copy that cannot be read is listed with kind "error" and the reason.
+    """
+    root = _vault_root()
+    out = []
+    for copy in node_merge.conflicted_copies(root):
+        try:
+            out.append(node_merge.describe(root, copy.name))
+        except node_merge.MergeError as e:
+            out.append({"copy": copy.name, "original": node_merge.original_name(copy.name),
+                        "kind": "error", "detail": str(e)})
+    return out
+
+
+def conflict_count() -> int:
+    """How many conflicted copies the vault holds. A directory listing, cheap enough for /api/health."""
+    return len(node_merge.conflicted_copies(_vault_root()))
+
+
+def resolve_conflicted_copy(copy: str, choices: list = None) -> dict:
+    """
+    Merge a conflicted copy into the note it came from and delete the copy, as one
+    recorded change. `choices` holds "a" (the kept file) or "b" (the copy) for each
+    clash `conflicted_copies` listed for it, in order. Raises node_merge.MergeError.
+    """
+    return node_merge.resolve(_vault_root(), copy, choices)
+
+
 def app_version() -> str:
     """
     The installed distribution's version.
@@ -1390,7 +1421,7 @@ def _reindex_from_file(p: Path) -> None:
     graph.mark_fresh(_vault_root())
 
 
-def _apply_files(writes: dict, message: str, into: dict) -> None:
+def _apply_files(writes: dict, message: str, into: dict, settled=()) -> None:
     """Write `writes` ({path: bytes, or None to delete}) and record them as one
     commit, all or nothing: if a write fails, or history cannot record the
     change, every file is put back as it was and the error is raised. Without
@@ -1412,7 +1443,7 @@ def _apply_files(writes: dict, message: str, into: dict) -> None:
             else:
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_bytes(data)
-        _record(message, *writes, into=into)
+        _record(message, *writes, into=into, settled=settled)
         # No commit is normal when the write changed no bytes. History says it
         # failed by flagging an error, and then the change must not stand. An
         # error flag that was already up before this write is not this write's.

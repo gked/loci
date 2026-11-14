@@ -23,6 +23,7 @@ import yaml
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
+from pydantic import BaseModel
 
 from loci.tools.vault_init import (
     HOW_TO_CONFIGURE,
@@ -32,7 +33,7 @@ from loci.tools.vault_init import (
     migrate_legacy_config,
 )
 from loci.tools import nx_graph as graph
-from loci.tools import vault_history
+from loci.tools import node_merge, vault_history
 from loci.tools.type_registry import get_registry
 from loci.tools.frontmatter import split_frontmatter
 from loci import api as vault_api
@@ -493,6 +494,13 @@ def _history_status() -> dict:
         return {"state": "unknown", "detail": str(e)}
 
 
+def _conflict_count() -> int:
+    try:
+        return vault_api.conflict_count()
+    except Exception:
+        return 0
+
+
 @app.get("/api/health")
 def health():
     # `version` is the single source of truth for what the app calls itself:
@@ -510,6 +518,7 @@ def health():
             "vault_root": str(vr),
             "node_count": g.number_of_nodes(),
             "history": _history_status(),
+            "conflicts": _conflict_count(),
         }
     except Exception as e:
         return {
@@ -520,7 +529,40 @@ def health():
             "vault_root": "",
             "node_count": 0,
             "history": {"state": "unknown", "detail": ""},
+            "conflicts": 0,
         }
+
+
+@app.get("/api/conflicts")
+def conflicts_list():
+    """The conflicted copies a sync tool left in the vault, each with what
+    resolving it does: [{copy, original, kind, ...}]. Read-only."""
+    return vault_api.conflicted_copies()
+
+
+class ResolveConflict(BaseModel):
+    file: str
+    choices: list[str] = []
+
+
+@app.post("/api/conflicts/resolve")
+def conflicts_resolve(
+    body: ResolveConflict,
+    origin: str | None = Header(None),
+    x_loci_token: str | None = Header(None),
+    host: str | None = Header(None),
+):
+    """Merge one conflicted copy into its note. Writes, so it takes the same
+    origin and token check as /api/undo. `choices` is "a" (kept file) or "b" (the
+    copy) for each clash /api/conflicts listed, in order."""
+    _authorize_local_request(origin, x_loci_token, host)
+    try:
+        return vault_api.resolve_conflicted_copy(body.file, body.choices)
+    except (node_merge.MergeError, vault_history.HistoryError) as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except OSError as e:
+        log.warning("resolving a conflicted copy failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Could not merge: {e}") from e
 
 
 @app.get("/api/history/last")

@@ -515,18 +515,23 @@ def _incoming(
     entries: dict[bytes, tuple[int, bytes]],
     tip: bytes,
     skip: frozenset[bytes],
+    settled: frozenset[bytes] = frozenset(),
 ) -> Optional[dict[bytes, Optional[Blob]]]:
     """What the vault still lacks of another computer's line, when the vault now
     holds every change that line made since it forked from this one: key -> Blob
     for a file to take, key -> None for one to drop. None when any of those
     changes has not reached the vault, or when it clashes with the write in
     progress. Joining a line before it has fully arrived would let a later
-    three-way merge mistake the missing change for a revert."""
+    three-way merge mistake the missing change for a revert. `settled` names
+    files whose changes on that line a merge has just taken in by hand: the disk
+    holds the merge result, not their blob, and that is not a missing change."""
     bases = find_merge_base(repo, [head, tip])
     base_tree = repo.object_store[bases[0]].tree if bases else None
     theirs: dict[bytes, Optional[bytes]] = {}
     for change in tree_changes(repo.object_store, base_tree, repo.object_store[tip].tree):
         theirs[change.new.path or change.old.path] = change.new.sha
+    for key in settled:
+        theirs.pop(key, None)
     if skip & theirs.keys():
         return None
     on_disk = _differences(vault_root, entries, only=theirs.keys())
@@ -550,6 +555,7 @@ def _merge_incoming(
     entries: dict[bytes, tuple[int, bytes]],
     advance,
     skip: frozenset[bytes] = frozenset(),
+    settled: frozenset[bytes] = frozenset(),
 ) -> Optional[tuple[bytes, dict[bytes, tuple[int, bytes]]]]:
     """Record the files that arrived from other computers as a merge commit with
     that computer's branch as the second parent, not as an edit made outside
@@ -568,7 +574,7 @@ def _merge_incoming(
         pending.append((repo.object_store[tip].commit_time, name, tip))
     for _, name, tip in sorted(pending):
         try:
-            take = _incoming(repo, vault_root, head, entries, tip, skip)
+            take = _incoming(repo, vault_root, head, entries, tip, skip, settled)
         except KeyError:
             continue    # objects of that line are still arriving
         if take is None:
@@ -590,9 +596,12 @@ def record(
     *,
     author: Optional[str] = None,
     source: Optional[str] = None,
+    settled: Iterable[Path | str] = (),
 ) -> bool:
     """Commit `paths` (files written or deleted) with `message`, after one
-    commit for anything else that changed outside Loci. Returns the new commit's
+    commit for anything else that changed outside Loci. `settled` names files in
+    `paths` that merge another computer's edit of the same file: that computer's
+    line is then joined even though the file is not its version. Returns the new commit's
     short hash, or None when no commit was made (history off, nothing changed,
     or a failure). Never raises."""
     if not enabled():
@@ -600,6 +609,7 @@ def record(
     vault_root = Path(vault_root)
     try:
         specs = _relative(vault_root, paths)
+        settled_keys = frozenset(_relative(vault_root, settled))
         if not specs or not vault_root.is_dir():
             return None
         repo = _open(vault_root, create=True)
@@ -625,7 +635,7 @@ def record(
             locked = False
             head, entries = _head(repo)
             if head is not None:
-                joined = _merge_incoming(repo, vault_root, head, entries, advance, frozenset(specs))
+                joined = _merge_incoming(repo, vault_root, head, entries, advance, frozenset(specs), settled_keys)
                 if joined is None:
                     continue
                 head, entries = joined
@@ -733,6 +743,34 @@ def before_write(vault_root: Path, paths: Iterable[Path | str]) -> Optional[str]
         log.warning("vault history unavailable: %s", e)
         _set_error(vault_root, str(e))
     return None
+
+
+def merge_base_text(vault_root: Path, path: Path | str) -> Optional[str]:
+    """The text of `path` where this computer's line and another computer's line
+    forked: the version both edits started from. When several computers forked at
+    different points, the newest fork. None when history holds no such version
+    (the file is new on both lines, or history is off). Never raises."""
+    if not enabled() or not is_repo(Path(vault_root)):
+        return None
+    try:
+        repo = _open(Path(vault_root))
+        key = _spec(Path(vault_root), path)
+        head, _ = _head(repo)
+        if head is None:
+            return None
+        own = computer_id().encode("ascii")
+        found = []
+        for name, tip in _tips(repo).items():
+            if name == own or tip == head:
+                continue
+            for base in find_merge_base(repo, [head, tip]):
+                text = _text_at(repo, base, key)
+                if text is not None:
+                    found.append((repo.object_store[base].commit_time, text))
+        return max(found, key=lambda f: f[0])[1] if found else None
+    except Exception as e:
+        log.warning("vault history unreadable: %s", e)
+        return None
 
 
 def history(vault_root: Path, path: Path | str, limit: int = 50) -> list[dict]:
