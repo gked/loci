@@ -1779,3 +1779,46 @@ def test_two_computers_never_share_a_file_that_both_write(tmp_vault, as_computer
     save("Beta")
     changed = [p for p, data in before.items() if p.read_bytes() != data]
     assert changed == []        # B's write only added files
+
+
+def test_reads_work_while_a_branch_is_missing_older_commits(tmp_vault, as_computer):
+    """A sync tool can bring a branch and its newest commit before the older
+    commits. The reads answer from the lines that are whole, and keep nothing
+    from the partial walk, so the full answer returns once the sync ends."""
+    as_computer("a")
+    alpha = save("Alpha")
+    b = as_computer("b")
+    save("Beta")
+    save("Gamma")
+    store = vault_history.history_dir(tmp_vault) / "objects"
+    parent = repo(tmp_vault)[branches(tmp_vault)[b]].parents[0].decode()
+    object_file = store / parent[:2] / parent[2:]
+    kept = object_file.read_bytes()
+    object_file.unlink()                                 # B's tip stays; its parent has not arrived
+    vault_history._commit_ids_cache.clear()
+    vault_history._uid_index.clear()
+
+    listed = vault_history.history(tmp_vault, alpha["path"])
+    assert [c["subject"].split(" (")[0] for c in listed] == ["Add document: Alpha"]
+    assert vault_history.find_path(tmp_vault, alpha["uid"]) == rel(tmp_vault, alpha)
+    assert vault_history._uid_index == {}                # the partial answer was not kept
+
+    object_file.write_bytes(kept)                        # the sync ends
+    assert vault_history.find_path(tmp_vault, alpha["uid"]) == rel(tmp_vault, alpha)
+    assert vault_history._uid_index
+
+
+def test_a_write_works_while_another_computers_line_is_missing_older_commits(tmp_vault, as_computer):
+    as_computer("a")
+    save("Alpha")
+    b = as_computer("b")
+    save("Beta")
+    save("Gamma")
+    parent = repo(tmp_vault)[branches(tmp_vault)[b]].parents[0].decode()
+    (vault_history.history_dir(tmp_vault) / "objects" / parent[:2] / parent[2:]).unlink()
+    as_computer("a")
+
+    saved = save("Delta")
+
+    assert saved.get("commit")
+    assert vault_history.status(tmp_vault)["state"] == "on"

@@ -54,6 +54,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from dulwich.diff_tree import tree_changes
+from dulwich.errors import MissingCommitError
 from dulwich.file import FileLocked
 from dulwich.graph import can_fast_forward, find_merge_base
 from dulwich.index import commit_tree
@@ -749,7 +750,8 @@ def history(vault_root: Path, path: Path | str, limit: int = 50) -> list[dict]:
         if not tips:
             return []
         out = []
-        for entry in repo.get_walker(include=list(tips.values()), paths=[specs[0]], max_entries=int(limit)):
+        entries, _ = _walk(repo, list(tips.values()), paths=[specs[0]], max_entries=int(limit))
+        for entry in entries:
             c = entry.commit
             when = datetime.fromtimestamp(c.author_time, timezone(timedelta(seconds=c.author_timezone)))
             out.append({
@@ -804,6 +806,38 @@ def _descends(repo: Repo, old: bytes, new: bytes) -> bool:
         return False
 
 
+# dulwich's walker raises MissingCommitError for a parent that is not in the store;
+# its other lookups raise KeyError.
+_MISSING = (KeyError, MissingCommitError)
+
+
+def _walk(repo: Repo, include: list[bytes], **kwargs) -> tuple[list, bool]:
+    """(walk entries, complete) for the commits reachable from `include`. A sync
+    tool can bring a branch and its newest commit before the older commits, so a
+    walk can hit a parent that is not in the store yet. The walk then covers only
+    the tips whose whole line is present, and `complete` is False: the caller
+    must not cache that answer, because the same tips will give a fuller one once
+    the sync ends."""
+    try:
+        return list(repo.get_walker(include=include, **kwargs)), True
+    except _MISSING:
+        pass
+    sound = []
+    for tip in include:
+        try:
+            for _ in repo.get_walker(include=[tip]):
+                pass
+            sound.append(tip)
+        except _MISSING:
+            continue
+    if not sound:
+        return [], False
+    try:
+        return list(repo.get_walker(include=sound, **kwargs)), False
+    except _MISSING:
+        return [], False
+
+
 def _tip_key(repo: Repo) -> tuple[bytes, ...]:
     return tuple(sorted(set(_tips(repo).values())))
 
@@ -817,10 +851,13 @@ def _commit_ids(repo: Repo, tips: tuple[bytes, ...]) -> list[bytes]:
         if known is not None and all(old in repo.object_store for old in known[0]):
             # Everything reachable from the old tips is already in the list, so
             # only what the new tips add is walked.
-            ids = known[1] + [e.commit.id for e in repo.get_walker(include=list(tips), exclude=list(known[0]))]
+            entries, complete = _walk(repo, list(tips), exclude=list(known[0]))
+            ids = known[1] + [e.commit.id for e in entries]
         else:
-            ids = [e.commit.id for e in repo.get_walker(include=list(tips))]
-        _remember(_commit_ids_cache, key, (tips, ids))
+            entries, complete = _walk(repo, list(tips))
+            ids = [e.commit.id for e in entries]
+        if complete:
+            _remember(_commit_ids_cache, key, (tips, ids))
         return ids
 
 
@@ -902,7 +939,11 @@ def find_path(vault_root: Path, uid: str) -> Optional[str]:
     with _uid_index_lock:
         known = _uid_index.get(root)
         if known is None or known[0] != tips:
-            _remember(_uid_index, root, (tips, _extend_uid_index(repo, tips, known)))
+            index, complete = _extend_uid_index(repo, tips, known)
+            if not complete:    # part of a line is still arriving: answer, but do not keep it
+                found = index.get(uid)
+                return found[0] if found else None
+            _remember(_uid_index, root, (tips, index))
         found = _uid_index[root][1].get(uid)
         return found[0] if found else None
 
@@ -911,15 +952,16 @@ def _extend_uid_index(
     repo: Repo,
     tips: tuple[bytes, ...],
     known: Optional[tuple[tuple[bytes, ...], dict[str, tuple[str, int]]]],
-) -> dict[str, tuple[str, int]]:
-    """The index as of `tips`: `known` plus the commits added since it was built,
-    or a fresh walk when the old tips are no longer all in the store."""
+) -> tuple[dict[str, tuple[str, int]], bool]:
+    """(index, complete) as of `tips`: `known` plus the commits added since it was
+    built, or a fresh walk when the old tips are no longer all in the store.
+    `complete` is False when part of a line has not arrived yet."""
     if known is not None and all(old in repo.object_store for old in known[0]):
         index = dict(known[1])
-        entries = repo.get_walker(include=list(tips), exclude=list(known[0]))
+        entries, complete = _walk(repo, list(tips), exclude=list(known[0]))
     else:
         index = {}
-        entries = repo.get_walker(include=list(tips))
+        entries, complete = _walk(repo, list(tips))
     # Newest first, so the first commit to name a uid owns it among the commits of
     # this walk. Against what is already indexed, only a commit that is not older
     # takes over.
@@ -932,7 +974,7 @@ def _extend_uid_index(
                 current = index.get(uid)
                 if current is None or when >= current[1]:
                     index[uid] = (path, when)
-    return index
+    return index, complete
 
 
 def _uids_in(repo: Repo, commit: Commit) -> dict[str, str]:
