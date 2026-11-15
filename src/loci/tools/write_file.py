@@ -108,7 +108,12 @@ def find_uid(vault_root: Path, uid: str) -> Optional[Path]:
 
     Read from disk for the same reason check_duplicate does: the graph index
     can lag an in-place edit, and a save is not a hot path.
+
+    Two files can hold one uid (a note dropped in by hand with a copied header).
+    The older node wins, by `created_at` and then by name, so the copy never
+    hides it. The linter reports the pair.
     """
+    found: list[tuple[str, str, Path]] = []
     for md_file in vault_root.rglob("*.md"):
         if md_file.parent.name in NON_NODE_DIRS or is_conflicted_copy(md_file):
             continue
@@ -117,8 +122,8 @@ def find_uid(vault_root: Path, uid: str) -> Optional[Path]:
         except Exception:
             continue
         if fm and str(fm.get("uid") or "") == uid:
-            return md_file
-    return None
+            found.append((str(fm.get("created_at") or "~"), md_file.name, md_file))
+    return min(found)[2] if found else None
 
 
 def free_filename(vault_root: Path, title: str) -> str:

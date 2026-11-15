@@ -34,6 +34,7 @@ from loci.tools.vault_init import (
 )
 from loci.tools import nx_graph as graph
 from loci.tools import node_merge, vault_history
+from loci.tools.vault_watcher import VaultWatcher
 from loci.tools.type_registry import get_registry
 from loci.tools.frontmatter import split_frontmatter
 from loci import api as vault_api
@@ -321,6 +322,20 @@ def _authorize_local_request(
         raise HTTPException(status_code=403, detail="Missing or invalid API token")
 
 
+def _start_watcher():
+    """Record edits made outside Loci soon after they happen. History is a
+    convenience, so a watcher that cannot start must not stop the server."""
+    if _VAULT_ROOT is None or not vault_history.enabled():
+        return None
+    try:
+        watcher = VaultWatcher(_VAULT_ROOT)
+        watcher.start()
+        return watcher
+    except Exception as e:
+        log.warning("Vault watcher did not start: %s", e)
+        return None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _VAULT_ROOT
@@ -338,7 +353,12 @@ async def lifespan(app: FastAPI):
     # to paste in.
     log.info("API token: %s", _api_token())
     log.info("Allowed origins: %s", ", ".join(_allowed_origins()))
-    yield
+    watcher = _start_watcher()
+    try:
+        yield
+    finally:
+        if watcher is not None:
+            watcher.stop()
 
 
 app = FastAPI(lifespan=lifespan)

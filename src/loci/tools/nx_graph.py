@@ -84,6 +84,10 @@ def _build(vault_root: Path) -> nx.DiGraph:
 
         uid = fm["uid"]
 
+        # Two files with one uid: the older node keeps it, so a copy never hides it.
+        if g.has_node(uid) and str(g.nodes[uid].get("created_at") or "~") <= str(_date_str(fm.get("created_at")) or "~"):
+            continue
+
         has_asset_val = fm.get("has_asset")
         has_asset_present = (
             has_asset_val is True  # legacy boolean form
@@ -186,6 +190,15 @@ def mark_fresh(vault_root: Path) -> None:
     global _built_at
     if _graph is not None and _vault_root == vault_root:
         _built_at = max(_built_at, _vault_dir_mtime(vault_root))
+
+
+def invalidate() -> None:
+    """Make the next get() rebuild the graph. For a change another process or
+    program made to a file in place: get() watches the vault folder's mtime,
+    and an edit inside a file does not move it."""
+    global _built_at
+    with _lock:
+        _built_at = 0.0
 
 
 def index_edges(uid: str, relations: list) -> None:

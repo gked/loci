@@ -68,6 +68,34 @@ Adding a console script means adding it to `[project.scripts]` in
 `pyproject.toml` and giving it a `main()`. Keep `loci-mcp` and `loci` as
 separate processes — see the docstring in `src/loci/__init__.py` for why.
 
+## Operating systems
+
+macOS is supported. Linux is tested in CI and not a supported platform. Windows is
+not tested: never claim it works.
+
+**For every change, ask whether it behaves the same on macOS, Linux and Windows.**
+These are the usual places it does not: file locking (`fcntl` is POSIX only), file
+events (FSEvents, inotify, ReadDirectoryChangesW), path separators and case
+sensitivity, symlinks, file modes, line endings, signals and process handling,
+config and data folders, and shell commands in the `Makefile` or hooks.
+
+- Prefer a cross-platform library or the standard library over an OS branch. Say
+  in the PR which libraries make the code portable (for example `watchdog` for the
+  vault watcher).
+- When a case needs custom work for one OS, **do not hide it and do not write an
+  ad-hoc `if sys.platform` branch in the same PR.** Flag it: name the OS, the
+  behaviour that differs and the file, in the PR description and in your reply to
+  the user. Offer one separate PR per OS. Record it in the plan or task if there is one.
+- Code that falls back (a timer scan when events are missing, no lock when `fcntl`
+  is missing) must say in its docstring what the fallback costs.
+
+Known gaps, each its own future PR:
+
+- Windows: `vault_history.write_lock` has no lock (`fcntl`), so a write and a
+  watcher burst are not serialised. Needs a cross-platform lock (`filelock`).
+- Linux: inotify has a per-user watch limit; a very large vault can exceed it. The
+  watcher then runs on its timer scan alone.
+
 ## Skill ↔ Tool sync rule
 
 **Always check both directions when touching either side.**

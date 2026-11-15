@@ -28,10 +28,11 @@ from loci.tools.write_file import (
     write_item as _write_item,
     patch_item as _patch_item,
     check_duplicate as _check_duplicate,
+    find_uid,
 )
 from loci.tools.type_registry import get_registry
 from loci.tools.relation_registry import get_relation_registry
-from loci.tools.frontmatter import load_frontmatter
+from loci.tools.frontmatter import load_frontmatter, split_frontmatter
 from loci.tools import nx_graph as graph
 from loci.tools import tag_hygiene
 from loci.tools import node_merge, vault_history
@@ -1131,6 +1132,41 @@ def conflicted_copies() -> list:
         except node_merge.MergeError as e:
             out.append({"copy": copy.name, "original": node_merge.original_name(copy.name),
                         "kind": "error", "detail": str(e)})
+    return out
+
+
+@_serialized
+def fix_duplicate_uid(path: str) -> dict:
+    """
+    Give a note a new uid because another, older note already holds its uid (a
+    file dropped in by hand with a copied header). Call it only after the user
+    agrees: it changes the file. Relations that point at the old uid mean the
+    older node, so none of them is rewritten.
+    Raises ValueError when the file is not the newer holder of a shared uid.
+    Returns {path, old_uid, new_uid, commit}.
+    """
+    root = _vault_root()
+    p = Path(path)
+    p = p if p.is_absolute() else root / p
+    if not p.is_file():
+        raise FileNotFoundError(f"Vault file not found: {p}")
+    text = p.read_text(encoding="utf-8")
+    fm, _ = load_frontmatter(text)
+    old = str((fm or {}).get("uid") or "")
+    elder = find_uid(root, old) if old else None
+    if not old or elder is None or elder.resolve() == p.resolve():
+        raise ValueError(f"{p.name} is not the newer holder of a shared uid; nothing was changed.")
+    new = _generate_uid()
+    while find_uid(root, new):
+        new = _generate_uid()
+    header, _ = split_frontmatter(text)
+    start = text.index(header)
+    fixed = re.sub(r"(?m)^uid:.*$", f"uid: {new}", header, count=1)
+    out = {"path": str(p), "old_uid": old, "new_uid": new}
+    _before_write(p)
+    _apply_files({p: (text[:start] + fixed + text[start + len(header):]).encode("utf-8")},
+                 f"New uid {new} for {p.name}: {old} belongs to an older node", out)
+    _reindex_quietly(p)
     return out
 
 

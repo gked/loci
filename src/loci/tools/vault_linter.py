@@ -11,10 +11,12 @@ Checks performed:
     - invalid enum values (status, priority, format, platform, subtype)
     - malformed uid (not 8-char hex)
     - duplicate uids across the vault
+    - unreadable (not UTF-8) note file
     - a "(conflicted copy …)" file left by a sync tool: the same node was edited
       on two computers (listed apart from the nodes; resolve it in the UI)
 
   Warnings:
+    - a file in the vault root that is not a note (a binary dropped in)
     - dangling relations (uid not found in vault)
     - orphaned nodes (no relations)
     - empty summary
@@ -86,10 +88,16 @@ def lint_file(
     issues: list[LintIssue] = []
     name = path.name
 
-    raw = path.read_text(encoding="utf-8")
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return [LintIssue(name, "error", "unreadable", "The file is not UTF-8 text, so it is not a note. "
+                          "Move it out of the vault, or into the assets folder beside it.")]
 
     if not raw.startswith("---"):
-        return [LintIssue(name, "error", "no-frontmatter", "No YAML frontmatter found")]
+        return [LintIssue(name, "error", "no-frontmatter",
+            "No YAML frontmatter found. Loci does not guess a type or title: ask the user, "
+            "then add the frontmatter, or move the file out of the vault.")]
 
     fm_text, _ = split_frontmatter(raw)
     if fm_text is None:
@@ -210,7 +218,10 @@ def lint_vault(vault_root: Path) -> dict:
     uid_map: dict[str, list[str]] = {}
     parsed: list[tuple[str, dict]] = []
     for path in md_files:
-        raw = path.read_text(encoding="utf-8")
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue    # reported by lint_file in pass 2
         fm_text, _ = split_frontmatter(raw)
         if fm_text is None:
             continue
@@ -232,7 +243,8 @@ def lint_vault(vault_root: Path) -> dict:
         if len(files) > 1:
             for fname in files:
                 dup_issues.append(LintIssue(fname, "error", "duplicate-uid",
-                    f"uid '{uid}' is shared with: {[f for f in files if f != fname]}"))
+                    f"uid '{uid}' is shared with: {[f for f in files if f != fname]}. "
+                    "The older node keeps the uid; give the newer file a new one after the user agrees."))
 
     # Pass 2: lint each file
     all_issues: list[LintIssue] = list(dup_issues)
@@ -256,6 +268,13 @@ def lint_vault(vault_root: Path) -> dict:
     for rel_name, code, message in relation_registry.inverse_problems():
         source = "relation-dictionary.yaml" if relation_registry.is_canonical(rel_name) else "relation-dictionary-user.yaml"
         all_issues.append(LintIssue(f"meta/{source}", "warning", code, message))
+
+    # Notes are flat files in the vault root. Anything else there (a PDF dropped
+    # in, an image) is not a note; assets live in the folder beside the vault.
+    for other in sorted(vault_root.iterdir()):
+        if other.is_file() and other.suffix.lower() != ".md" and not _is_ignorable(other.name):
+            all_issues.append(LintIssue(other.name, "warning", "non-note-file",
+                "Not a note. Binary files belong in the assets folder beside the vault, not in it."))
 
     for copy in copies:
         all_issues.append(LintIssue(copy.name, "error", "conflicted-copy",
@@ -282,6 +301,11 @@ def lint_vault(vault_root: Path) -> dict:
             },
         },
     }
+
+
+def _is_ignorable(name: str) -> bool:
+    """Hidden files and the editor and sync leftovers history already ignores."""
+    return name.startswith(".") or name.endswith(("~", ".tmp", ".swp"))
 
 
 def _lint_tags(parsed: list[tuple[str, dict]]) -> list[LintIssue]:
