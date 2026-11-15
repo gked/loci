@@ -42,6 +42,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 APP_DIR = REPO_ROOT / "app"
 BASE_FIXTURE_VAULT = Path(__file__).resolve().parents[1] / "fixtures" / "vault"
 REFERENCES_DIR = Path(__file__).resolve().parents[2] / "src" / "loci" / "skills" / "references"
+# The API refuses a write without its token, and the built UI sends the one baked
+# in at build time. Both servers get this made-up value, so a spec can click a
+# button that writes. It protects nothing real.
+E2E_API_TOKEN = "e2e-test-token"
+
 OVERLAY_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "e2e-overlay"
 
 STARTUP_TIMEOUT = 90  # seconds — generous; CI cold-starts uvicorn and vite
@@ -367,7 +372,7 @@ def server_logs(tmp_path_factory) -> Path:
 @pytest.fixture(scope="session")
 def api_server(e2e_vault, server_logs) -> str:
     """Start uvicorn against the e2e vault. Yields its base URL."""
-    env = {**os.environ, "LOCI_VAULT_ROOT": str(e2e_vault)}
+    env = {**os.environ, "LOCI_VAULT_ROOT": str(e2e_vault), "LOCI_API_TOKEN": E2E_API_TOKEN}
     proc, url = _start_server(
         "api-server",
         cmd_for_port=lambda port: [
@@ -416,7 +421,7 @@ def web_server(api_server, server_logs) -> str:
             pytrace=False,
         )
 
-    env = {**os.environ, "LOCI_API_URL": api_server}
+    env = {**os.environ, "LOCI_API_URL": api_server, "LOCI_API_TOKEN": E2E_API_TOKEN}
 
     build = subprocess.run(
         [str(vite_bin), "build"],
