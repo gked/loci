@@ -4,6 +4,8 @@ file. History records all of them. The lint check names each problem, and a
 shared uid never lets a copy hide the older node.
 """
 
+from pathlib import Path
+
 import pytest
 
 from loci import api
@@ -113,3 +115,24 @@ def test_the_fix_refuses_the_older_node_and_a_unique_uid(tmp_vault, twin):
     api.fix_duplicate_uid(str(copy))
     with pytest.raises(ValueError, match="not the newer holder"):
         api.fix_duplicate_uid(str(copy))
+
+
+def test_a_copy_with_an_identical_header_loses_in_the_graph_and_the_lookup_alike(tmp_vault, twin):
+    original, copy, uid = twin
+    copy.write_text(original.read_text())           # same uid, same created_at
+    smaller = min(original, copy, key=lambda p: p.name)
+    nx_graph._graph = None
+    assert find_uid(tmp_vault, uid) == smaller
+    assert nx_graph.get(tmp_vault).nodes[uid]["path"] == str(smaller)
+
+
+def test_a_discarded_copy_leaves_no_relations_in_the_graph(tmp_vault, twin, monkeypatch):
+    original, copy, uid = twin
+    real = Path.rglob       # read the copy first, so the older file replaces it
+    monkeypatch.setattr(Path, "rglob", lambda self, pat: iter(sorted(real(self, pat), key=lambda p: p.name, reverse=True)))
+    text = copy.read_text()
+    assert "relations: []" in text
+    copy.write_text(text.replace("relations: []", "relations:\n- type: relates-to\n  uid: deadbeef", 1))
+    nx_graph._graph = None
+    assert not nx_graph.get(tmp_vault).has_edge(uid, "deadbeef")
+

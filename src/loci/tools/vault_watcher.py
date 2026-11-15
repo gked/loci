@@ -108,7 +108,16 @@ class VaultWatcher:
                     self._paths.clear()
                     self._everything = False
             if due:
-                return self._record(None if everything else sorted(paths))
+                try:
+                    return self._record(None if everything else sorted(paths))
+                except Exception:
+                    # Put the burst back, so the edits wait for the next quiet
+                    # time and not for the full scan.
+                    with self._lock:
+                        self._paths |= paths
+                        self._everything = self._everything or everything
+                        self._last_event = self._clock()
+                    raise
             if now - self._last_scan >= self.scan_every:
                 self._last_scan = now
                 return self._record(None)

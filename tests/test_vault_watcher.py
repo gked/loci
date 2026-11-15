@@ -148,6 +148,26 @@ def test_an_error_in_recording_does_not_escape(tmp_vault, started, monkeypatch):
     assert started.tick() is None                # no exception
 
 
+def test_a_failed_recording_keeps_the_burst_for_the_next_try(tmp_vault, started, monkeypatch):
+    real = vault_history.snapshot_outside
+    calls = []
+
+    def flaky(root, paths=None):
+        calls.append(paths)
+        if len(calls) == 1:
+            raise RuntimeError("write lock timed out")
+        return real(root, paths)
+
+    monkeypatch.setattr(vault_history, "snapshot_outside", flaky)
+    (tmp_vault / "a.md").write_text("one")
+    started.note(str(tmp_vault / "a.md"))
+    started.clock.advance(3)
+    assert started.tick() is None                # the first try fails
+    started.clock.advance(3)
+    assert started.tick()                        # the second try, long before the 45 s scan
+    assert calls[1] == calls[0]
+
+
 def test_a_recorded_burst_makes_the_graph_rebuild(tmp_vault):
     api.save(type="document", title="First", body="hello",
              extra_fields={"status": "draft", "subtype": "note"})
