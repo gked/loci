@@ -773,6 +773,51 @@ def merge_base_text(vault_root: Path, path: Path | str) -> Optional[str]:
         return None
 
 
+def snapshot_outside(vault_root: Path, paths: Optional[Iterable[Path | str]] = None) -> Optional[str]:
+    """Record edits made outside Loci (Obsidian, a text editor, a sync tool) as
+    one commit, without waiting for the next Loci write. `paths` limits the
+    comparison to those files, which is cheap; None compares the whole vault.
+    Files that arrived from another computer are joined as "Synced from …"
+    first, as in record(). Returns the short hash of the newest commit made, or
+    None when nothing changed, history is off, or the vault has no history yet
+    (the first Loci write makes the baseline). Never raises."""
+    if not enabled():
+        return None
+    vault_root = Path(vault_root)
+    try:
+        if not vault_root.is_dir() or not is_repo(vault_root):
+            return None
+        specs = None if paths is None else _relative(vault_root, paths)
+        if specs is not None and not specs:
+            return None
+        repo = _open(vault_root)
+        for attempt in range(_RACE_ATTEMPTS):
+            if attempt:
+                time.sleep(_RACE_WAIT_SECONDS)
+            head, entries = _head(repo)
+            if head is None:
+                return None
+            newest = None
+            joined = _merge_incoming(repo, vault_root, head, entries, lambda old, new: _advance(repo, old, new))
+            if joined is None:
+                continue
+            if joined[0] != head:
+                newest = joined[0]
+            head, entries = joined
+            changes = _differences(vault_root, entries, only=specs)
+            made = _commit(repo, head, entries, changes,
+                           f"{OUTSIDE_MESSAGE}\n\nSource: watcher", SERVICE_AUTHOR)
+            if made is None:
+                return _short(newest) if newest else None
+            if _advance(repo, head, made[0].id):
+                _clear_error(vault_root)
+                return _short(made[0].id)
+    except Exception as e:
+        log.warning("vault history unavailable: %s", e)
+        _set_error(vault_root, str(e))
+    return None
+
+
 def history(vault_root: Path, path: Path | str, limit: int = 50) -> list[dict]:
     """Commits that touched `path`, on every computer's branch together, newest
     first: [{commit, author, date, subject}]. Raises HistoryError when the vault has no

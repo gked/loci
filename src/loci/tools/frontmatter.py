@@ -67,3 +67,10 @@ def load_frontmatter(raw: str) -> tuple[Optional[dict], str]:
     if not isinstance(fm, dict):
         return None, body
     return fm, body
+
+
+def uid_rank(fm: dict, path) -> tuple:
+    """Which file keeps a uid that two files hold: the smallest rank. The older
+    `created_at` wins, then the file name, then the full path, so the graph and
+    the uid lookup always agree, even for a copy with an identical header."""
+    return (str(fm.get("created_at") or "~"), path.name, str(path))
