@@ -464,6 +464,7 @@ def restore_vault(path: str, commit: str) -> dict:
 
     To restore a deleted node, pass its UID and the hash of the commit that
     deleted it with "~1" added (e.g. "a1b2c3d~1").
+    A commit from before a rename restores the node at the path it has now.
     Returns {restored, uid, path, from_commit, was_deleted, commit}.
     """
     try:

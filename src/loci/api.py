@@ -1494,6 +1494,30 @@ def _through_paths(ref: str, read):
     raise failure
 
 
+def _node_bytes_at(ref: str, commit: str) -> bytes:
+    """The bytes of the node right after `commit`, from whichever of its paths held
+    it then. A path that held another node at that commit is skipped, so a name
+    reused after a rename never restores the wrong note."""
+    root = _vault_root()
+    uid, paths = _history_node(ref)
+    failure = None
+    for q in paths:
+        try:
+            data = vault_history.show_bytes(root, commit, q)
+        except vault_history.HistoryError as e:
+            failure = failure or e
+            continue
+        if uid:
+            fm, _ = load_frontmatter(data.decode("utf-8", "replace"))
+            if str((fm or {}).get("uid") or "") != uid:
+                failure = failure or vault_history.HistoryError(
+                    f"{q.name} at {commit} holds a different node, not {uid}."
+                )
+                continue
+        return data
+    raise failure
+
+
 def history(path: str, limit: int = 20) -> list:
     """
     Commits that touched a node, newest first: [{commit, author, date, subject}].
@@ -1615,6 +1639,9 @@ def restore(path: str, commit: str) -> dict:
     also a deleted one — and records the restore as a new commit, so history
     is never rewritten and a restore can itself be undone.
 
+    A node that was renamed or moved since `commit` is written back to the path
+    it has now (or had last, if it was deleted); the old path is not recreated.
+
     Edits made outside Loci and not yet committed are committed first, so the
     restore cannot lose them.
     Returns {restored: True, uid, path, from_commit, commit}, plus `warning`
@@ -1623,7 +1650,7 @@ def restore(path: str, commit: str) -> dict:
     root = _vault_root()
     p = _history_path(path)
     with vault_history.write_lock(root, required=True):
-        old = vault_history.show_bytes(root, commit, p)
+        old = _node_bytes_at(path, commit)      # a commit from before a rename holds it at the old path
         fm, _ = load_frontmatter(old.decode("utf-8", "replace"))   # before any write: a broken header must leave the file alone
         uid = (fm or {}).get("uid")
         if not uid:
