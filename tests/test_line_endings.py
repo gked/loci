@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from loci import api
-from loci.tools import vault_history
+from loci.tools import vault_history, vault_init
 
 
 @pytest.fixture
@@ -59,6 +59,36 @@ def test_write_meta_is_lf(tmp_vault, windows_newlines):
 
 def test_a_skill_overlay_is_lf(tmp_vault, windows_newlines):
     path = Path(api.write_skill("- rule one\n- rule two\n", skill="loci-save"))
+    assert b"\r" not in path.read_bytes()
+
+
+def test_new_vault_seeds_are_lf(tmp_path, windows_newlines):
+    vault_root = tmp_path / "vault"
+    vault_init.create_vault_structure(vault_root, include_siblings=False)
+
+    seeded_paths = (
+        vault_root / "meta" / "ontology.yaml",
+        vault_root / "meta" / "ontology-user.yaml",
+        vault_root / "skills" / "loci-save.md",
+    )
+    for path in seeded_paths:
+        assert b"\r" not in path.read_bytes(), path
+
+
+def test_reseeded_meta_is_lf(tmp_path, windows_newlines):
+    vault_root = tmp_path / "vault"
+    vault_init.create_vault_structure(vault_root, include_siblings=False)
+    vault_init.reseed_meta(vault_root)
+
+    path = vault_root / "meta" / "ontology.yaml"
+    assert b"\r" not in path.read_bytes()
+
+
+def test_vault_meta_version_marker_is_lf(tmp_path, windows_newlines):
+    vault_root = tmp_path / "vault"
+    vault_init.write_vault_meta_version(vault_root, vault_init.META_VERSION)
+
+    path = vault_root / "meta" / vault_init.VERSION_MARKER
     assert b"\r" not in path.read_bytes()
 
 
