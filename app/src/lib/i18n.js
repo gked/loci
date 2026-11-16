@@ -42,6 +42,8 @@ const ru = {
   // Rail
   "revoca · undo last change": "revoca · отменить последнее изменение",
   "undo this": "отменить это",
+  "This note was deleted on another computer, but an edit kept it.": "Эта заметка удалена на другом компьютере, но правка её сохранила.",
+  "delete again": "удалить снова",
   "{n} conflicted copies · merge": "копий-конфликтов: {n} · слить",
   "edits to different lines · merges on its own": "правки в разных строках · сливается само",
   "both computers changed the same lines · choose": "на обоих компьютерах изменены одни строки · выберите",

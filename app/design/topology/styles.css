@@ -609,3 +609,8 @@ button { font-family: inherit; }
 [data-motion="static"] .bezel-rotate { animation: none; }
 [data-motion="static"] .pulse { animation: none; }
 [data-motion="ambient"] .meridian { opacity: 0.5; }
+
+/* A node whose delete on another computer lost to an edit */
+.overridden-delete { display: flex; align-items: center; gap: 14px; padding: 8px 28px; position: relative; z-index: 3; flex-shrink: 0; color: var(--t-warn); border-bottom: 1px solid var(--t-rule); font-size: 12px; }
+.overridden-delete button { padding: 3px 10px; font-size: 11px; }
+.overridden-delete button:disabled { cursor: default; opacity: 0.5; }
