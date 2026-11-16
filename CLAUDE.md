@@ -93,8 +93,10 @@ Known gaps, each its own future PR:
 
 - Windows: `vault_history.write_lock` has no lock (`fcntl`), so a write and a
   watcher burst are not serialised. Needs a cross-platform lock (`filelock`).
-- Linux: inotify has a per-user watch limit; a very large vault can exceed it. The
-  watcher then runs on its timer scan alone.
+- Linux: inotify has a per-user watch limit. The watcher watches folder by folder
+  and skips `.loci/`; past the limit it falls back to its timer scan for the rest
+  and logs how to raise the limit (`mode` is `partial`). Needs a Linux machine to
+  confirm on a vault with thousands of folders.
 
 ## Skill ↔ Tool sync rule
 

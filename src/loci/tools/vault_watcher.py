@@ -24,9 +24,15 @@ Operating systems
   `watchdog` picks the native backend itself: FSEvents on macOS, inotify on
   Linux, ReadDirectoryChangesW on Windows. Nothing here branches on the OS, and
   the timer scan is plain Python. What still differs, and is not handled here:
-  - Linux: inotify has a per-user watch limit (fs.inotify.max_user_watches). A
-    very large vault can exceed it; the observer then fails to start and the
-    timer scan alone runs (a warning is logged).
+  - Linux: inotify has a per-user watch limit (fs.inotify.max_user_watches) and
+    one watch costs one folder. The history store keeps loose objects in up to 256
+    folders, so a recursive watch of the vault would spend most of the limit on
+    `.loci/`. On Linux the vault is therefore watched folder by folder, leaving
+    out the folders history never records (`.loci/`, `.obsidian/`, `.git/`), and a
+    new folder is added when it appears. If the limit is still reached, the
+    folders already watched keep giving events, the rest are covered by the timer
+    scan only (an edit there is recorded up to SCAN_SECONDS late), and a warning
+    says how to raise the limit. `mode` tells which case applies.
   - Windows: not a tested platform. vault_history.write_lock uses fcntl, which
     Windows lacks, so a burst there is not serialised with a Loci write. That
     needs a cross-platform lock in its own PR.
@@ -36,7 +42,10 @@ The watcher never raises into the server. When `watchdog` cannot start, the
 timer scan alone keeps working.
 """
 
+import errno
 import logging
+import os
+import sys
 import threading
 import time
 from pathlib import Path
@@ -60,6 +69,8 @@ class VaultWatcher:
         scan_every: float = SCAN_SECONDS,
         clock: Callable[[], float] = time.monotonic,
         on_recorded: Optional[Callable[[str], None]] = None,
+        per_directory: Optional[bool] = None,
+        observer_factory: Optional[Callable] = None,
     ):
         self.vault_root = Path(vault_root)
         self.quiet = quiet
@@ -72,6 +83,13 @@ class VaultWatcher:
         self._last_event = 0.0
         self._last_scan = clock()
         self._observer = None
+        # One watch per folder (Linux, see the module docstring) or one recursive
+        # watch (macOS, Windows: FSEvents and ReadDirectoryChangesW take a tree).
+        self._per_directory = sys.platform.startswith("linux") if per_directory is None else per_directory
+        self._observer_factory = observer_factory
+        self._handler = None
+        self._watched: set[str] = set()
+        self.mode = "scan"      # "events" (all watched), "partial" (limit reached), "scan" (timer only)
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
 
@@ -187,13 +205,66 @@ class VaultWatcher:
                     # records (the store, an editor's folder) is no reason to.
                     if kind in ("moved", "deleted", "created") and watcher._records(*[str(p) for p in paths if p]):
                         watcher.note(everything=True)
+                    if kind in ("created", "moved") and watcher._per_directory:
+                        watcher._watch_tree(str(paths[-1] or paths[0]))
                     return
                 watcher.note(*[str(p) for p in paths if p])
 
+        self._handler = Handler()
         try:
-            observer = Observer()
-            observer.schedule(Handler(), str(self.vault_root), recursive=True)
-            observer.start()
+            observer = (self._observer_factory or Observer)()
             self._observer = observer
+            if self._per_directory:
+                self._watch_tree(str(self.vault_root))
+                if self.mode == "scan":     # not even the vault folder: nothing to start
+                    self._observer = None
+                    return
+            else:
+                observer.schedule(self._handler, str(self.vault_root), recursive=True)
+                self.mode = "events"
+            observer.start()
         except Exception as e:
-            log.warning("vault watcher: native events unavailable (%s); scanning every %ss instead", e, self.scan_every)
+            self._observer = None
+            self.mode = "scan"
+            self._warn_no_events(e)
+            return
+        if self.mode == "scan" and self._watched:
+            self.mode = "events"
+
+    def _watch_tree(self, top: str) -> None:
+        """Watch `top` and every folder under it that history records, one watch
+        each. Stops at the first refusal (the inotify limit) and keeps the watches
+        already made."""
+        observer = self._observer
+        if observer is None or self._handler is None:
+            return
+        for folder, subfolders, _ in os.walk(top):
+            try:
+                rel = Path(folder).resolve().relative_to(self.vault_root.resolve())
+            except (OSError, ValueError):
+                subfolders[:] = []
+                continue
+            if not vault_history._eligible(rel):
+                subfolders[:] = []      # the store, an editor's folder: never watched
+                continue
+            if folder in self._watched:
+                continue
+            try:
+                observer.schedule(self._handler, folder, recursive=False)
+            except OSError as e:
+                self.mode = "partial" if self._watched else "scan"
+                self._warn_no_events(e, watching=len(self._watched))
+                return
+            self._watched.add(folder)
+            self.mode = "events"
+
+    def _warn_no_events(self, error: Exception, watching: int = 0) -> None:
+        out_of_watches = getattr(error, "errno", None) in (errno.ENOSPC, errno.EMFILE)
+        if out_of_watches:
+            log.warning(
+                "vault watcher: the operating system refused another watch (%s) after %d folders; "
+                "the rest are scanned every %ss instead. On Linux raise fs.inotify.max_user_watches "
+                "(sysctl) to watch them all.", error, watching, self.scan_every)
+        else:
+            log.warning("vault watcher: native events unavailable (%s); scanning every %ss instead",
+                        error, self.scan_every)

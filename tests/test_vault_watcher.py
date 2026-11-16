@@ -205,14 +205,16 @@ def test_files_from_another_computer_are_joined_not_recorded_as_outside(tmp_vaul
     assert vault_history.OUTSIDE_MESSAGE not in subs
 
 
-def test_a_real_file_event_ends_in_a_commit(tmp_vault):
+@pytest.mark.parametrize("per_directory", [False, True], ids=["one-recursive-watch", "folder-by-folder"])
+def test_a_real_file_event_ends_in_a_commit(tmp_vault, per_directory):
     """The native backend of this operating system (FSEvents, inotify or
     ReadDirectoryChangesW) reports a write, and the burst is recorded."""
     pytest.importorskip("watchdog")
     api.save(type="document", title="First", body="hello",
              extra_fields={"status": "draft", "subtype": "note"})
     done = threading.Event()
-    watcher = VaultWatcher(tmp_vault, quiet=0.3, scan_every=3600, on_recorded=lambda c: done.set())
+    watcher = VaultWatcher(tmp_vault, quiet=0.3, scan_every=3600, on_recorded=lambda c: done.set(),
+                           per_directory=per_directory)
     watcher.start()
     try:
         if watcher._observer is None:
@@ -221,6 +223,115 @@ def test_a_real_file_event_ends_in_a_commit(tmp_vault):
         (tmp_vault / "typed-by-hand.md").write_text("hello from an editor")
         assert done.wait(10), "no commit within 10 s of a file event"
         assert vault_history.history(tmp_vault, "typed-by-hand.md")
+        assert watcher.mode == "events"
     finally:
         watcher.stop()
     assert watcher._thread is None and watcher._observer is None
+
+
+# ---------------------------------------------------------------------------
+# What to watch, and what happens when the operating system says no more
+# ---------------------------------------------------------------------------
+
+import errno
+import logging
+
+
+class FakeObserver:
+    """Records what is watched, and refuses after `limit` watches, as inotify does."""
+    def __init__(self, limit=None):
+        self.limit, self.scheduled, self.started, self.stopped = limit, [], False, False
+
+    def schedule(self, handler, path, recursive=False):
+        if self.limit is not None and len(self.scheduled) >= self.limit:
+            raise OSError(errno.ENOSPC, "inotify watch limit reached")
+        self.scheduled.append((path, recursive))
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        self.stopped = True
+
+    def join(self, timeout=None):
+        pass
+
+
+def _watcher(vault, observer, per_directory=True):
+    return VaultWatcher(vault, observer_factory=lambda: observer, per_directory=per_directory)
+
+
+def test_on_linux_the_store_and_editor_folders_are_not_watched(tmp_vault):
+    for d in (".loci/history/objects/ab", ".obsidian", ".git", "meta", "sub/deeper"):
+        (tmp_vault / d).mkdir(parents=True, exist_ok=True)
+    observer = FakeObserver()
+    w = _watcher(tmp_vault, observer)
+    w._start_observer()
+    watched = {p for p, _ in observer.scheduled}
+    assert str(tmp_vault) in watched
+    assert str(tmp_vault / "meta") in watched and str(tmp_vault / "sub" / "deeper") in watched
+    assert not [p for p in watched if "/.loci" in p or "/.obsidian" in p or "/.git" in p]
+    assert all(recursive is False for _, recursive in observer.scheduled)
+    assert observer.started and w.mode == "events"
+
+
+def test_on_macos_and_windows_one_recursive_watch_is_made(tmp_vault):
+    (tmp_vault / "meta").mkdir(exist_ok=True)
+    observer = FakeObserver()
+    w = _watcher(tmp_vault, observer, per_directory=False)
+    w._start_observer()
+    assert observer.scheduled == [(str(tmp_vault), True)]
+    assert w.mode == "events"
+
+
+def test_a_new_folder_is_watched_when_it_appears(tmp_vault):
+    from watchdog.events import DirCreatedEvent
+    observer = FakeObserver()
+    w = _watcher(tmp_vault, observer)
+    w._start_observer()
+    (tmp_vault / "fresh" / "inner").mkdir(parents=True)
+    w._handler.on_any_event(DirCreatedEvent(str(tmp_vault / "fresh")))
+    watched = {p for p, _ in observer.scheduled}
+    assert str(tmp_vault / "fresh") in watched and str(tmp_vault / "fresh" / "inner") in watched
+    (tmp_vault / ".loci" / "newdir").mkdir(parents=True, exist_ok=True)
+    w._handler.on_any_event(DirCreatedEvent(str(tmp_vault / ".loci" / "newdir")))
+    assert str(tmp_vault / ".loci" / "newdir") not in {p for p, _ in observer.scheduled}
+
+
+def test_reaching_the_watch_limit_keeps_what_is_watched_and_says_how_to_raise_it(tmp_vault, caplog):
+    for d in ("a", "b", "c"):
+        (tmp_vault / d).mkdir(exist_ok=True)
+    observer = FakeObserver(limit=2)
+    w = _watcher(tmp_vault, observer)
+    with caplog.at_level(logging.WARNING):
+        w._start_observer()
+    assert len(observer.scheduled) == 2 and observer.started
+    assert w.mode == "partial"
+    assert "max_user_watches" in caplog.text
+
+
+def test_no_watch_at_all_leaves_the_timer_scan(tmp_vault, caplog):
+    observer = FakeObserver(limit=0)
+    w = _watcher(tmp_vault, observer)
+    with caplog.at_level(logging.WARNING):
+        w._start_observer()
+    assert w.mode == "scan" and w._observer is None
+    assert "max_user_watches" in caplog.text
+
+
+def test_the_timer_scan_still_records_an_edit_in_a_folder_the_limit_left_out(tmp_vault):
+    api.save(type="document", title="First", body="hello", extra_fields={"status": "draft", "subtype": "note"})
+    clock = Clock()
+    w = VaultWatcher(tmp_vault, scan_every=45.0, clock=clock, on_recorded=lambda c: None,
+                     observer_factory=lambda: FakeObserver(limit=0), per_directory=True)
+    w._start_observer()
+    (tmp_vault / "unwatched.md").write_text("---\nuid: 1234abcd\n---\n")
+    clock.advance(46)
+    assert w.tick()
+    assert "Changes made outside Loci" in _subjects(tmp_vault)[0]
+
+
+def test_stop_survives_an_observer_that_never_started(tmp_vault):
+    w = _watcher(tmp_vault, FakeObserver(limit=0))
+    w._start_observer()
+    w.stop()
