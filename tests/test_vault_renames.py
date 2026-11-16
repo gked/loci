@@ -124,3 +124,41 @@ def test_a_burst_that_names_both_paths_finds_the_rename(tmp_vault):
     # What the watcher passes: the paths the file events named.
     assert vault_history.snapshot_outside(tmp_vault, [path, new])
     assert subjects(tmp_vault, uid)[0] == f"Renamed: {path.name} → {new.name}"
+
+
+def test_another_note_that_takes_the_old_name_is_not_in_the_history(tmp_vault):
+    uid, path = node(tmp_vault, "First owner")
+    other_uid, other = node(tmp_vault, "Second owner")
+    new = path.with_name("first-owner-moved.md")
+    path.rename(new)
+    vault_history.snapshot_outside(tmp_vault)
+    # A different note now sits at the name the first one had.
+    path.write_text(other.read_text().replace(other_uid, "abcdef12"))
+    vault_history.snapshot_outside(tmp_vault)
+    taker = vault_history.history(tmp_vault, path.name, limit=1)[0]["commit"]
+    mine = [c["commit"] for c in api.history(uid)]
+    assert taker not in mine
+    assert any(s.startswith("Renamed:") for s in subjects(tmp_vault, uid))
+
+
+def test_the_history_by_an_old_path_spans_the_rename(tmp_vault):
+    uid, path = node(tmp_vault, "Asked by old name")
+    new = path.with_name("asked-by-old-name-2.md")
+    path.rename(new)
+    vault_history.snapshot_outside(tmp_vault)
+    assert not path.exists()
+    assert subjects(tmp_vault, path.name) == subjects(tmp_vault, uid)
+
+
+def test_a_new_name_with_a_newline_keeps_the_subject_on_one_line(tmp_vault):
+    uid, path = node(tmp_vault, "Odd name")
+    new = path.with_name("odd\nname.md")
+    path.rename(new)
+    vault_history.snapshot_outside(tmp_vault)
+    subject = subjects(tmp_vault, uid)[0]
+    assert subject.startswith("Renamed: ") and "odd?name.md" in subject
+
+
+def test_a_name_that_is_not_utf8_still_makes_a_message():
+    assert vault_history._name_in_message(b"a\xff\nb.md") == "a�?b.md"
+    vault_history._name_in_message(b"a\xff.md").encode("utf-8")      # does not raise

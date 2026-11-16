@@ -400,6 +400,7 @@ def read_vault(path: str, commit: str = None) -> str:
     after that commit — also for a node that has since been changed or deleted.
     For a deleted node, pass the hash of the commit that deleted it with "~1"
     added (e.g. "a1b2c3d~1") to get the last version before the deletion.
+    A commit from before a rename still works: the note is found at its old path.
     """
     try:
         return vault.get(path, commit)
@@ -416,6 +417,8 @@ def history_vault(path: str, limit: int = 20) -> dict:
 
     Accepts a UID, absolute path or vault-relative path. A UID also works for a
     node that was deleted: history finds the file it last lived in.
+    A node that was renamed or moved shows the commits of every path it had, also
+    when you pass an old path. A commit "Renamed: old.md → new.md" marks the move.
 
     Use this to find what happened to a node — for example when content is
     missing after a write — then diff_vault to see the change and
@@ -434,6 +437,7 @@ def diff_vault(path: str, commit: str) -> dict:
     Show the change one commit made to a node, as a unified diff:
     lines starting with "-" were removed, "+" were added.
     Get the commit hash from history_vault. Returns {diff} or {error}.
+    A commit from before a rename still works: the note is found at its old path.
     """
     try:
         return {"diff": vault.diff(path, commit)}

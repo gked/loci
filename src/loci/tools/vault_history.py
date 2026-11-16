@@ -625,6 +625,13 @@ def _uid_of(data: bytes) -> Optional[str]:
     return match.group(1).decode("utf-8", "replace") if match else None
 
 
+def _name_in_message(name: bytes) -> str:
+    """A file name made safe for a commit subject: bytes that are not UTF-8 become
+    U+FFFD (a lone surrogate would make the commit message fail to encode), and a
+    control character such as a newline becomes "?" (it would split the subject)."""
+    return re.sub(r"[\x00-\x1f\x7f]", "?", name.decode("utf-8", "replace"))
+
+
 def _outside_message(
     repo: Repo,
     entries: dict[bytes, tuple[int, bytes]],
@@ -636,7 +643,7 @@ def _outside_message(
     pairs = _renames(repo, entries, changes)
     if not pairs:
         return OUTSIDE_MESSAGE
-    shown = ", ".join(f"{os.fsdecode(old)} → {os.fsdecode(new)}" for old, new in pairs[:3])
+    shown = ", ".join(f"{_name_in_message(old)} → {_name_in_message(new)}" for old, new in pairs[:3])
     if len(pairs) > 3:
         shown += f" and {len(pairs) - 3} more"
     others = len(changes) - 2 * len(pairs)
@@ -876,11 +883,28 @@ def snapshot_outside(vault_root: Path, paths: Optional[Iterable[Path | str]] = N
     return None
 
 
-def history(vault_root: Path, path: Path | str, limit: int = 50, also: Iterable[Path | str] = ()) -> list[dict]:
+def history(
+    vault_root: Path,
+    path: Path | str,
+    limit: int = 50,
+    also: Iterable[Path | str] = (),
+    uid: Optional[str] = None,
+) -> list[dict]:
     """Commits that touched `path` or any of `also` (the other paths one note has
     had, after a rename), on every computer's branch together, newest
     first: [{commit, author, date, subject}]. Raises HistoryError when the vault has no
-    store; an empty list means the store has no commit for the path."""
+    store; an empty list means the store has no commit for the path.
+
+    With `also` and `uid`, a commit counts only when the file it touched held
+    that uid, before or after the commit. Another note that later took an old
+    file name is then not part of this note's history.
+
+    COST, and the cheaper option if it matters: this check reads up to two files
+    per path per commit, and it needs every commit that touched one of the paths
+    (the limit applies after the check). It runs only for a note that has more
+    than one path. If it proves too slow on a large vault, switch to option B:
+    keep each old path only up to the commit where another uid first takes it,
+    and skip the per-commit read."""
     _require_repo(Path(vault_root))
     try:
         vault_root = Path(vault_root)
@@ -892,9 +916,15 @@ def history(vault_root: Path, path: Path | str, limit: int = 50, also: Iterable[
         if not tips:
             return []
         out = []
-        entries, _ = _walk(repo, list(tips.values()), paths=specs, max_entries=int(limit))
+        check = bool(uid) and len(specs) > 1
+        entries, _ = _walk(repo, list(tips.values()), paths=specs,
+                           **({} if check else {"max_entries": int(limit)}))
         for entry in entries:
             c = entry.commit
+            if check and not _carries_uid(repo, c, specs, uid):
+                continue
+            if len(out) >= int(limit):
+                break
             when = datetime.fromtimestamp(c.author_time, timezone(timedelta(seconds=c.author_timezone)))
             out.append({
                 "commit": c.id.decode("ascii"),
@@ -907,6 +937,43 @@ def history(vault_root: Path, path: Path | str, limit: int = 50, also: Iterable[
         log.warning("vault history unreadable: %s", e)
         _set_error(vault_root, str(e))
         return []
+
+
+def _carries_uid(repo: Repo, commit: Commit, keys: list[bytes], uid: str) -> bool:
+    """True when `commit` changed one of `keys` and that file held `uid` right
+    before or right after: the commit changed this note, not another note at the
+    same path. A key the commit left as it was does not count."""
+    parent = commit.parents[0] if commit.parents else None
+    for key in keys:
+        after = _bytes_at(repo, commit.id, key)
+        before = _bytes_at(repo, parent, key) if parent is not None else None
+        if after == before:
+            continue
+        for data in (after, before):
+            if data is not None and _uid_of(data) == uid:
+                return True
+    return False
+
+
+def uid_at_path(vault_root: Path, path: Path | str) -> Optional[str]:
+    """The uid of the note that last lived at `path`, for a path whose file is
+    gone (renamed, moved or deleted). None when history never saw a note there."""
+    _require_repo(Path(vault_root))
+    repo = _open(Path(vault_root))
+    key = _spec(Path(vault_root), path)
+    tips = _tips(repo) if repo is not None else {}
+    if not tips:
+        return None
+    entries, _ = _walk(repo, list(tips.values()), paths=[key], max_entries=1)
+    if not entries:
+        return None
+    commit = entries[0].commit
+    for at in (commit.id, commit.parents[0] if commit.parents else None):
+        data = _bytes_at(repo, at, key) if at is not None else None
+        uid = _uid_of(data) if data is not None else None
+        if uid:
+            return uid
+    return None
 
 
 # ---------------------------------------------------------------------------

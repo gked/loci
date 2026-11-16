@@ -1410,9 +1410,11 @@ def _history_path(ref: str) -> Path:
         raise
 
 
-def _history_paths(ref: str) -> list[Path]:
-    """Every path the node has had, the newest first: the file now (or the last
-    one, for a deleted node), then the paths it had before a rename or move."""
+def _history_node(ref: str) -> tuple[Optional[str], list[Path]]:
+    """(uid, paths) of a history request. The paths are every path the node has
+    had, the newest first: the file now (or the last one, for a deleted node),
+    then the paths it had before a rename or move. The uid is None when it cannot
+    be known (a file without one, or a path history never saw)."""
     root = _vault_root()
     first = _history_path(ref)
     uid = ref.strip() if _UID_RE.fullmatch(ref.strip()) else None
@@ -1422,18 +1424,25 @@ def _history_paths(ref: str) -> list[Path]:
             uid = str((fm or {}).get("uid") or "") or None
         except (OSError, UnicodeDecodeError, ValueError):
             uid = None
+    elif uid is None:
+        # A path whose file is gone: renamed, moved or deleted. History knows
+        # which note last lived there.
+        try:
+            uid = vault_history.uid_at_path(root, first)
+        except vault_history.HistoryError:
+            uid = None
     out = [first]
     for rel in (vault_history.paths_of(root, uid) if uid else []):
         if root / rel not in out:
             out.append(root / rel)
-    return out
+    return uid, out
 
 
 def _through_paths(ref: str, read):
     """read(path) for the first path of the node that works: a commit from
     before a rename holds the note at its old path."""
     failure = None
-    for p in _history_paths(ref):
+    for p in _history_node(ref)[1]:
         try:
             return read(p)
         except vault_history.HistoryError as e:
@@ -1447,8 +1456,8 @@ def history(path: str, limit: int = 20) -> list:
     Accepts a UID, absolute path or vault-relative path — also for a deleted node.
     A node that was renamed or moved shows the commits of all the paths it had.
     """
-    first, *others = _history_paths(path)
-    return vault_history.history(_vault_root(), first, limit, also=others)
+    uid, (first, *others) = _history_node(path)
+    return vault_history.history(_vault_root(), first, limit, also=others, uid=uid)
 
 
 def diff(path: str, commit: str) -> str:
