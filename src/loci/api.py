@@ -996,7 +996,7 @@ def _rewrite_yaml_entries(path: Path, list_key: str, change) -> None:
         allow_unicode=True,
         sort_keys=False,
     )
-    path.write_text(header + dumped, encoding="utf-8")
+    path.write_text(header + dumped, encoding="utf-8", newline="\n")
 
 
 def _append_yaml_entry(path: Path, list_key: str, entry: dict) -> None:
@@ -1350,7 +1350,7 @@ def write_meta(file: str, content: str) -> str:
     # rather than failing the write with a bare FileNotFoundError.
     p.parent.mkdir(parents=True, exist_ok=True)
     _before_write(p)
-    p.write_text(content, encoding="utf-8")
+    p.write_text(content, encoding="utf-8", newline="\n")
     _record(f"Update meta: {file}", p)
     return str(p)
 

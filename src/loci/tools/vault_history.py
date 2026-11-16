@@ -960,7 +960,7 @@ def _spec(vault_root: Path, path: Path | str) -> bytes:
 # walks again. The time is kept because a line that arrives from another computer
 # can hold commits older than ones already indexed, and the newest must win.
 # The sync HTTP endpoints run in a thread pool, so the lock guards every use.
-_UID_LINE = re.compile(rb"(?m)^uid:[ \t]*['\"]?([^\s'\"]+)['\"]?[ \t]*$")
+_UID_LINE = re.compile(rb"(?m)^uid:[ \t]*['\"]?([^\s'\"]+)['\"]?[ \t\r]*$")
 _uid_index: dict[str, tuple[tuple[bytes, ...], dict[str, tuple[str, int]]]] = {}
 _uid_index_lock = threading.Lock()
 
