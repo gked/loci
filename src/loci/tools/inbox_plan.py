@@ -21,7 +21,7 @@ DEFAULT_BUDGET_CONTENT = 10
 def _plan_lock(stage_root: Path):
     """Exclusive advisory lock for read-modify-write operations on the plan file."""
     lock_path = stage_root / _LOCK_FILENAME
-    lock_file = open(lock_path, "w")
+    lock_file = open(lock_path, "w", encoding="utf-8")
     try:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         yield

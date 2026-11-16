@@ -15,6 +15,7 @@ import io
 import logging
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -28,10 +29,11 @@ from loci.tools.write_file import (
     write_item as _write_item,
     patch_item as _patch_item,
     check_duplicate as _check_duplicate,
+    find_uid,
 )
 from loci.tools.type_registry import get_registry
 from loci.tools.relation_registry import get_relation_registry
-from loci.tools.frontmatter import load_frontmatter
+from loci.tools.frontmatter import load_frontmatter, split_frontmatter
 from loci.tools import nx_graph as graph
 from loci.tools import tag_hygiene
 from loci.tools import node_merge, vault_history
@@ -319,6 +321,49 @@ def delete(path: str) -> dict:
     return out
 
 
+def overridden_delete(path: str) -> Optional[dict]:
+    """{commit, date, subject} when the newest change to the node is an edit that
+    won over a delete on another computer (see node_merge), else None. Any later
+    change to the node clears it: the user has seen the node and kept working.
+    Commits are told apart by the second they were made in, so a change made in
+    the same second as the override does not clear it. A node whose file is gone
+    is never flagged. Accepts a UID or a path. Never raises: no history, or no
+    such node, is None."""
+    try:
+        _resolve_vault_path(path)
+        recent = history(path, 20)
+    except (OSError, ValueError, vault_history.HistoryError):
+        return None
+    if not recent:
+        return None
+    # The dates carry each computer's own UTC offset, so compare moments, not text.
+    try:
+        moment = {c["commit"]: datetime.fromisoformat(c["date"]) for c in recent}
+    except ValueError:
+        return None
+    newest = max(moment.values())
+    for c in recent:
+        if moment[c["commit"]] == newest and c["subject"].startswith(node_merge.OVERRIDE_SUBJECT):
+            return c
+    return None
+
+
+@_serialized
+def delete_overridden(path: str) -> dict:
+    """Delete a node again after an edit won over its delete. Refuses (ValueError)
+    for any node that is not in that state, so this is not a general delete.
+    Raises FileNotFoundError when there is no such node."""
+    p = _resolve_vault_path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Vault file not found: {p}")
+    if overridden_delete(path) is None:
+        raise ValueError(
+            "This node was not restored by an edit that won over a delete, so it is not deleted here. "
+            "Use delete_vault for an ordinary delete."
+        )
+    return delete(path)
+
+
 @_serialized
 def patch(path: str, updates: dict, body: str = None) -> dict:
     """
@@ -383,7 +428,7 @@ def get(path: str, commit: str = None) -> str:
     under the size threshold) or as a path reference (binary/large files).
     """
     if commit is not None:
-        return vault_history.show(_vault_root(), commit, _history_path(path))
+        return _through_paths(path, lambda p: vault_history.show(_vault_root(), commit, p))
     p = _resolve_vault_path(path)
     if not p.exists():
         raise FileNotFoundError(f"Vault file not found: {p}")
@@ -1134,6 +1179,41 @@ def conflicted_copies() -> list:
     return out
 
 
+@_serialized
+def fix_duplicate_uid(path: str) -> dict:
+    """
+    Give a note a new uid because another, older note already holds its uid (a
+    file dropped in by hand with a copied header). Call it only after the user
+    agrees: it changes the file. Relations that point at the old uid mean the
+    older node, so none of them is rewritten.
+    Raises ValueError when the file is not the newer holder of a shared uid.
+    Returns {path, old_uid, new_uid, commit}.
+    """
+    root = _vault_root()
+    p = Path(path)
+    p = p if p.is_absolute() else root / p
+    if not p.is_file():
+        raise FileNotFoundError(f"Vault file not found: {p}")
+    text = p.read_text(encoding="utf-8")
+    fm, _ = load_frontmatter(text)
+    old = str((fm or {}).get("uid") or "")
+    elder = find_uid(root, old) if old else None
+    if not old or elder is None or elder.resolve() == p.resolve():
+        raise ValueError(f"{p.name} is not the newer holder of a shared uid; nothing was changed.")
+    new = _generate_uid()
+    while find_uid(root, new):
+        new = _generate_uid()
+    header, _ = split_frontmatter(text)
+    start = text.index(header)
+    fixed = re.sub(r"(?m)^uid:.*$", f"uid: {new}", header, count=1)
+    out = {"path": str(p), "old_uid": old, "new_uid": new}
+    _before_write(p)
+    _apply_files({p: (text[:start] + fixed + text[start + len(header):]).encode("utf-8")},
+                 f"New uid {new} for {p.name}: {old} belongs to an older node", out)
+    _reindex_quietly(p)
+    return out
+
+
 def conflict_count() -> int:
     """How many conflicted copies the vault holds. A directory listing, cheap enough for /api/health."""
     return len(node_merge.conflicted_copies(_vault_root()))
@@ -1374,17 +1454,59 @@ def _history_path(ref: str) -> Path:
         raise
 
 
+def _history_node(ref: str) -> tuple[Optional[str], list[Path]]:
+    """(uid, paths) of a history request. The paths are every path the node has
+    had, the newest first: the file now (or the last one, for a deleted node),
+    then the paths it had before a rename or move. The uid is None when it cannot
+    be known (a file without one, or a path history never saw)."""
+    root = _vault_root()
+    first = _history_path(ref)
+    uid = ref.strip() if _UID_RE.fullmatch(ref.strip()) else None
+    if uid is None and first.is_file():
+        try:
+            fm, _ = load_frontmatter(first.read_text(encoding="utf-8"))
+            uid = str((fm or {}).get("uid") or "") or None
+        except (OSError, UnicodeDecodeError, ValueError):
+            uid = None
+    elif uid is None:
+        # A path whose file is gone: renamed, moved or deleted. History knows
+        # which note last lived there.
+        try:
+            uid = vault_history.uid_at_path(root, first)
+        except vault_history.HistoryError:
+            uid = None
+    out = [first]
+    for rel in (vault_history.paths_of(root, uid) if uid else []):
+        if root / rel not in out:
+            out.append(root / rel)
+    return uid, out
+
+
+def _through_paths(ref: str, read):
+    """read(path) for the first path of the node that works: a commit from
+    before a rename holds the note at its old path."""
+    failure = None
+    for p in _history_node(ref)[1]:
+        try:
+            return read(p)
+        except vault_history.HistoryError as e:
+            failure = failure or e
+    raise failure
+
+
 def history(path: str, limit: int = 20) -> list:
     """
     Commits that touched a node, newest first: [{commit, author, date, subject}].
     Accepts a UID, absolute path or vault-relative path — also for a deleted node.
+    A node that was renamed or moved shows the commits of all the paths it had.
     """
-    return vault_history.history(_vault_root(), _history_path(path), limit)
+    uid, (first, *others) = _history_node(path)
+    return vault_history.history(_vault_root(), first, limit, also=others, uid=uid)
 
 
 def diff(path: str, commit: str) -> str:
     """The change `commit` made to the node, as a unified diff."""
-    return vault_history.diff(_vault_root(), commit, _history_path(path))
+    return _through_paths(path, lambda p: vault_history.diff(_vault_root(), commit, p))
 
 
 def _reindex_quietly(p: Path) -> bool:

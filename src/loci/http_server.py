@@ -34,9 +34,11 @@ from loci.tools.vault_init import (
 )
 from loci.tools import nx_graph as graph
 from loci.tools import node_merge, vault_history
+from loci.tools.vault_watcher import VaultWatcher
 from loci.tools.type_registry import get_registry
 from loci.tools.frontmatter import split_frontmatter
 from loci import api as vault_api
+from loci.console import use_utf8_output
 from loci.language import get_language
 
 log = logging.getLogger(__name__)
@@ -131,7 +133,7 @@ def _read_config_file() -> dict:
     if not path.exists():
         return {}
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     except (OSError, yaml.YAMLError) as exc:
         log.warning("Could not read %s: %s", path, exc)
@@ -160,7 +162,7 @@ def _load_or_create_token() -> str:
     if path.exists():
         config["api_token"] = token
         try:
-            with open(path, "w") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 yaml.dump(config, f, default_flow_style=False)
             log.info("Generated a new API token and saved it to %s", path)
         except OSError as exc:
@@ -321,6 +323,20 @@ def _authorize_local_request(
         raise HTTPException(status_code=403, detail="Missing or invalid API token")
 
 
+def _start_watcher():
+    """Record edits made outside Loci soon after they happen. History is a
+    convenience, so a watcher that cannot start must not stop the server."""
+    if _VAULT_ROOT is None or not vault_history.enabled():
+        return None
+    try:
+        watcher = VaultWatcher(_VAULT_ROOT)
+        watcher.start()
+        return watcher
+    except Exception as e:
+        log.warning("Vault watcher did not start: %s", e)
+        return None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _VAULT_ROOT
@@ -338,7 +354,12 @@ async def lifespan(app: FastAPI):
     # to paste in.
     log.info("API token: %s", _api_token())
     log.info("Allowed origins: %s", ", ".join(_allowed_origins()))
-    yield
+    watcher = _start_watcher()
+    try:
+        yield
+    finally:
+        if watcher is not None:
+            watcher.stop()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -663,6 +684,36 @@ def node_neighbors(uid: str):
     return graph.neighbors(uid)
 
 
+@app.get("/api/nodes/{uid}/overridden-delete")
+def node_overridden_delete(uid: str):
+    """{overridden: true, commit, date} when the newest change to the node is an
+    edit that won over a delete on another computer, else {overridden: false}."""
+    found = vault_api.overridden_delete(uid)
+    return {"overridden": True, "commit": found["commit"], "date": found["date"]} if found else {"overridden": False}
+
+
+@app.post("/api/nodes/{uid}/delete-again")
+def node_delete_again(
+    uid: str,
+    origin: str | None = Header(None),
+    x_loci_token: str | None = Header(None),
+    host: str | None = Header(None),
+):
+    """Delete a node again after an edit won over its delete. Writes, so it takes
+    the same origin and token check as /api/undo. 409 when the node is not in
+    that state: this is not a general delete."""
+    _authorize_local_request(origin, x_loci_token, host)
+    try:
+        return vault_api.delete_overridden(uid)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Node {uid!r} not found") from e
+    except (ValueError, vault_history.HistoryError) as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except OSError as e:
+        log.warning("deleting again failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Could not delete: {e}") from e
+
+
 @app.get("/api/nodes/{uid}")
 def node_get(uid: str):
     vr = _vault_root()
@@ -835,6 +886,7 @@ def main() -> None:  # pragma: no cover
     """
     import uvicorn
 
+    use_utf8_output()
     command, rest = split_command(sys.argv[1:])
 
     # Handled before the vault check on purpose: installing skills does not

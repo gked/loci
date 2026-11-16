@@ -150,6 +150,7 @@ style-driven markup, so text selectors break on every design pass.
 | `conflict-item` | `VaultRail.jsx` | one per copy; `data-copy`, `data-kind` (`merged`, `conflict`, `restore`, `keep-both`, `error`) |
 | `conflict-clash`, `conflict-pick-a`, `conflict-pick-b`, `conflict-apply` | `VaultRail.jsx` | one clash per pair of changed lines; the two sides (`data-active`); the merge button, disabled until every clash has a side |
 | `conflict-name`, `conflict-summary`, `conflict-error` | `VaultRail.jsx` | the note, what merging does, the server's refusal |
+| `overridden-delete`, `overridden-delete-text`, `overridden-delete-again`, `overridden-delete-error` | `OverriddenDelete.jsx` | the warning on a note whose delete on another computer lost to an edit; the "delete again" button; the server's refusal. Absent on any other note |
 | `lang-switch`, `lang-en`, `lang-ru-RU` | `VaultRail.jsx` | the rail's language switch; each button has `data-active`. The choice is kept in localStorage (`loci_language`) |
 | `node-detail` | `NodeDetail.jsx` | `data-uid` |
 | `node-detail-empty` | `NodeDetail.jsx` | shown while the node query is loading |

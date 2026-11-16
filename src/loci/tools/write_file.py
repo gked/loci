@@ -30,7 +30,7 @@ from loci.tools.vault_init import NON_NODE_DIRS, NOT_CONFIGURED_MESSAGE, load_co
 from loci.tools.type_registry import get_registry
 from loci.tools.relation_registry import get_relation_registry
 from loci.tools.scheme_registry import get_scheme_registry, has_asset_issues
-from loci.tools.frontmatter import load_frontmatter, split_frontmatter
+from loci.tools.frontmatter import load_frontmatter, split_frontmatter, uid_rank
 from loci.tools.node_merge import is_conflicted_copy
 from loci.tools.tag_hygiene import as_tag_list
 
@@ -108,7 +108,11 @@ def find_uid(vault_root: Path, uid: str) -> Optional[Path]:
 
     Read from disk for the same reason check_duplicate does: the graph index
     can lag an in-place edit, and a save is not a hot path.
+
+    Two files can hold one uid (a note dropped in by hand with a copied header).
+    The older node wins (`frontmatter.uid_rank`), so the copy never hides it. The linter reports the pair.
     """
+    found: list[tuple[tuple, Path]] = []
     for md_file in vault_root.rglob("*.md"):
         if md_file.parent.name in NON_NODE_DIRS or is_conflicted_copy(md_file):
             continue
@@ -117,8 +121,8 @@ def find_uid(vault_root: Path, uid: str) -> Optional[Path]:
         except Exception:
             continue
         if fm and str(fm.get("uid") or "") == uid:
-            return md_file
-    return None
+            found.append((uid_rank(fm, md_file), md_file))
+    return min(found)[1] if found else None
 
 
 def free_filename(vault_root: Path, title: str) -> str:

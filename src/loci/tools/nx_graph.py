@@ -22,7 +22,7 @@ from typing import Optional
 import networkx as nx
 
 from loci.tools import tag_hygiene
-from loci.tools.frontmatter import load_frontmatter
+from loci.tools.frontmatter import load_frontmatter, uid_rank
 from loci.tools.vault_init import NON_NODE_DIRS
 from loci.tools.node_merge import is_conflicted_copy
 
@@ -72,6 +72,7 @@ def _build(vault_root: Path) -> nx.DiGraph:
     Edges carry: rel_type.
     """
     g = nx.DiGraph()
+    rank: dict = {}     # uid -> uid_rank of the file that holds it
 
     for md_file in vault_root.rglob("*.md"):
         # Skip meta files and skill overlays — they are not vault items
@@ -83,6 +84,15 @@ def _build(vault_root: Path) -> nx.DiGraph:
             continue
 
         uid = fm["uid"]
+
+        # Two files with one uid: the older node keeps it, so a copy never hides it.
+        mine = uid_rank(fm, md_file)
+        if uid in rank:
+            if rank[uid] <= mine:
+                continue
+            # The older file arrives second: drop what the copy added.
+            g.remove_edges_from(list(g.out_edges(uid)))
+        rank[uid] = mine
 
         has_asset_val = fm.get("has_asset")
         has_asset_present = (
@@ -186,6 +196,15 @@ def mark_fresh(vault_root: Path) -> None:
     global _built_at
     if _graph is not None and _vault_root == vault_root:
         _built_at = max(_built_at, _vault_dir_mtime(vault_root))
+
+
+def invalidate() -> None:
+    """Make the next get() rebuild the graph. For a change another process or
+    program made to a file in place: get() watches the vault folder's mtime,
+    and an edit inside a file does not move it."""
+    global _built_at
+    with _lock:
+        _built_at = 0.0
 
 
 def index_edges(uid: str, relations: list) -> None:

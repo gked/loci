@@ -45,7 +45,7 @@ def _from_config_file() -> str | None:
         path = config_path()
         if not path.exists():
             return None
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
     except (OSError, yaml.YAMLError):
         return None

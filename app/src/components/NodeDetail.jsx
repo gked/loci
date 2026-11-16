@@ -7,6 +7,7 @@ import { Corners } from "./Corners.jsx";
 import { Reticle } from "./Reticle.jsx";
 import { Meridian } from "./Meridian.jsx";
 import { useI18n } from "../lib/I18nProvider.jsx";
+import { OverriddenDelete } from "./OverriddenDelete.jsx";
 
 const KNOWN_FIELDS = new Set(["uid","type","title","status","created_at","updated_at","tags","domains","relations","body","asset"]);
 
@@ -102,6 +103,8 @@ export function NodeDetail({ node, neighbors, onOpenUid, onBack, onShowTopology,
           </button>
         </div>
       </div>
+
+      <OverriddenDelete uid={node.uid} onDeleted={onBack}/>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 300px", gap: 32, padding: "40px 56px 56px" }}>
         <article style={{ maxWidth: 720, position: "relative" }}>
