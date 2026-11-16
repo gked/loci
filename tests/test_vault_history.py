@@ -3,6 +3,7 @@ Vault change history: every API write is one commit in the history store at
 vault_root/.loci/history, a Git-format repository that dulwich reads and writes.
 """
 
+import os
 import contextlib
 import logging
 import shutil
@@ -1500,17 +1501,19 @@ def test_a_restore_that_fails_after_saving_outside_edits_says_so(tmp_vault, monk
 def test_a_lock_file_that_cannot_be_opened_stops_an_undo(tmp_vault, monkeypatch):
     saved = save("History One")
     api.patch(saved["uid"], {}, body="oops")
-    real = open
+    real = os.open
 
-    def refuse(file, *a, **k):
+    def refuse(file, *a, **k):                      # filelock opens the lock file with os.open
         if str(file).endswith("undo.lock"):
             raise OSError("read-only")
         return real(file, *a, **k)
 
-    monkeypatch.setattr("builtins.open", refuse)
+    monkeypatch.setattr(os, "open", refuse)
     with pytest.raises(vault_history.HistoryError, match="write lock cannot be opened"):
         api.undo_last_change()
     assert "oops" in api.get(saved["uid"])
+    with vault_history.write_lock(tmp_vault):       # a plain write goes on without the lock
+        pass
 
 
 def test_an_undo_commit_that_is_not_a_hash_prefix_is_refused(tmp_vault):
@@ -1822,3 +1825,17 @@ def test_a_write_works_while_another_computers_line_is_missing_older_commits(tmp
 
     assert saved.get("commit")
     assert vault_history.status(tmp_vault)["state"] == "on"
+
+
+def test_the_write_lock_does_not_need_fcntl(tmp_vault, monkeypatch):
+    """Windows has no fcntl. The lock must be taken (and so held against a second
+    holder) without it."""
+    import sys
+    save("History One")
+    monkeypatch.setitem(sys.modules, "fcntl", None)        # `import fcntl` now raises ImportError
+    monkeypatch.setattr(vault_history, "LOCK_TIMEOUT_S", 0.2)
+    with held_by_another_thread(tmp_vault):
+        with pytest.raises(vault_history.HistoryError, match="busy"):
+            with vault_history.write_lock(tmp_vault):
+                pytest.fail("the second holder must not get the lock")
+

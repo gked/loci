@@ -30,6 +30,7 @@ dependencies = [
     # Pure-Python Git, so vault history needs no `git` on the machine.
     "dulwich>=1.2.20",
     "watchdog>=7.1.0",
+    "filelock>=3.12",
 ]
 
 [project.urls]
