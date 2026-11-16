@@ -38,6 +38,7 @@ from typing import Callable
 from loci import api as vault
 from loci.console import use_utf8_output
 from loci.tools import nx_graph as graph
+from loci.tools.node_merge import MergeError
 from loci.tools.vault_history import HistoryError
 from loci.tools import asset_registry as ar
 from mcp.server.fastmcp import FastMCP
@@ -490,6 +491,50 @@ def undo_last_vault_change(commit: str = None) -> dict:
     try:
         return vault.undo_last_change(commit)
     except (OSError, ValueError, HistoryError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+@requires_vault
+def list_conflicted_copies() -> dict:
+    """
+    List the "(conflicted copy …)" notes a sync tool (Nextcloud, Dropbox) left in
+    the vault: the same note was edited on two computers. Read-only.
+    Returns {copies: [...]}, one entry per copy with `copy` (file name),
+    `original` (the note it came from) and `kind`:
+      merged    the edits touch different lines; resolving merges them with no question
+      conflict  both computers changed the same lines; `clashes` lists each one with
+                the two versions (`a` = the kept file, `b` = the copy) and `token`
+      restore   the original was deleted on the other computer; the edit is kept
+      keep-both two different notes took one file name; both are kept
+      error     the copy could not be read; `detail` says why
+    lint_vault also reports each copy, as `conflicted-copy`.
+    """
+    try:
+        return {"copies": vault.conflicted_copies()}
+    except (OSError, ValueError, HistoryError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+@requires_vault
+def resolve_conflicted_copy(copy: str, choices: list[str] = None, token: str = None) -> dict:
+    """
+    Merge a conflicted copy into the note it came from, then delete the copy, as
+    one recorded change (history_vault shows it; undo_last_vault_change undoes it).
+    `copy` is the file name list_conflicted_copies returned.
+
+    Ask the user first, every time: the merge changes the note. For kind
+    `conflict`, never choose a side yourself. Show the user both versions of
+    each clash and pass their answers: `choices` holds "a" (the kept file) or
+    "b" (the copy) for each clash, in order, and `token` is the one listed with
+    the clashes. If either file changed since the listing, nothing is written
+    and an error says so: list again. Other kinds take no `choices`.
+    Returns {resolved, kind, commit} or {error}.
+    """
+    try:
+        return vault.resolve_conflicted_copy(copy, choices, token)
+    except (OSError, ValueError, HistoryError, MergeError) as e:
         return {"error": str(e)}
 
 

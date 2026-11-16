@@ -10,6 +10,7 @@ import pytest
 
 from loci import api
 from loci.tools import node_merge, vault_history
+from loci.tools.frontmatter import load_frontmatter
 
 from test_http_server import TOKEN, auth, client  # noqa: F401  (fixtures)
 from test_node_merge import BASE, as_computer, diverge, history_on  # noqa: F401  (fixtures)
@@ -24,7 +25,7 @@ def auth_headers(auth):
 def restored(tmp_vault, as_computer):
     """A node whose delete lost to an edit: (uid, path)."""
     node, copy = diverge(tmp_vault, as_computer, b=BASE + "edited\n")
-    uid = api.history(node.name) and [l for l in node.read_text().splitlines() if l.startswith("uid:")][0].split(": ")[1]
+    uid = str(load_frontmatter(node.read_text())[0]["uid"])       # not split by hand: an all-digit uid is quoted
     node.unlink()
     node_merge.resolve(tmp_vault, copy.name)
     return uid, node

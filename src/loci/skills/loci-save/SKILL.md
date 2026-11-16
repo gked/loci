@@ -296,4 +296,5 @@ A restore is a new commit, so it loses nothing and can be undone.
 - **No clear title:** generate from the first sentence or ask. Never leave it blank.
 - **Unknown type:** `article` if there is a citable source (URL, author, publication);
   `document` if there is no publication record to track. Ask only when genuinely ambiguous.
+- **Conflicted copy** (`note (conflicted copy …).md`, `lint_vault`: `conflicted-copy`): `loci__list_conflicted_copies` lists them; merging changes the note, so ask first and show the `kind`. For `conflict`, show both versions of each clash and pass the user's choices to `loci__resolve_conflicted_copy(copy, choices, token)`; never pick a side. One commit; `loci__undo_last_vault_change` undoes it.
 - **Very long content:** summarise in `summary`, keep the full content in the body.
