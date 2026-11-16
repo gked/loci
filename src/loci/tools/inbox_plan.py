@@ -64,9 +64,11 @@ def _plan_lock(stage_root: Path):
     lock_file = open(lock_path, "w", encoding="utf-8")
     try:
         _acquire(lock_file.fileno())
-        yield
+        try:
+            yield
+        finally:
+            _release(lock_file.fileno())
     finally:
-        _release(lock_file.fileno())
         lock_file.close()
 
 

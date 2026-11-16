@@ -75,14 +75,16 @@ def test_windows_does_not_swallow_a_real_error(monkeypatch, tmp_path):
     fake = _fake_msvcrt()
 
     def broken(fd, mode, nbytes):
-        raise OSError(errno.EBADF, "Bad file descriptor")
+        if mode == fake.LK_NBLCK:
+            raise OSError(errno.EINVAL, "Invalid lock operation")
+        raise OSError(errno.EACCES, "No lock to release")
 
     fake.locking = broken
     module = _load_as_windows(monkeypatch, fake)
     with pytest.raises(OSError) as raised:
         with module._plan_lock(tmp_path):
             pass
-    assert raised.value.errno == errno.EBADF
+    assert raised.value.errno == errno.EINVAL
 
 
 def test_the_lock_excludes_a_second_process(tmp_path):
