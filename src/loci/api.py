@@ -15,6 +15,7 @@ import io
 import logging
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -335,9 +336,14 @@ def overridden_delete(path: str) -> Optional[dict]:
         return None
     if not recent:
         return None
-    newest = max(c["date"] for c in recent)
+    # The dates carry each computer's own UTC offset, so compare moments, not text.
+    try:
+        moment = {c["commit"]: datetime.fromisoformat(c["date"]) for c in recent}
+    except ValueError:
+        return None
+    newest = max(moment.values())
     for c in recent:
-        if c["date"] == newest and c["subject"].startswith(node_merge.OVERRIDE_SUBJECT):
+        if moment[c["commit"]] == newest and c["subject"].startswith(node_merge.OVERRIDE_SUBJECT):
             return c
     return None
 
@@ -345,7 +351,11 @@ def overridden_delete(path: str) -> Optional[dict]:
 @_serialized
 def delete_overridden(path: str) -> dict:
     """Delete a node again after an edit won over its delete. Refuses (ValueError)
-    for any node that is not in that state, so this is not a general delete."""
+    for any node that is not in that state, so this is not a general delete.
+    Raises FileNotFoundError when there is no such node."""
+    p = _resolve_vault_path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Vault file not found: {p}")
     if overridden_delete(path) is None:
         raise ValueError(
             "This node was not restored by an edit that won over a delete, so it is not deleted here. "

@@ -77,6 +77,20 @@ def test_http_reports_and_deletes(client, restored, auth_headers):
     assert done.status_code == 200 and not node.exists()
 
 
+def test_the_newest_commit_is_found_across_utc_offsets(tmp_vault, monkeypatch):
+    """Two computers write dates with their own offset; text order is not time order."""
+    later_east = {"commit": "a", "date": "2026-11-14T12:00:05+05:00", "subject": "Edit"}      # 07:00:05 UTC
+    earlier_west = {"commit": "b", "date": "2026-11-14T03:00:00-05:00",                       # 08:00:00 UTC
+                    "subject": f"{node_merge.OVERRIDE_SUBJECT} x.md"}
+    monkeypatch.setattr(api, "_resolve_vault_path", lambda p: tmp_vault)
+    monkeypatch.setattr(api, "history", lambda p, n=20: [later_east, earlier_west])
+    assert api.overridden_delete("x")["commit"] == "b"            # by text, "12:00:05+05:00" would win
+
+
+def test_http_delete_again_of_an_unknown_node_is_404(client, tmp_vault, auth_headers):
+    assert client.post("/api/nodes/00000000/delete-again", headers=auth_headers).status_code == 404
+
+
 def test_http_refuses_delete_again_for_an_ordinary_node(client, tmp_vault, auth_headers):
     saved = api.save(type="document", title="Not overridden", body="x", extra_fields={"status": "draft", "subtype": "note"})
     r = client.post(f"/api/nodes/{saved['uid']}/delete-again", headers=auth_headers)

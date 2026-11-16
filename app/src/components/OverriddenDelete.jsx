@@ -14,7 +14,6 @@ export function OverriddenDelete({ uid, onDeleted }) {
   const { data } = useQuery({
     queryKey: ["overridden-delete", uid],
     queryFn: () => getOverriddenDelete(uid),
-    staleTime: 30_000,
   });
   if (!data?.overridden) return null;
 

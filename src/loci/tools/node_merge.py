@@ -30,14 +30,14 @@ from typing import Optional
 from loci.tools import vault_history
 from loci.tools.frontmatter import load_frontmatter, split_frontmatter
 
-# "foo (conflicted copy 2026-11-14 081923).md", also with a user name in the
-# brackets ("foo (Max's conflicted copy 2026-11-14).md"). Only notes: the vault
-# keeps no other files in its history.
 # Subject of the commit made when an edit on one computer wins over a delete on
 # the other. The history of the node shows it; the app warns while it is the
 # newest change to the node.
 OVERRIDE_SUBJECT = "Edit on the other computer overrode a delete of"
 
+# "foo (conflicted copy 2026-11-14 081923).md", also with a user name in the
+# brackets ("foo (Max's conflicted copy 2026-11-14).md"). Only notes: the vault
+# keeps no other files in its history.
 COPY_RE = re.compile(r"^(?P<stem>.+?) \([^()]*conflicted copy[^()]*\)\.md$", re.IGNORECASE)
 
 _UPDATED_AT = re.compile(r"(?m)^updated_at:.*$")

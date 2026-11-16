@@ -9,8 +9,6 @@ it began and no count in vault_facts.py moves. It writes, so it must sort after
 test_smoke.py.
 """
 
-import time
-
 import pytest
 from playwright.sync_api import expect
 
