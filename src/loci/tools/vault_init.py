@@ -184,7 +184,7 @@ def load_config() -> Optional[dict]:
     migrate_legacy_config()
     path = config_path()
     if path.exists():
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f)
     return None
 
@@ -193,7 +193,7 @@ def save_config(config: dict) -> None:
     """Save config to the user-level config file, creating its directory."""
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         yaml.dump(config, f, default_flow_style=False)
     print(f"Config saved to {path}")
 
@@ -235,14 +235,14 @@ def create_vault_structure(vault_root: Path, include_siblings: bool = True) -> l
         dest = vault_root / "meta" / filename
         src = REFERENCES_DIR / filename
         if not dest.exists():
-            dest.write_text(src.read_text())
+            dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
             print(f"  Seeded: {dest}")
 
     for filename in USER_META_FILES:
         dest = vault_root / "meta" / filename
         src = REFERENCES_DIR / filename
         if not dest.exists():
-            dest.write_text(src.read_text())
+            dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
             print(f"  Seeded (user): {dest}")
 
     # Before seeding: a pre-v14 vault has the user's rules under meta/, and
@@ -255,7 +255,7 @@ def create_vault_structure(vault_root: Path, include_siblings: bool = True) -> l
         src = REFERENCES_DIR / skill_assembly.seed_filename(skill)
         if not dest.exists():
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(src.read_text())
+            dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
             print(f"  Seeded (user): {dest}")
 
     return moved_overlays
@@ -306,7 +306,7 @@ def write_vault_meta_version(vault_root: Path, version: int) -> None:
     """Record the seeded meta version inside the vault."""
     marker = vault_root / "meta" / VERSION_MARKER
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(f"{version}\n")
+    marker.write_text(f"{version}\n", encoding="utf-8")
 
 
 def reseed_meta(vault_root: Path) -> None:
@@ -320,7 +320,7 @@ def reseed_meta(vault_root: Path) -> None:
     for filename in META_FILES:
         dest = vault_root / "meta" / filename
         src = REFERENCES_DIR / filename
-        dest.write_text(src.read_text())
+        dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
         print(f"  Re-seeded: {dest}")
 
 
@@ -414,7 +414,7 @@ def read_vault_meta_version(vault_root: Path) -> Optional[int]:
     if not marker.exists():
         return None
     try:
-        return int(marker.read_text().strip())
+        return int(marker.read_text(encoding="utf-8").strip())
     except ValueError:
         return None  # corrupt marker: treat as unversioned and reseed
 
@@ -555,7 +555,7 @@ def _check_meta_version() -> str | None:
     path = config_path()
     if not path.exists():
         return migration_notice
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
     configured_root = config.get("vault_root")
     if not configured_root:

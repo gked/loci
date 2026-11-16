@@ -1127,7 +1127,7 @@ def write_lock(vault_root: Path, required: bool = False):
         return
     lock_dir = Path(vault_root) / ".loci"
     try:
-        handle = open(lock_dir / f"{computer_id()}.undo.lock", "a")
+        handle = open(lock_dir / f"{computer_id()}.undo.lock", "a", encoding="utf-8")
     except OSError as e:    # a lock file that cannot be made must not stop a plain write
         if required:
             raise HistoryError(
