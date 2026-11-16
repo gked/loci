@@ -588,6 +588,33 @@ def conflicts_resolve(
         raise HTTPException(status_code=500, detail=f"Could not merge: {e}") from e
 
 
+class FixDuplicateUid(BaseModel):
+    file: str
+
+
+@app.post("/api/duplicate-uid/fix")
+def duplicate_uid_fix(
+    body: FixDuplicateUid,
+    origin: str | None = Header(None),
+    x_loci_token: str | None = Header(None),
+    host: str | None = Header(None),
+):
+    """Give the newer of two files that share a uid a new uid (the fix lint_vault
+    offers for `duplicate-uid`). Writes, so it takes the same origin and token
+    check as /api/undo. 409 when the file is not the newer holder of a shared uid.
+    `file` is a vault-relative path."""
+    _authorize_local_request(origin, x_loci_token, host)
+    try:
+        return vault_api.fix_duplicate_uid(body.file)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except (ValueError, vault_history.HistoryError) as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except OSError as e:
+        log.warning("fixing a duplicate uid failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Could not change the uid: {e}") from e
+
+
 @app.get("/api/history/last")
 def history_last():
     """The change an undo would undo: {undoable, subject, commit, files} or

@@ -13,6 +13,8 @@ from loci.tools import nx_graph, vault_history
 from loci.tools.vault_linter import lint_vault
 from loci.tools.write_file import find_uid
 
+from test_http_server import auth, client  # noqa: F401  (fixtures)
+
 
 @pytest.fixture(autouse=True)
 def history_on(monkeypatch):
@@ -136,3 +138,38 @@ def test_a_discarded_copy_leaves_no_relations_in_the_graph(tmp_vault, twin, monk
     nx_graph._graph = None
     assert not nx_graph.get(tmp_vault).has_edge(uid, "deadbeef")
 
+
+
+# ---------------------------------------------------------------------------
+# The fix as an MCP tool and an HTTP route
+# ---------------------------------------------------------------------------
+
+def test_the_mcp_tool_fixes_the_copy_and_returns_errors_as_data(tmp_vault, twin):
+    from loci import mcp_server
+
+    original, copy, uid = twin
+    refused = mcp_server.fix_duplicate_uid(original.name)
+    assert "not the newer holder" in refused["error"]
+
+    done = mcp_server.fix_duplicate_uid(copy.name)
+    assert done["old_uid"] == uid and f"uid: {done['new_uid']}" in copy.read_text()
+    assert "error" in mcp_server.fix_duplicate_uid("no-such-file.md")
+
+
+def test_the_lint_message_names_the_tool(tmp_vault, twin):
+    original, copy, uid = twin
+    issue = next(i for i in lint_vault(tmp_vault)["errors"] if i["code"] == "duplicate-uid" and i["path"] == copy.name)
+    assert "fix_duplicate_uid" in issue["message"]
+
+
+def test_the_http_route_needs_the_token_and_refuses_the_older_node(client, twin, auth):
+    from test_http_server import TOKEN
+
+    original, copy, uid = twin
+    headers = {"X-Loci-Token": TOKEN, "Origin": "http://localhost:5173"}
+    assert client.post("/api/duplicate-uid/fix", json={"file": copy.name}).status_code in (401, 403)
+    assert f"uid: {uid}" in copy.read_text()                       # nothing changed without the token
+    assert client.post("/api/duplicate-uid/fix", json={"file": original.name}, headers=headers).status_code == 409
+    assert client.post("/api/duplicate-uid/fix", json={"file": "missing.md"}, headers=headers).status_code == 404
+    done = client.post("/api/duplicate-uid/fix", json={"file": copy.name}, headers=headers)
+    assert done.status_code == 200 and done.json()["old_uid"] == uid
