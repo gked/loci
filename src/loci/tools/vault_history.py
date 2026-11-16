@@ -73,6 +73,7 @@ COMPUTER_ID_FILE = "computer-id"
 _ID_RE = re.compile(r"c-[0-9a-f]{8}")
 BASELINE_MESSAGE = "Baseline: vault before history tracking"
 OUTSIDE_MESSAGE = "Changes made outside Loci"
+RENAMED_PREFIX = "Renamed: "      # subject of a commit that holds a rename made outside Loci
 SYNCED_MESSAGE = "Synced from"     # + the other computer's id
 
 # The MCP and UI servers are separate processes that can commit to the same
@@ -589,6 +590,69 @@ def _merge_incoming(
     return head, entries
 
 
+def _renames(
+    repo: Repo,
+    entries: dict[bytes, tuple[int, bytes]],
+    changes: dict[bytes, Optional[Blob]],
+) -> list[tuple[bytes, bytes]]:
+    """(old, new) for each note that moved: one file is gone and one is new, and
+    both carry the same uid. A uid that is not alone on either side is not a
+    rename (a copy, or two notes swapped), so it is left out."""
+    gone: dict[str, list[bytes]] = {}
+    added: dict[str, list[bytes]] = {}
+    for key, blob in changes.items():
+        if not key.endswith(b".md"):
+            continue
+        if blob is None:
+            data = repo[entries[key][1]].data if key in entries else None
+        elif key not in entries:
+            data = blob.data
+        else:
+            continue
+        uid = _uid_of(data) if data is not None else None
+        if uid:
+            (gone if blob is None else added).setdefault(uid, []).append(key)
+    return sorted(
+        (olds[0], added[uid][0])
+        for uid, olds in gone.items()
+        if len(olds) == 1 and len(added.get(uid, [])) == 1
+    )
+
+
+def _uid_of(data: bytes) -> Optional[str]:
+    header, _ = split_frontmatter(data.decode("utf-8", "replace"))
+    match = header and _UID_LINE.search(header.encode("utf-8"))
+    return match.group(1).decode("utf-8", "replace") if match else None
+
+
+def _name_in_message(name: bytes) -> str:
+    """A file name made safe for a commit subject: bytes that are not UTF-8 become
+    U+FFFD (a lone surrogate would make the commit message fail to encode), and a
+    control character such as a newline becomes "?" (it would split the subject)."""
+    return re.sub(r"[\x00-\x1f\x7f]", "?", name.decode("utf-8", "replace"))
+
+
+def _outside_message(
+    repo: Repo,
+    entries: dict[bytes, tuple[int, bytes]],
+    changes: dict[bytes, Optional[Blob]],
+) -> str:
+    """Message for a commit of edits made outside Loci. A note moved or renamed
+    gives "Renamed: old.md → new.md" (up to three pairs); any other file in the
+    same commit is counted on a second line. No rename gives OUTSIDE_MESSAGE."""
+    pairs = _renames(repo, entries, changes)
+    if not pairs:
+        return OUTSIDE_MESSAGE
+    shown = ", ".join(f"{_name_in_message(old)} → {_name_in_message(new)}" for old, new in pairs[:3])
+    if len(pairs) > 3:
+        shown += f" and {len(pairs) - 3} more"
+    others = len(changes) - 2 * len(pairs)
+    message = RENAMED_PREFIX + shown
+    if others > 0:
+        message += f"\n\nAlso changed outside Loci: {others} other file{'s' if others != 1 else ''}."
+    return message
+
+
 def record(
     vault_root: Path,
     message: str,
@@ -653,7 +717,7 @@ def record(
                 outside = {}
             if outside or head is None:
                 made = _commit(repo, head, entries, outside,
-                               BASELINE_MESSAGE if head is None else OUTSIDE_MESSAGE,
+                               BASELINE_MESSAGE if head is None else _outside_message(repo, entries, outside),
                                SERVICE_AUTHOR, force=head is None)
                 if made is not None:
                     if not advance(head, made[0].id):
@@ -733,8 +797,9 @@ def before_write(vault_root: Path, paths: Iterable[Path | str]) -> Optional[str]
             if joined is None:
                 continue
             head, entries = joined
-            made = _commit(repo, head, entries, _differences(vault_root, entries, only=specs),
-                           OUTSIDE_MESSAGE, SERVICE_AUTHOR)
+            changes = _differences(vault_root, entries, only=specs)
+            made = _commit(repo, head, entries, changes,
+                           _outside_message(repo, entries, changes), SERVICE_AUTHOR)
             if made is None:
                 return None
             if _advance(repo, head, made[0].id):
@@ -806,7 +871,7 @@ def snapshot_outside(vault_root: Path, paths: Optional[Iterable[Path | str]] = N
             head, entries = joined
             changes = _differences(vault_root, entries, only=specs)
             made = _commit(repo, head, entries, changes,
-                           f"{OUTSIDE_MESSAGE}\n\nSource: watcher", SERVICE_AUTHOR)
+                           f"{_outside_message(repo, entries, changes)}\n\nSource: watcher", SERVICE_AUTHOR)
             if made is None:
                 return _short(newest) if newest else None
             if _advance(repo, head, made[0].id):
@@ -818,24 +883,48 @@ def snapshot_outside(vault_root: Path, paths: Optional[Iterable[Path | str]] = N
     return None
 
 
-def history(vault_root: Path, path: Path | str, limit: int = 50) -> list[dict]:
-    """Commits that touched `path`, on every computer's branch together, newest
+def history(
+    vault_root: Path,
+    path: Path | str,
+    limit: int = 50,
+    also: Iterable[Path | str] = (),
+    uid: Optional[str] = None,
+) -> list[dict]:
+    """Commits that touched `path` or any of `also` (the other paths one note has
+    had, after a rename), on every computer's branch together, newest
     first: [{commit, author, date, subject}]. Raises HistoryError when the vault has no
-    store; an empty list means the store has no commit for the path."""
+    store; an empty list means the store has no commit for the path.
+
+    With `also` and `uid`, a commit counts only when the file it touched held
+    that uid, before or after the commit. Another note that later took an old
+    file name is then not part of this note's history.
+
+    COST, and the cheaper option if it matters: this check reads up to two files
+    per path per commit, and it needs every commit that touched one of the paths
+    (the limit applies after the check). It runs only for a note that has more
+    than one path. If it proves too slow on a large vault, switch to option B:
+    keep each old path only up to the commit where another uid first takes it,
+    and skip the per-commit read."""
     _require_repo(Path(vault_root))
     try:
         vault_root = Path(vault_root)
         repo = _open(vault_root)
-        specs = _relative(vault_root, [path])
+        specs = _relative(vault_root, [path, *also])
         if repo is None or not specs:
             return []
         tips = _tips(repo)
         if not tips:
             return []
         out = []
-        entries, _ = _walk(repo, list(tips.values()), paths=[specs[0]], max_entries=int(limit))
+        check = bool(uid) and len(specs) > 1
+        entries, _ = _walk(repo, list(tips.values()), paths=specs,
+                           **({} if check else {"max_entries": int(limit)}))
         for entry in entries:
             c = entry.commit
+            if check and not _carries_uid(repo, c, specs, uid):
+                continue
+            if len(out) >= int(limit):
+                break
             when = datetime.fromtimestamp(c.author_time, timezone(timedelta(seconds=c.author_timezone)))
             out.append({
                 "commit": c.id.decode("ascii"),
@@ -848,6 +937,43 @@ def history(vault_root: Path, path: Path | str, limit: int = 50) -> list[dict]:
         log.warning("vault history unreadable: %s", e)
         _set_error(vault_root, str(e))
         return []
+
+
+def _carries_uid(repo: Repo, commit: Commit, keys: list[bytes], uid: str) -> bool:
+    """True when `commit` changed one of `keys` and that file held `uid` right
+    before or right after: the commit changed this note, not another note at the
+    same path. A key the commit left as it was does not count."""
+    parent = commit.parents[0] if commit.parents else None
+    for key in keys:
+        after = _bytes_at(repo, commit.id, key)
+        before = _bytes_at(repo, parent, key) if parent is not None else None
+        if after == before:
+            continue
+        for data in (after, before):
+            if data is not None and _uid_of(data) == uid:
+                return True
+    return False
+
+
+def uid_at_path(vault_root: Path, path: Path | str) -> Optional[str]:
+    """The uid of the note that last lived at `path`, for a path whose file is
+    gone (renamed, moved or deleted). None when history never saw a note there."""
+    _require_repo(Path(vault_root))
+    repo = _open(Path(vault_root))
+    key = _spec(Path(vault_root), path)
+    tips = _tips(repo) if repo is not None else {}
+    if not tips:
+        return None
+    entries, _ = _walk(repo, list(tips.values()), paths=[key], max_entries=1)
+    if not entries:
+        return None
+    commit = entries[0].commit
+    for at in (commit.id, commit.parents[0] if commit.parents else None):
+        data = _bytes_at(repo, at, key) if at is not None else None
+        uid = _uid_of(data) if data is not None else None
+        if uid:
+            return uid
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1006,13 +1132,12 @@ def _spec(vault_root: Path, path: Path | str) -> bytes:
 # can hold commits older than ones already indexed, and the newest must win.
 # The sync HTTP endpoints run in a thread pool, so the lock guards every use.
 _UID_LINE = re.compile(rb"(?m)^uid:[ \t]*['\"]?([^\s'\"]+)['\"]?[ \t]*$")
-_uid_index: dict[str, tuple[tuple[bytes, ...], dict[str, tuple[str, int]]]] = {}
+_uid_index: dict[str, tuple[tuple[bytes, ...], dict[str, tuple[str, int, frozenset[str]]]]] = {}
 _uid_index_lock = threading.Lock()
 
 
-def find_path(vault_root: Path, uid: str) -> Optional[str]:
-    """Vault-relative path of the file that last carried `uid`, for a node whose
-    file is gone. None when history never saw it."""
+def _uid_entry(vault_root: Path, uid: str) -> Optional[tuple[str, int, frozenset[str]]]:
+    """(newest path, its commit time, every path) for `uid`, or None."""
     _require_repo(vault_root)
     repo = _open(vault_root)
     tips = _tip_key(repo)
@@ -1024,18 +1149,33 @@ def find_path(vault_root: Path, uid: str) -> Optional[str]:
         if known is None or known[0] != tips:
             index, complete = _extend_uid_index(repo, tips, known)
             if not complete:    # part of a line is still arriving: answer, but do not keep it
-                found = index.get(uid)
-                return found[0] if found else None
+                return index.get(uid)
             _remember(_uid_index, root, (tips, index))
-        found = _uid_index[root][1].get(uid)
-        return found[0] if found else None
+        return _uid_index[root][1].get(uid)
+
+
+def find_path(vault_root: Path, uid: str) -> Optional[str]:
+    """Vault-relative path of the file that last carried `uid`, for a node whose
+    file is gone. None when history never saw it."""
+    found = _uid_entry(vault_root, uid)
+    return found[0] if found else None
+
+
+def paths_of(vault_root: Path, uid: str) -> list[str]:
+    """Every vault-relative path a node has had, the newest first. A note that
+    was renamed or moved has more than one; the history of the node is the
+    commits of all of them."""
+    found = _uid_entry(vault_root, uid)
+    if not found:
+        return []
+    return [found[0]] + sorted(found[2] - {found[0]})
 
 
 def _extend_uid_index(
     repo: Repo,
     tips: tuple[bytes, ...],
-    known: Optional[tuple[tuple[bytes, ...], dict[str, tuple[str, int]]]],
-) -> tuple[dict[str, tuple[str, int]], bool]:
+    known: Optional[tuple[tuple[bytes, ...], dict[str, tuple[str, int, frozenset[str]]]]],
+) -> tuple[dict[str, tuple[str, int, frozenset[str]]], bool]:
     """(index, complete) as of `tips`: `known` plus the commits added since it was
     built, or a fresh walk when the old tips are no longer all in the store.
     `complete` is False when part of a line has not arrived yet."""
@@ -1048,21 +1188,26 @@ def _extend_uid_index(
     # Newest first, so the first commit to name a uid owns it among the commits of
     # this walk. Against what is already indexed, only a commit that is not older
     # takes over.
+    # Every path a uid appears at is kept, for the history of a renamed note.
     seen: set[str] = set()
     for entry in entries:
         when = entry.commit.commit_time
-        for uid, path in _uids_in(repo, entry.commit).items():
+        for uid, paths in _uids_in(repo, entry.commit).items():
+            current = index.get(uid)
+            held = (current[2] if current else frozenset()) | frozenset(paths)
             if uid not in seen:
                 seen.add(uid)
-                current = index.get(uid)
                 if current is None or when >= current[1]:
-                    index[uid] = (path, when)
+                    index[uid] = (paths[0], when, held)
+                    continue
+            if current is not None:
+                index[uid] = (current[0], current[1], held)
     return index, complete
 
 
-def _uids_in(repo: Repo, commit: Commit) -> dict[str, str]:
+def _uids_in(repo: Repo, commit: Commit) -> dict[str, list[str]]:
     parent_tree = repo[commit.parents[0]].tree if commit.parents else None
-    found: dict[str, str] = {}
+    found: dict[str, list[str]] = {}
     changes = list(tree_changes(repo.object_store, parent_tree, commit.tree))
     # Where the file is now before where it was: a move shows as a delete and an
     # add, and the delete can sort first.
@@ -1073,8 +1218,10 @@ def _uids_in(repo: Repo, commit: Commit) -> dict[str, str]:
             header, _ = split_frontmatter(repo[side.sha].data.decode("utf-8", "replace"))
             match = header and _UID_LINE.search(header.encode("utf-8"))
             if match:
-                found.setdefault(match.group(1).decode("utf-8", "replace"),
-                                 side.path.decode("utf-8", "surrogateescape"))
+                where = found.setdefault(match.group(1).decode("utf-8", "replace"), [])
+                name = side.path.decode("utf-8", "surrogateescape")
+                if name not in where:
+                    where.append(name)
     return found
 
 
@@ -1235,7 +1382,7 @@ def head_changes(vault_root: Path) -> tuple[str, str, list[tuple[str, str]]]:
     subject = commit.message.decode("utf-8", "replace").splitlines()[0] if commit.message else ""
     if subject.startswith("Baseline:") or not commit.parents:
         raise HistoryError("The newest commit is the baseline. There is no earlier change to undo.")
-    if subject == OUTSIDE_MESSAGE:
+    if subject == OUTSIDE_MESSAGE or subject.startswith(RENAMED_PREFIX):
         raise HistoryError(
             f"The newest commit ({_short(head)}) holds edits made outside Loci, not a Loci write. "
             "Undoing it would remove those edits. Use history_vault and restore_vault on the one node instead."
