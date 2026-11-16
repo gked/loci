@@ -320,6 +320,40 @@ def delete(path: str) -> dict:
     return out
 
 
+def overridden_delete(path: str) -> Optional[dict]:
+    """{commit, date, subject} when the newest change to the node is an edit that
+    won over a delete on another computer (see node_merge), else None. Any later
+    change to the node clears it: the user has seen the node and kept working.
+    Commits are told apart by the second they were made in, so a change made in
+    the same second as the override does not clear it. A node whose file is gone
+    is never flagged. Accepts a UID or a path. Never raises: no history, or no
+    such node, is None."""
+    try:
+        _resolve_vault_path(path)
+        recent = history(path, 20)
+    except (OSError, ValueError, vault_history.HistoryError):
+        return None
+    if not recent:
+        return None
+    newest = max(c["date"] for c in recent)
+    for c in recent:
+        if c["date"] == newest and c["subject"].startswith(node_merge.OVERRIDE_SUBJECT):
+            return c
+    return None
+
+
+@_serialized
+def delete_overridden(path: str) -> dict:
+    """Delete a node again after an edit won over its delete. Refuses (ValueError)
+    for any node that is not in that state, so this is not a general delete."""
+    if overridden_delete(path) is None:
+        raise ValueError(
+            "This node was not restored by an edit that won over a delete, so it is not deleted here. "
+            "Use delete_vault for an ordinary delete."
+        )
+    return delete(path)
+
+
 @_serialized
 def patch(path: str, updates: dict, body: str = None) -> dict:
     """

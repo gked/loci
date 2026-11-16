@@ -683,6 +683,36 @@ def node_neighbors(uid: str):
     return graph.neighbors(uid)
 
 
+@app.get("/api/nodes/{uid}/overridden-delete")
+def node_overridden_delete(uid: str):
+    """{overridden: true, commit, date} when the newest change to the node is an
+    edit that won over a delete on another computer, else {overridden: false}."""
+    found = vault_api.overridden_delete(uid)
+    return {"overridden": True, "commit": found["commit"], "date": found["date"]} if found else {"overridden": False}
+
+
+@app.post("/api/nodes/{uid}/delete-again")
+def node_delete_again(
+    uid: str,
+    origin: str | None = Header(None),
+    x_loci_token: str | None = Header(None),
+    host: str | None = Header(None),
+):
+    """Delete a node again after an edit won over its delete. Writes, so it takes
+    the same origin and token check as /api/undo. 409 when the node is not in
+    that state: this is not a general delete."""
+    _authorize_local_request(origin, x_loci_token, host)
+    try:
+        return vault_api.delete_overridden(uid)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Node {uid!r} not found") from e
+    except (ValueError, vault_history.HistoryError) as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except OSError as e:
+        log.warning("deleting again failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Could not delete: {e}") from e
+
+
 @app.get("/api/nodes/{uid}")
 def node_get(uid: str):
     vr = _vault_root()

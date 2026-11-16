@@ -160,3 +160,27 @@ export async function resolveConflict(file, choices = [], token = null, fetchImp
   }
   return res.json();
 }
+
+// {overridden: true, commit, date} when the newest change to the node is an edit
+// that won over a delete on another computer, else {overridden: false}.
+export function getOverriddenDelete(uid) {
+  return request(`/nodes/${encodeURIComponent(uid)}/overridden-delete`);
+}
+
+// Delete the node again. The server refuses (409) unless the node is in that state.
+export async function deleteAgain(uid, fetchImpl = fetch) {
+  const res = await fetchImpl(`${BASE}/nodes/${encodeURIComponent(uid)}/delete-again`, {
+    method: "POST",
+    headers: { [TOKEN_HEADER]: getApiToken() },
+  });
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {
+      // Keep the HTTP status when the response has no JSON error body.
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
