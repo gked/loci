@@ -384,7 +384,7 @@ def get(path: str, commit: str = None) -> str:
     under the size threshold) or as a path reference (binary/large files).
     """
     if commit is not None:
-        return vault_history.show(_vault_root(), commit, _history_path(path))
+        return _through_paths(path, lambda p: vault_history.show(_vault_root(), commit, p))
     p = _resolve_vault_path(path)
     if not p.exists():
         raise FileNotFoundError(f"Vault file not found: {p}")
@@ -1410,17 +1410,50 @@ def _history_path(ref: str) -> Path:
         raise
 
 
+def _history_paths(ref: str) -> list[Path]:
+    """Every path the node has had, the newest first: the file now (or the last
+    one, for a deleted node), then the paths it had before a rename or move."""
+    root = _vault_root()
+    first = _history_path(ref)
+    uid = ref.strip() if _UID_RE.fullmatch(ref.strip()) else None
+    if uid is None and first.is_file():
+        try:
+            fm, _ = load_frontmatter(first.read_text(encoding="utf-8"))
+            uid = str((fm or {}).get("uid") or "") or None
+        except (OSError, UnicodeDecodeError, ValueError):
+            uid = None
+    out = [first]
+    for rel in (vault_history.paths_of(root, uid) if uid else []):
+        if root / rel not in out:
+            out.append(root / rel)
+    return out
+
+
+def _through_paths(ref: str, read):
+    """read(path) for the first path of the node that works: a commit from
+    before a rename holds the note at its old path."""
+    failure = None
+    for p in _history_paths(ref):
+        try:
+            return read(p)
+        except vault_history.HistoryError as e:
+            failure = failure or e
+    raise failure
+
+
 def history(path: str, limit: int = 20) -> list:
     """
     Commits that touched a node, newest first: [{commit, author, date, subject}].
     Accepts a UID, absolute path or vault-relative path — also for a deleted node.
+    A node that was renamed or moved shows the commits of all the paths it had.
     """
-    return vault_history.history(_vault_root(), _history_path(path), limit)
+    first, *others = _history_paths(path)
+    return vault_history.history(_vault_root(), first, limit, also=others)
 
 
 def diff(path: str, commit: str) -> str:
     """The change `commit` made to the node, as a unified diff."""
-    return vault_history.diff(_vault_root(), commit, _history_path(path))
+    return _through_paths(path, lambda p: vault_history.diff(_vault_root(), commit, p))
 
 
 def _reindex_quietly(p: Path) -> bool:
