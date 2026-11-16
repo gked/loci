@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Callable
 
 from loci import api as vault
+from loci.console import use_utf8_output
 from loci.tools import nx_graph as graph
 from loci.tools.vault_history import HistoryError
 from loci.tools import asset_registry as ar
@@ -1223,6 +1224,7 @@ def main() -> None:  # pragma: no cover
     spawns this process from a config file it owns, so there is nowhere for the
     user to pass a flag.
     """
+    use_utf8_output()
     from loci.tools import vault_history
     vault_history.set_source("mcp")
     # An upgrade from PyPI cannot run anything, so the first start of the new

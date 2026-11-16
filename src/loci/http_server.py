@@ -38,6 +38,7 @@ from loci.tools.vault_watcher import VaultWatcher
 from loci.tools.type_registry import get_registry
 from loci.tools.frontmatter import split_frontmatter
 from loci import api as vault_api
+from loci.console import use_utf8_output
 from loci.language import get_language
 
 log = logging.getLogger(__name__)
@@ -132,7 +133,7 @@ def _read_config_file() -> dict:
     if not path.exists():
         return {}
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     except (OSError, yaml.YAMLError) as exc:
         log.warning("Could not read %s: %s", path, exc)
@@ -161,7 +162,7 @@ def _load_or_create_token() -> str:
     if path.exists():
         config["api_token"] = token
         try:
-            with open(path, "w") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 yaml.dump(config, f, default_flow_style=False)
             log.info("Generated a new API token and saved it to %s", path)
         except OSError as exc:
@@ -855,6 +856,7 @@ def main() -> None:  # pragma: no cover
     """
     import uvicorn
 
+    use_utf8_output()
     command, rest = split_command(sys.argv[1:])
 
     # Handled before the vault check on purpose: installing skills does not
