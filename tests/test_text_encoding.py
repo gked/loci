@@ -20,7 +20,7 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parent.parent / "src" / "loci"
 
 # Modules whose open() is not file text I/O.
-_NOT_FILES = {"webbrowser", "os", "io", "tarfile", "zipfile", "gzip"}
+_NOT_FILES = {"webbrowser", "os", "tarfile", "zipfile", "gzip"}
 
 
 def _is_binary_open(call: ast.Call) -> bool:
@@ -141,3 +141,15 @@ def test_seeded_meta_files_are_written_with_lf_not_the_platform_newline(tmp_path
     create_vault_structure(vault)
     crlf = [p.name for p in (vault / "meta").iterdir() if b"\r\n" in p.read_bytes()]
     assert not crlf, f"seeded with CRLF: {crlf}"
+
+
+def test_io_open_without_encoding_is_detected(tmp_path, monkeypatch):
+    """The AST guard must include io.open, which also defaults to platform encoding."""
+    source = tmp_path / "example.py"
+    source.write_text("import io\nio.open('notes.txt')\n", encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "SRC", tmp_path)
+
+    offenders = _text_io_without_encoding()
+
+    assert len(offenders) == 1
+    assert offenders[0].endswith(":2 open()")
