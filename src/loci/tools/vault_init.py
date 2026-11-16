@@ -306,7 +306,7 @@ def write_vault_meta_version(vault_root: Path, version: int) -> None:
     """Record the seeded meta version inside the vault."""
     marker = vault_root / "meta" / VERSION_MARKER
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(f"{version}\n", encoding="utf-8")
+    marker.write_text(f"{version}\n", encoding="utf-8", newline="\n")
 
 
 def reseed_meta(vault_root: Path) -> None:
