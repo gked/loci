@@ -88,28 +88,70 @@ def test_windows_does_not_swallow_a_real_error(monkeypatch, tmp_path):
 
 
 def test_the_lock_excludes_a_second_process(tmp_path):
-    """Real locks on this OS: a child holds the plan lock, the parent must wait."""
-    child = textwrap.dedent(
+    """Real locks on this OS: a child holds the plan lock, the contender must wait."""
+    ready = tmp_path / "holder-ready"
+    holder_code = textwrap.dedent(
         """
         import sys, time
         from pathlib import Path
         from loci.tools.inbox_plan import _plan_lock
         with _plan_lock(Path(sys.argv[1])):
-            print("held", flush=True)
+            Path(sys.argv[2]).write_text("held", encoding="utf-8")
             time.sleep(1.5)
         """
     )
-    proc = subprocess.Popen(
-        [sys.executable, "-c", child, str(tmp_path)],
+    contender_code = textwrap.dedent(
+        """
+        import sys
+        from pathlib import Path
+        from loci.tools.inbox_plan import _plan_lock
+        with _plan_lock(Path(sys.argv[1])):
+            print("acquired", flush=True)
+        """
+    )
+    holder = subprocess.Popen(
+        [sys.executable, "-c", holder_code, str(tmp_path), str(ready)],
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
     )
-    assert proc.stdout is not None
+    contender = None
     try:
-        assert proc.stdout.readline().strip() == "held"
+        deadline = time.monotonic() + 10
+        while not ready.exists():
+            if holder.poll() is not None:
+                _, stderr = holder.communicate()
+                pytest.fail(f"lock holder exited before acquiring the lock: {stderr}")
+            if time.monotonic() >= deadline:
+                pytest.fail("timed out waiting for the child to acquire the lock")
+            time.sleep(0.01)
+
+        contender = subprocess.Popen(
+            [sys.executable, "-c", contender_code, str(tmp_path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
         started = time.monotonic()
-        with inbox_plan._plan_lock(tmp_path):
-            waited = time.monotonic() - started
+        try:
+            stdout, stderr = contender.communicate(timeout=10)
+        except subprocess.TimeoutExpired as exc:
+            raise AssertionError(
+                "timed out waiting for the second process to acquire the lock"
+            ) from exc
+
+        waited = time.monotonic() - started
+        assert contender.returncode == 0, stderr
+        assert stdout.strip() == "acquired"
         assert waited >= 1.0, f"got the lock after {waited:.2f}s while another process held it"
     finally:
-        proc.wait(timeout=10)
+        for proc in (contender, holder):
+            if proc is None:
+                continue
+            if proc.poll() is None:
+                proc.terminate()
+            try:
+                proc.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate(timeout=2)
