@@ -24,6 +24,7 @@ frontmatter, via the Loci MCP tools.
 This applies everywhere in the workflow: type classification, project or entity linkage,
 duplicate resolution, ambiguous matches. If there are multiple candidates, surface them
 and let the user choose. One focused question is better than a wrong assumption.
+A new uid (`loci__fix_duplicate_uid`) always needs the user's yes first; `loci__undo_last_vault_change` undoes it.
 
 ---
 

@@ -1,9 +1,11 @@
 """Read/write/update the .inbox-plan.yaml work queue."""
 
 import contextlib
-import fcntl
+import errno
 import math
 import os
+import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,16 +19,56 @@ DEFAULT_BUDGET_FILES = 50
 DEFAULT_BUDGET_CONTENT = 10
 
 
+# The lock primitive differs by platform. fcntl exists only on POSIX; Windows
+# has msvcrt.locking, which locks a byte range instead of the whole file.
+if sys.platform == "win32":
+    import msvcrt
+
+    _LOCK_POLL_S = 0.05
+
+    def _acquire(fd: int) -> None:
+        """Block until the one-byte lock at offset 0 is ours.
+
+        msvcrt has no blocking exclusive mode (LK_LOCK gives up after ten
+        seconds), so poll the non-blocking one. Only "someone else holds it"
+        is retried; any other error is real and propagates.
+        """
+        while True:
+            os.lseek(fd, 0, os.SEEK_SET)
+            try:
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                return
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.EDEADLK):
+                    raise
+                time.sleep(_LOCK_POLL_S)
+
+    def _release(fd: int) -> None:
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+else:
+    import fcntl
+
+    def _acquire(fd: int) -> None:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+
+    def _release(fd: int) -> None:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+
 @contextlib.contextmanager
 def _plan_lock(stage_root: Path):
     """Exclusive advisory lock for read-modify-write operations on the plan file."""
     lock_path = stage_root / _LOCK_FILENAME
     lock_file = open(lock_path, "w", encoding="utf-8")
     try:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        yield
+        _acquire(lock_file.fileno())
+        try:
+            yield
+        finally:
+            _release(lock_file.fileno())
     finally:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
         lock_file.close()
 
 

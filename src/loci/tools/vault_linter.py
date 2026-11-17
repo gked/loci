@@ -244,7 +244,7 @@ def lint_vault(vault_root: Path) -> dict:
             for fname in files:
                 dup_issues.append(LintIssue(fname, "error", "duplicate-uid",
                     f"uid '{uid}' is shared with: {[f for f in files if f != fname]}. "
-                    "The older node keeps the uid; give the newer file a new one after the user agrees."))
+                    "The older node keeps the uid; after the user agrees, fix_duplicate_uid gives the newer file a new one."))
 
     # Pass 2: lint each file
     all_issues: list[LintIssue] = list(dup_issues)
