@@ -495,6 +495,26 @@ def undo_last_vault_change(commit: str = None) -> dict:
 
 @mcp.tool()
 @requires_vault
+def fix_duplicate_uid(path: str) -> dict:
+    """
+    Give a note a new uid because an older note already holds its uid (lint_vault
+    reports the newer file as `duplicate-uid`, for example a file dropped in with
+    a copied header). `path` is the file lint_vault named.
+
+    Ask the user first, every time: it rewrites the uid line of that file. The
+    older node keeps the uid. Relations that point at the old uid mean the older
+    node, so none of them is rewritten. Recorded as one commit; undo_last_vault_change
+    undoes it. Refuses a file that is not the newer holder of a shared uid.
+    Returns {path, old_uid, new_uid, commit} or {error}.
+    """
+    try:
+        return vault.fix_duplicate_uid(path)
+    except (OSError, ValueError, HistoryError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+@requires_vault
 def list_vault(type: str = None) -> dict:
     """
     List items in a vault type folder. Omit type to list all folders.

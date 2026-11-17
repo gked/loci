@@ -1186,15 +1186,21 @@ def fix_duplicate_uid(path: str) -> dict:
     file dropped in by hand with a copied header). Call it only after the user
     agrees: it changes the file. Relations that point at the old uid mean the
     older node, so none of them is rewritten.
-    Raises ValueError when the file is not the newer holder of a shared uid.
+    Raises ValueError when the path is outside the vault, when the file is not a
+    readable note, or when it is not the newer holder of a shared uid.
     Returns {path, old_uid, new_uid, commit}.
     """
     root = _vault_root()
     p = Path(path)
     p = p if p.is_absolute() else root / p
+    if not p.resolve().is_relative_to(root.resolve()):
+        raise ValueError(f"{p.name} is outside the vault; nothing was changed.")
     if not p.is_file():
         raise FileNotFoundError(f"Vault file not found: {p}")
-    text = p.read_text(encoding="utf-8")
+    try:
+        text = p.read_text(encoding="utf-8")
+    except UnicodeDecodeError as e:
+        raise ValueError(f"{p.name} is not a text note; nothing was changed.") from e
     fm, _ = load_frontmatter(text)
     old = str((fm or {}).get("uid") or "")
     elder = find_uid(root, old) if old else None
