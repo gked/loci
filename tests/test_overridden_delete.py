@@ -27,7 +27,7 @@ def restored(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer, b=BASE + "edited\n")
     uid = str(load_frontmatter(node.read_text())[0]["uid"])       # not split by hand: an all-digit uid is quoted
     node.unlink()
-    node_merge.resolve(tmp_vault, copy.name)
+    node_merge.resolve(tmp_vault, copy.name, token=node_merge.describe(tmp_vault, copy.name)["token"])
     return uid, node
 
 

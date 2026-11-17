@@ -1173,7 +1173,9 @@ def conflicted_copies() -> list:
     for copy in node_merge.conflicted_copies(root):
         try:
             out.append(node_merge.describe(root, copy.name))
-        except node_merge.MergeError as e:
+        except Exception as e:      # one unreadable copy must not hide the others
+            if not isinstance(e, (node_merge.MergeError, ValueError, OSError, yaml.YAMLError)):
+                log.warning("describing %s failed: %s", copy.name, e)
             out.append({"copy": copy.name, "original": node_merge.original_name(copy.name),
                         "kind": "error", "detail": str(e)})
     return out
@@ -1225,12 +1227,14 @@ def conflict_count() -> int:
     return len(node_merge.conflicted_copies(_vault_root()))
 
 
+@_serialized
 def resolve_conflicted_copy(copy: str, choices: list = None, token: str = None) -> dict:
     """
     Merge a conflicted copy into the note it came from and delete the copy, as one
     recorded change. `choices` holds "a" (the kept file) or "b" (the copy) for each
-    clash `conflicted_copies` listed for it, in order. `token` is the one listed with
-    those clashes; the merge is refused if they have changed since. Raises node_merge.MergeError.
+    clash `conflicted_copies` listed for it, in order; only a `conflict` takes them.
+    `token` is required: the one `conflicted_copies` listed. The merge is refused if
+    either file has changed since. Raises node_merge.MergeError.
     """
     return node_merge.resolve(_vault_root(), copy, choices, token)
 
