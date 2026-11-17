@@ -21,10 +21,9 @@ frontmatter, via the Loci MCP tools.
 
 **When in doubt, ask. Never guess on anything that requires user intent.**
 
-This applies everywhere in the workflow: type classification, project or entity linkage,
-duplicate resolution, ambiguous matches. If there are multiple candidates, surface them
+This applies everywhere in the workflow: type classification, project or entity linkage, duplicate resolution, ambiguous matches. If there are multiple candidates, surface them
 and let the user choose. One focused question is better than a wrong assumption.
-A new uid (`loci__fix_duplicate_uid`) always needs the user's yes first; `loci__undo_last_vault_change` undoes it.
+A new uid (`loci__fix_duplicate_uid`) and a conflicted-copy merge (`loci__resolve_conflicted_copy`) always need the user's yes first, and never a side picked for them; `loci__undo_last_vault_change` undoes either.
 
 ---
 
@@ -297,4 +296,5 @@ A restore is a new commit, so it loses nothing and can be undone.
 - **No clear title:** generate from the first sentence or ask. Never leave it blank.
 - **Unknown type:** `article` if there is a citable source (URL, author, publication);
   `document` if there is no publication record to track. Ask only when genuinely ambiguous.
+- **Conflicted copy** (`note (conflicted copy …).md`, `lint_vault`: `conflicted-copy`): `loci__list_conflicted_copies` lists them; show the `kind`, then after the user's yes call `loci__resolve_conflicted_copy(copy, choices, token, user_confirmed=true)` with the `token` from the listing. For `conflict`, show both versions of each clash and pass the user's choices. One commit.
 - **Very long content:** summarise in `summary`, keep the full content in the body.
