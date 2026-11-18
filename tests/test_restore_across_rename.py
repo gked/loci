@@ -90,3 +90,60 @@ def test_an_ordinary_restore_still_works(tmp_vault):
     api.patch(uid, {}, body="second")
     api.restore(uid, good)
     assert "first" in path.read_text()
+
+
+def test_a_rename_the_watcher_has_not_recorded_yet_does_not_break_restore(tmp_vault):
+    uid, old = node("Quick move", body="the original words")
+    before = commit_of(old)
+    new = old.with_name("quick-move-2.md")
+    old.rename(new)                                            # no snapshot_outside: not recorded yet
+
+    out = api.restore(uid, before)
+
+    assert out["restored"] and out["path"] == str(new)
+    assert "the original words" in new.read_text() and not old.exists()
+
+
+def test_a_path_without_any_uid_is_refused_and_nothing_changes(tmp_vault):
+    uid, path = node("Anchor", body="x")
+    good = commit_of(path)
+    plain = tmp_vault / "plain.md"
+    plain.write_text("no header at all\n")
+    vault_history.snapshot_outside(tmp_vault)
+    with pytest.raises(vault_history.HistoryError, match="Cannot tell which node"):
+        api.restore("plain.md", good)
+    assert plain.read_text() == "no header at all\n"
+
+
+def test_a_file_whose_header_lost_its_uid_can_still_be_restored_by_path(tmp_vault):
+    uid, path = node("Damaged", body="good body")
+    good = commit_of(path)
+    path.write_text("not a header any more\n")
+    vault_history.snapshot_outside(tmp_vault)
+
+    out = api.restore(path.name, good)
+
+    assert out["restored"] and "good body" in path.read_text()
+
+
+def test_a_broken_header_at_an_older_path_is_skipped_not_fatal(tmp_vault):
+    other_uid, other = node("Name holder", body="other node")
+    taken = other.name
+    other.write_text("---\nuid: [unclosed\ntitle: x\n---\nbroken\n")
+    vault_history.snapshot_outside(tmp_vault)
+    broken_commit = commit_of(other)
+    other.unlink()
+    uid, first = node("Mover", body="mover words")
+    good = commit_of(first)
+    first.rename(first.with_name(taken))
+    vault_history.snapshot_outside(tmp_vault)
+
+    with pytest.raises(vault_history.HistoryError):           # refused, not an unrelated crash
+        api.restore(uid, broken_commit)
+    api.restore(uid, good)
+    assert "mover words" in (tmp_vault / taken).read_text()
+
+
+def test_uids_compare_without_case_quotes_or_spaces():
+    assert api._norm_uid(" 'ABCD1234' ") == "abcd1234"
+    assert api._norm_uid(12345678) == "12345678"

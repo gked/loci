@@ -1504,12 +1504,30 @@ def _through_paths(ref: str, read):
     raise failure
 
 
+def _norm_uid(uid) -> str:
+    """A uid as compared across a rename: text, trimmed, unquoted, lower case."""
+    return str(uid or "").strip().strip("'\"").lower()
+
+
 def _node_bytes_at(ref: str, commit: str) -> bytes:
     """The bytes of the node right after `commit`, from whichever of its paths held
     it then. A path that held another node at that commit is skipped, so a name
-    reused after a rename never restores the wrong note."""
+    reused after a rename never restores the wrong note. When the uid of the node
+    cannot be found, even in the history, nothing is restored: the check that
+    protects against a reused name would have nothing to compare."""
     root = _vault_root()
     uid, paths = _history_node(ref)
+    if not uid:
+        try:
+            uid = vault_history.uid_at_path(root, paths[0])
+        except vault_history.HistoryError:
+            uid = None
+    if not uid:
+        raise vault_history.HistoryError(
+            f"Cannot tell which node {paths[0].name} is (no uid in the file or in its history), "
+            "so a restore could write another node's content there. Restore by uid instead."
+        )
+    want = _norm_uid(uid)
     failure = None
     for q in paths:
         try:
@@ -1517,13 +1535,15 @@ def _node_bytes_at(ref: str, commit: str) -> bytes:
         except vault_history.HistoryError as e:
             failure = failure or e
             continue
-        if uid:
+        try:
             fm, _ = load_frontmatter(data.decode("utf-8", "replace"))
-            if str((fm or {}).get("uid") or "") != uid:
-                failure = failure or vault_history.HistoryError(
-                    f"{q.name} at {commit} holds a different node, not {uid}."
-                )
-                continue
+        except ValueError:      # a broken header: this path held something else then
+            fm = None
+        if _norm_uid((fm or {}).get("uid")) != want:
+            failure = failure or vault_history.HistoryError(
+                f"{q.name} at {commit} holds a different node, not {uid}."
+            )
+            continue
         return data
     raise failure
 
@@ -1652,14 +1672,19 @@ def restore(path: str, commit: str) -> dict:
     A node that was renamed or moved since `commit` is written back to the path
     it has now (or had last, if it was deleted); the old path is not recreated.
 
-    Edits made outside Loci and not yet committed are committed first, so the
-    restore cannot lose them.
+    Edits made outside Loci and not yet committed are committed first (a rename
+    among them), so the restore cannot lose them. Refuses when it cannot tell which
+    node the path is (no uid in the file or its history): restore by uid then.
     Returns {restored: True, uid, path, from_commit, commit}, plus `warning`
     when the restored node has a type the registry no longer knows.
     """
     root = _vault_root()
-    p = _history_path(path)
     with vault_history.write_lock(root, required=True):
+        # Record a rename or edit the watcher has not recorded yet, so the paths
+        # the node has had are known before they are looked up.
+        if vault_history.snapshot_outside(root):
+            graph.invalidate()
+        p = _history_path(path)
         old = _node_bytes_at(path, commit)      # a commit from before a rename holds it at the old path
         fm, _ = load_frontmatter(old.decode("utf-8", "replace"))   # before any write: a broken header must leave the file alone
         uid = (fm or {}).get("uid")
