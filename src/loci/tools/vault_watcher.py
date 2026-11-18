@@ -24,9 +24,15 @@ Operating systems
   `watchdog` picks the native backend itself: FSEvents on macOS, inotify on
   Linux, ReadDirectoryChangesW on Windows. Nothing here branches on the OS, and
   the timer scan is plain Python. What still differs, and is not handled here:
-  - Linux: inotify has a per-user watch limit (fs.inotify.max_user_watches). A
-    very large vault can exceed it; the observer then fails to start and the
-    timer scan alone runs (a warning is logged).
+  - Linux: inotify has a per-user watch limit (fs.inotify.max_user_watches) and
+    one watch costs one folder. The history store keeps loose objects in up to 256
+    folders, so a recursive watch of the vault would spend most of the limit on
+    `.loci/`. On Linux the vault is therefore watched folder by folder, leaving
+    out the folders history never records (`.loci/`, `.obsidian/`, `.git/`), and a
+    new folder is added when it appears. If the limit is still reached, the
+    folders already watched keep giving events, the rest are covered by the timer
+    scan only (an edit there is recorded up to SCAN_SECONDS late), and a warning
+    says how to raise the limit. `mode` tells which case applies.
   - Windows: not a tested platform. vault_history.write_lock uses `filelock`
     (a byte-range lock there), so a burst is serialised with a Loci write as on
     macOS and Linux, but that has not been run on Windows.
@@ -36,7 +42,10 @@ The watcher never raises into the server. When `watchdog` cannot start, the
 timer scan alone keeps working.
 """
 
+import errno
 import logging
+import os
+import sys
 import threading
 import time
 from pathlib import Path
@@ -60,6 +69,8 @@ class VaultWatcher:
         scan_every: float = SCAN_SECONDS,
         clock: Callable[[], float] = time.monotonic,
         on_recorded: Optional[Callable[[str], None]] = None,
+        per_directory: Optional[bool] = None,
+        observer_factory: Optional[Callable] = None,
     ):
         self.vault_root = Path(vault_root)
         self.quiet = quiet
@@ -72,6 +83,15 @@ class VaultWatcher:
         self._last_event = 0.0
         self._last_scan = clock()
         self._observer = None
+        # One watch per folder (Linux, see the module docstring) or one recursive
+        # watch (macOS, Windows: FSEvents and ReadDirectoryChangesW take a tree).
+        self._per_directory = sys.platform.startswith("linux") if per_directory is None else per_directory
+        self._observer_factory = observer_factory
+        self._handler = None
+        self._watched: dict[str, object] = {}    # folder -> its watchdog watch
+        self._watch_lock = threading.Lock()      # one walk at a time: events come from several threads
+        self._limit_hit = False                  # the system refused a watch: warn once, stop trying
+        self.mode = "scan"      # "events" (all watched), "partial" (limit reached), "scan" (timer only)
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
 
@@ -148,16 +168,20 @@ class VaultWatcher:
 
     def stop(self) -> None:
         self._stop.set()
+        self._stop_observer()
+        thread, self._thread = self._thread, None
+        if thread is not None:
+            thread.join(timeout=2)
+
+    def _stop_observer(self) -> None:
         observer, self._observer = self._observer, None
+        self._watched = {}
         if observer is not None:
             try:
                 observer.stop()
                 observer.join(timeout=2)
             except Exception as e:
                 log.warning("vault watcher: stopping the observer failed: %s", e)
-        thread, self._thread = self._thread, None
-        if thread is not None:
-            thread.join(timeout=2)
 
     def _run(self) -> None:
         while not self._stop.wait(_POLL_SECONDS):
@@ -187,13 +211,93 @@ class VaultWatcher:
                     # records (the store, an editor's folder) is no reason to.
                     if kind in ("moved", "deleted", "created") and watcher._records(*[str(p) for p in paths if p]):
                         watcher.note(everything=True)
+                    if watcher._per_directory:
+                        if kind in ("deleted", "moved"):
+                            watcher._unwatch_tree(str(paths[0]))      # its watches are dead now
+                        if kind in ("created", "moved"):
+                            watcher._watch_tree(str(paths[-1] or paths[0]))
                     return
                 watcher.note(*[str(p) for p in paths if p])
 
+        self._handler = Handler()
         try:
-            observer = Observer()
-            observer.schedule(Handler(), str(self.vault_root), recursive=True)
+            observer = (self._observer_factory or Observer)()
+            # Start first and add folders after: a watch the system refuses then
+            # raises here, at the folder, and the watches made so far keep working.
+            # (Added before start(), a refusal surfaces in start() and no event
+            # reaches the handler at all.)
+            self._observer = observer       # before start(), so a failed start is stopped too
             observer.start()
-            self._observer = observer
+            if self._per_directory:
+                self._watch_tree(str(self.vault_root))
+                if not self._watched:       # not even the vault folder: nothing to listen to
+                    self._stop_observer()
+                    self.mode = "scan"
+            else:
+                observer.schedule(self._handler, str(self.vault_root), recursive=True)
+                self.mode = "events"
         except Exception as e:
-            log.warning("vault watcher: native events unavailable (%s); scanning every %ss instead", e, self.scan_every)
+            self._stop_observer()
+            self.mode = "scan"
+            self._warn_no_events(e)
+
+    def _watch_tree(self, top: str) -> None:
+        """Watch `top` and every folder under it that history records, one watch
+        each. Stops at the first refusal (the inotify limit), keeps the watches
+        already made, and does not try again until a watch is freed. One walk at a
+        time; a big folder moved in is walked on the thread that reported it."""
+        with self._watch_lock:
+            observer = self._observer
+            if observer is None or self._handler is None or self._limit_hit:
+                return
+            try:
+                root = self.vault_root.resolve()
+                top_rel = Path(top).resolve().relative_to(root)
+            except (OSError, ValueError):
+                return
+            for folder, subfolders, _ in os.walk(top):
+                rel = top_rel / Path(folder).relative_to(top)
+                if not vault_history.folder_recorded(rel):
+                    log.debug("vault watcher: not watching %s (history never records it)", folder)
+                    subfolders[:] = []      # the store, an editor's folder: never watched
+                    continue
+                if folder in self._watched:
+                    continue
+                try:
+                    self._watched[folder] = observer.schedule(self._handler, folder, recursive=False)
+                except OSError as e:
+                    self._limit_hit = True
+                    self.mode = "partial" if self._watched else "scan"
+                    self._warn_no_events(e, watching=len(self._watched))
+                    return
+                if self.mode == "scan":
+                    self.mode = "events"
+
+    def _unwatch_tree(self, top: str) -> None:
+        """Forget the watches of a folder that was deleted or moved away, and of the
+        folders under it. A watch left in place would be reused for a folder made
+        again under the same name, and give no events. A freed watch lets the
+        watcher try the watches it had to leave out."""
+        with self._watch_lock:
+            observer = self._observer
+            gone = [f for f in self._watched if f == top or f.startswith(top + os.sep)]
+            for folder in gone:
+                watch = self._watched.pop(folder)
+                try:
+                    if observer is not None and watch is not None:
+                        observer.unschedule(watch)
+                except Exception as e:
+                    log.debug("vault watcher: unwatching %s failed: %s", folder, e)
+            if gone:
+                self._limit_hit = False     # a watch is free; the next new folder may be watched
+
+    def _warn_no_events(self, error: Exception, watching: int = 0) -> None:
+        out_of_watches = getattr(error, "errno", None) in (errno.ENOSPC, errno.EMFILE)
+        if out_of_watches:
+            log.warning(
+                "vault watcher: the operating system refused another watch (%s) after %d folders; "
+                "the rest are scanned every %ss instead. On Linux raise fs.inotify.max_user_watches "
+                "(sysctl) to watch them all.", error, watching, self.scan_every)
+        else:
+            log.warning("vault watcher: native events unavailable (%s); scanning every %ss instead",
+                        error, self.scan_every)

@@ -92,8 +92,10 @@ config and data folders, and shell commands in the `Makefile` or hooks.
 Known gaps, each its own future PR (the history write lock is cross-platform through
 `filelock`, but not tested on Windows):
 
-- Linux: inotify has a per-user watch limit; a very large vault can exceed it. The
-  watcher then runs on its timer scan alone.
+- Linux: inotify has a per-user watch limit. The watcher watches folder by folder
+  and skips `.loci/`; past the limit it falls back to its timer scan for the rest
+  and logs how to raise the limit (`mode` is `partial`). Needs a Linux machine to
+  confirm on a vault with thousands of folders.
 
 ## Skill ↔ Tool sync rule
 
