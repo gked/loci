@@ -295,5 +295,5 @@ A restore is a new commit, so it loses nothing and can be undone.
 - **Unknown type:** `article` if there is a citable source (URL, author, publication);
   `document` if there is no publication record to track. Ask only when genuinely ambiguous.
 - **Conflicted copy** (`note (conflicted copy …).md`, `lint_vault`: `conflicted-copy`): `loci__list_conflicted_copies` lists them; show the `kind`, then after the user's yes call `loci__resolve_conflicted_copy(copy, choices, token, user_confirmed=true)` with the `token` from the listing. For `conflict`, show both versions of each clash and pass the user's choices. One commit.
-- **Duplicate uid** (`lint_vault`: `duplicate-uid`): the lint message names the newer file; the older node keeps the uid. Show the user both files, then after their yes call `loci__fix_duplicate_uid(path)` with the newer one. One commit; `loci__undo_last_vault_change` undoes it.
+- **Duplicate uid** (`lint_vault`: `duplicate-uid`): the lint message names the newer file; the older node keeps the uid. Show the user both files, then after their yes call `loci__fix_duplicate_uid(path, user_confirmed=true)` with the newer one. One commit; `loci__undo_last_vault_change` undoes it.
 - **Very long content:** summarise in `summary`, keep the full content in the body.

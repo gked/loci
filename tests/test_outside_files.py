@@ -146,12 +146,22 @@ def test_the_mcp_tool_fixes_the_copy_and_returns_errors_as_data(tmp_vault, twin)
     from loci import mcp_server
 
     original, copy, uid = twin
-    refused = mcp_server.fix_duplicate_uid(original.name)
+    refused = mcp_server.fix_duplicate_uid(original.name, user_confirmed=True)
     assert "not the newer holder" in refused["error"]
 
-    done = mcp_server.fix_duplicate_uid(copy.name)
+    done = mcp_server.fix_duplicate_uid(copy.name, user_confirmed=True)
     assert done["old_uid"] == uid and f"uid: {done['new_uid']}" in copy.read_text()
-    assert "error" in mcp_server.fix_duplicate_uid("no-such-file.md")
+    assert "error" in mcp_server.fix_duplicate_uid("no-such-file.md", user_confirmed=True)
+
+
+def test_the_mcp_tool_writes_nothing_without_the_users_yes(tmp_vault, twin):
+    from loci import mcp_server
+
+    original, copy, uid = twin
+    before = copy.read_text()
+    out = mcp_server.fix_duplicate_uid(copy.name)
+    assert "Ask the user first" in out["error"] and "Nothing was changed" in out["error"]
+    assert copy.read_text() == before
 
 
 def test_the_lint_message_names_the_tool(tmp_vault, twin):
