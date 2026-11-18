@@ -1539,7 +1539,12 @@ def _node_bytes_at(ref: str, commit: str) -> bytes:
             fm, _ = load_frontmatter(data.decode("utf-8", "replace"))
         except ValueError:      # a broken header: this path held something else then
             fm = None
-        if _norm_uid((fm or {}).get("uid")) != want:
+        held = _norm_uid((fm or {}).get("uid"))
+        # Asked for by path, a version of that path with no uid at all is returned
+        # as it is: restore says "no uid" for it. Asked for by uid, or at an older
+        # path, such a version may be another note.
+        by_path = not _UID_RE.fullmatch(ref.strip())
+        if held != want and not (not held and by_path and q == paths[0]):
             failure = failure or vault_history.HistoryError(
                 f"{q.name} at {commit} holds a different node, not {uid}."
             )
@@ -1682,7 +1687,8 @@ def restore(path: str, commit: str) -> dict:
     with vault_history.write_lock(root, required=True):
         # Record a rename or edit the watcher has not recorded yet, so the paths
         # the node has had are known before they are looked up.
-        if vault_history.snapshot_outside(root):
+        recorded = vault_history.snapshot_outside(root)
+        if recorded:
             graph.invalidate()
         p = _history_path(path)
         old = _node_bytes_at(path, commit)      # a commit from before a rename holds it at the old path
@@ -1693,7 +1699,7 @@ def restore(path: str, commit: str) -> dict:
                 f"{commit} holds no uid for {p.name}: restoring it would leave a node that cannot be "
                 "found. Pick a commit where the node has a uid."
             )
-        snapshot = vault_history.snapshot_external(root, [p])
+        snapshot = recorded or vault_history.snapshot_external(root, [p])
         was_deleted = not p.exists()
         out = {"restored": True, "uid": uid, "path": str(p), "from_commit": commit,
                "was_deleted": was_deleted}
