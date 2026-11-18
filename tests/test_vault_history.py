@@ -1516,6 +1516,19 @@ def test_a_lock_file_that_cannot_be_opened_stops_an_undo(tmp_vault, monkeypatch)
         pass
 
 
+def test_the_lock_file_is_kept_after_release_and_reused(tmp_vault):
+    save("History One")
+    lock_file = vault_history.history_dir(tmp_vault).parent / f"{vault_history.computer_id()}.undo.lock"
+    with vault_history.write_lock(tmp_vault):
+        pass
+    assert lock_file.exists()
+    inode = lock_file.stat().st_ino
+    with vault_history.write_lock(tmp_vault):
+        pass
+    assert lock_file.stat().st_ino == inode            # the same file, not made again
+    assert len(list(lock_file.parent.glob("*.undo.lock"))) == 1
+
+
 def test_a_filesystem_that_cannot_lock_lets_a_write_go_on_and_stops_an_undo(tmp_vault, monkeypatch):
     saved = save("History One")
     api.patch(saved["uid"], {}, body="oops")

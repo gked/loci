@@ -1306,26 +1306,23 @@ def write_lock(vault_root: Path, required: bool = False):
     runs unlocked can overwrite another process's write.
 
     It uses `filelock`, which takes flock on macOS and Linux and a byte-range lock
-    (msvcrt) on Windows, so the same code locks on every platform. Windows is not
-    a tested platform. Two limits to know:
+    on Windows, so the same code locks on every platform. Windows is not a tested
+    platform. Things to know:
+      - The lock file `.loci/<computer>.undo.lock` is kept after release
+        (`preserve_lock_file=True`), on every platform: one small file per
+        computer, reused, never re-created while another process opens it. If a
+        user deletes it during a write, a second writer could lock a new file.
       - A filesystem that cannot lock at all (some network mounts) makes filelock
-        raise NotImplementedError. That is handled like a lock file that cannot be
-        opened: a plain write goes on unlocked; undo and restore refuse.
-      - filelock may use a plain lock file where it has no system lock. A process
-        that crashes can leave that file behind, and every request then fails as
-        "busy" until someone removes `.loci/<computer>.undo.lock`. The 10-second
-        timeout only ends the wait with that error; it does not free the lock.
-      - On Windows filelock removes its lock file at release, and its own
-        handshake (no delete right while a handle is open, a retry while a
-        delete is pending) is what keeps a peer from locking a vanished file.
-        That is read from its source, not tested here. Keeping the file instead
-        would be Windows-only code (own PR)."""
+        raise NotImplementedError; with `preserve_lock_file` it does not fall back
+        to a soft lock file that a crash could leave behind. The error is handled
+        like a lock file that cannot be opened: a plain write goes on unlocked;
+        undo and restore refuse."""
     held = _lock_held.__dict__.setdefault("roots", set())
     key = str(Path(vault_root))
     if key in held or not enabled() or not is_repo(vault_root):
         yield
         return
-    lock = FileLock(str(Path(vault_root) / ".loci" / f"{computer_id()}.undo.lock"))
+    lock = FileLock(str(Path(vault_root) / ".loci" / f"{computer_id()}.undo.lock"), preserve_lock_file=True)
     try:
         lock.acquire(timeout=LOCK_TIMEOUT_S, poll_interval=0.05)
     except Timeout:
