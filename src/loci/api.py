@@ -1041,7 +1041,7 @@ def _rewrite_yaml_entries(path: Path, list_key: str, change) -> None:
         allow_unicode=True,
         sort_keys=False,
     )
-    path.write_text(header + dumped, encoding="utf-8")
+    path.write_text(header + dumped, encoding="utf-8", newline="\n")
 
 
 def _append_yaml_entry(path: Path, list_key: str, entry: dict) -> None:
@@ -1173,7 +1173,9 @@ def conflicted_copies() -> list:
     for copy in node_merge.conflicted_copies(root):
         try:
             out.append(node_merge.describe(root, copy.name))
-        except node_merge.MergeError as e:
+        except Exception as e:      # one unreadable copy must not hide the others
+            if not isinstance(e, (node_merge.MergeError, ValueError, OSError, yaml.YAMLError)):
+                log.warning("describing %s failed: %s", copy.name, e)
             out.append({"copy": copy.name, "original": node_merge.original_name(copy.name),
                         "kind": "error", "detail": str(e)})
     return out
@@ -1186,15 +1188,21 @@ def fix_duplicate_uid(path: str) -> dict:
     file dropped in by hand with a copied header). Call it only after the user
     agrees: it changes the file. Relations that point at the old uid mean the
     older node, so none of them is rewritten.
-    Raises ValueError when the file is not the newer holder of a shared uid.
+    Raises ValueError when the path is outside the vault, when the file is not a
+    readable note, or when it is not the newer holder of a shared uid.
     Returns {path, old_uid, new_uid, commit}.
     """
     root = _vault_root()
     p = Path(path)
     p = p if p.is_absolute() else root / p
+    if not p.resolve().is_relative_to(root.resolve()):
+        raise ValueError(f"{p.name} is outside the vault; nothing was changed.")
     if not p.is_file():
         raise FileNotFoundError(f"Vault file not found: {p}")
-    text = p.read_text(encoding="utf-8")
+    try:
+        text = p.read_text(encoding="utf-8")
+    except UnicodeDecodeError as e:
+        raise ValueError(f"{p.name} is not a text note; nothing was changed.") from e
     fm, _ = load_frontmatter(text)
     old = str((fm or {}).get("uid") or "")
     elder = find_uid(root, old) if old else None
@@ -1219,12 +1227,14 @@ def conflict_count() -> int:
     return len(node_merge.conflicted_copies(_vault_root()))
 
 
+@_serialized
 def resolve_conflicted_copy(copy: str, choices: list = None, token: str = None) -> dict:
     """
     Merge a conflicted copy into the note it came from and delete the copy, as one
     recorded change. `choices` holds "a" (the kept file) or "b" (the copy) for each
-    clash `conflicted_copies` listed for it, in order. `token` is the one listed with
-    those clashes; the merge is refused if they have changed since. Raises node_merge.MergeError.
+    clash `conflicted_copies` listed for it, in order; only a `conflict` takes them.
+    `token` is required: the one `conflicted_copies` listed. The merge is refused if
+    either file has changed since. Raises node_merge.MergeError.
     """
     return node_merge.resolve(_vault_root(), copy, choices, token)
 
@@ -1430,7 +1440,7 @@ def write_meta(file: str, content: str) -> str:
     # rather than failing the write with a bare FileNotFoundError.
     p.parent.mkdir(parents=True, exist_ok=True)
     _before_write(p)
-    p.write_text(content, encoding="utf-8")
+    p.write_text(content, encoding="utf-8", newline="\n")
     _record(f"Update meta: {file}", p)
     return str(p)
 
