@@ -174,12 +174,25 @@ def test_the_fix_refuses_a_path_outside_the_vault(tmp_vault, twin, tmp_path_fact
     assert outside.read_text() == before
 
 
-def test_the_fix_gives_a_clear_error_for_a_file_that_is_not_a_note(tmp_vault, twin):
+def test_the_fix_names_what_is_wrong_with_a_file_that_is_not_a_note(tmp_vault, twin):
     (tmp_vault / "scan.md").write_bytes(b"\xff\xfe\x00 not utf-8")
     (tmp_vault / "broken.md").write_text("---\nuid: [unclosed\ntitle: x\n---\nbody\n")
-    for name in ("scan.md", "broken.md"):
-        with pytest.raises(ValueError, match="nothing was changed|not the newer holder"):
+    (tmp_vault / "plain.md").write_text("no header at all\n")
+    (tmp_vault / "nouid.md").write_text("---\ntitle: x\n---\nbody\n")
+    (tmp_vault / "a-folder.md").mkdir()
+    expected = {
+        "scan.md": "not a text note",
+        "broken.md": "no readable frontmatter",
+        "plain.md": "no readable frontmatter",
+        "nouid.md": "no uid",
+        "a-folder.md": "is a folder",
+    }
+    for name, words in expected.items():
+        before = (tmp_vault / name).read_bytes() if (tmp_vault / name).is_file() else None
+        with pytest.raises(ValueError, match=words):
             api.fix_duplicate_uid(name)
+        if before is not None:
+            assert (tmp_vault / name).read_bytes() == before        # nothing was changed
 
 
 def test_the_fix_is_one_commit_and_undo_reverses_it(tmp_vault, twin):
