@@ -546,7 +546,7 @@ requires-dist = [
     { name = "defusedxml", specifier = ">=0.7" },
     { name = "dulwich", specifier = ">=1.2.20" },
     { name = "fastapi", specifier = ">=0.111" },
-    { name = "filelock", specifier = ">=3.12" },
+    { name = "filelock", specifier = ">=4.2.10" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.0,<2" },
     { name = "networkx", specifier = ">=3.0" },

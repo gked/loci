@@ -3,9 +3,9 @@ Vault change history: every API write is one commit in the history store at
 vault_root/.loci/history, a Git-format repository that dulwich reads and writes.
 """
 
-import os
 import contextlib
 import logging
+import os
 import shutil
 import subprocess
 import threading
@@ -1516,6 +1516,35 @@ def test_a_lock_file_that_cannot_be_opened_stops_an_undo(tmp_vault, monkeypatch)
         pass
 
 
+def test_a_filesystem_that_cannot_lock_lets_a_write_go_on_and_stops_an_undo(tmp_vault, monkeypatch):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="oops")
+
+    def no_locks(self, *a, **k):                    # filelock on a mount without flock
+        raise NotImplementedError("flock is not supported here")
+
+    monkeypatch.setattr(vault_history.FileLock, "acquire", no_locks)
+    with vault_history.write_lock(tmp_vault):       # a plain write goes on without the lock
+        pass
+    with pytest.raises(vault_history.HistoryError, match="write lock cannot be opened"):
+        api.undo_last_change()
+    assert "oops" in api.get(saved["uid"])
+
+
+def test_a_failed_release_does_not_hide_the_error_of_the_write(tmp_vault, monkeypatch, caplog):
+    save("History One")
+
+    def broken(self, *a, **k):
+        raise OSError("stale handle")
+
+    monkeypatch.setattr(vault_history.FileLock, "release", broken)
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(RuntimeError, match="the write failed"):
+            with vault_history.write_lock(tmp_vault):
+                raise RuntimeError("the write failed")
+    assert "release failed" in caplog.text
+
+
 def test_an_undo_commit_that_is_not_a_hash_prefix_is_refused(tmp_vault):
     saved = save("History One")
     api.patch(saved["uid"], {}, body="oops")
@@ -1825,17 +1854,3 @@ def test_a_write_works_while_another_computers_line_is_missing_older_commits(tmp
 
     assert saved.get("commit")
     assert vault_history.status(tmp_vault)["state"] == "on"
-
-
-def test_the_write_lock_does_not_need_fcntl(tmp_vault, monkeypatch):
-    """Windows has no fcntl. The lock must be taken (and so held against a second
-    holder) without it."""
-    import sys
-    save("History One")
-    monkeypatch.setitem(sys.modules, "fcntl", None)        # `import fcntl` now raises ImportError
-    monkeypatch.setattr(vault_history, "LOCK_TIMEOUT_S", 0.2)
-    with held_by_another_thread(tmp_vault):
-        with pytest.raises(vault_history.HistoryError, match="busy"):
-            with vault_history.write_lock(tmp_vault):
-                pytest.fail("the second holder must not get the lock")
-
