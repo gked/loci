@@ -61,6 +61,7 @@ from dulwich.index import commit_tree
 from dulwich.object_store import iter_tree_contents, tree_lookup_path
 from dulwich.objects import ZERO_SHA, Blob, Commit
 from dulwich.repo import Repo
+from filelock import FileLock, Timeout
 
 from loci.tools.frontmatter import split_frontmatter
 
@@ -1304,23 +1305,34 @@ def write_lock(vault_root: Path, required: bool = False):
     undo and restore pass, HistoryError is raised instead, because an undo that
     runs unlocked can overwrite another process's write.
 
-    POSIX only: it uses fcntl.flock. On Windows there is no lock, and the HEAD
-    re-check in undo and restore is the only guard. It leaves a small gap
-    between the check and the write."""
-    try:
-        import fcntl
-    except ImportError:     # no flock on this platform: the HEAD re-check is the guard
-        yield
-        return
+    It uses `filelock`, which takes flock on macOS and Linux and a byte-range lock
+    (msvcrt) on Windows, so the same code locks on every platform. Windows is not
+    a tested platform. Two limits to know:
+      - A filesystem that cannot lock at all (some network mounts) makes filelock
+        raise NotImplementedError. That is handled like a lock file that cannot be
+        opened: a plain write goes on unlocked; undo and restore refuse.
+      - filelock may use a plain lock file where it has no system lock. A process
+        that crashes can leave that file behind, and every request then fails as
+        "busy" until someone removes `.loci/<computer>.undo.lock`. The 10-second
+        timeout only ends the wait with that error; it does not free the lock.
+      - On Windows filelock removes its lock file at release, and its own
+        handshake (no delete right while a handle is open, a retry while a
+        delete is pending) is what keeps a peer from locking a vanished file.
+        That is read from its source, not tested here. Keeping the file instead
+        would be Windows-only code (own PR)."""
     held = _lock_held.__dict__.setdefault("roots", set())
     key = str(Path(vault_root))
     if key in held or not enabled() or not is_repo(vault_root):
         yield
         return
-    lock_dir = Path(vault_root) / ".loci"
+    lock = FileLock(str(Path(vault_root) / ".loci" / f"{computer_id()}.undo.lock"))
     try:
-        handle = open(lock_dir / f"{computer_id()}.undo.lock", "a", encoding="utf-8")
-    except OSError as e:    # a lock file that cannot be made must not stop a plain write
+        lock.acquire(timeout=LOCK_TIMEOUT_S, poll_interval=0.05)
+    except Timeout:
+        raise HistoryError(
+            "The vault is busy: another write, undo or restore is still running. Nothing was changed. Try again in a moment."
+        ) from None
+    except (OSError, NotImplementedError) as e:    # no lock file, or a filesystem that cannot lock: a plain write goes on
         if required:
             raise HistoryError(
                 f"The vault's write lock cannot be opened ({e}), so the change was not made."
@@ -1328,24 +1340,15 @@ def write_lock(vault_root: Path, required: bool = False):
         log.warning("write lock unavailable, continuing without it: %s", e)
         yield
         return
-    with handle:
-        deadline = time.monotonic() + LOCK_TIMEOUT_S
-        while True:
-            try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    raise HistoryError(
-                        "The vault is busy: another write, undo or restore is still running. Nothing was changed. Try again in a moment."
-                    ) from None
-                time.sleep(0.05)
-        held.add(key)
+    held.add(key)
+    try:
+        yield
+    finally:
+        held.discard(key)
         try:
-            yield
-        finally:
-            held.discard(key)
-            fcntl.flock(handle, fcntl.LOCK_UN)
+            lock.release()
+        except OSError as e:    # must not hide the error of the write itself
+            log.warning("write lock release failed: %s", e)
 
 
 def snapshot_external(vault_root: Path, paths: Iterable[Path | str]) -> Optional[str]:

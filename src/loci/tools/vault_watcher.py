@@ -27,9 +27,9 @@ Operating systems
   - Linux: inotify has a per-user watch limit (fs.inotify.max_user_watches). A
     very large vault can exceed it; the observer then fails to start and the
     timer scan alone runs (a warning is logged).
-  - Windows: not a tested platform. vault_history.write_lock uses fcntl, which
-    Windows lacks, so a burst there is not serialised with a Loci write. That
-    needs a cross-platform lock in its own PR.
+  - Windows: not a tested platform. vault_history.write_lock uses `filelock`
+    (a byte-range lock there), so a burst is serialised with a Loci write as on
+    macOS and Linux, but that has not been run on Windows.
   - Network and synced folders may give no events on any OS: the timer scan.
 
 The watcher never raises into the server. When `watchdog` cannot start, the
