@@ -9,8 +9,8 @@ vault history: the file as it was where the two computers' branches forked.
 
 Edits to different lines merge on their own. Edits to the same lines are left to
 the user, one choice per clash. Nothing is written until `resolve` runs, and
-`resolve` computes the merge again from the files on disk. A caller that passes
-the `token` from `describe` is refused when the clashes have changed since.
+`resolve` computes the merge again from the files on disk. `resolve` needs the
+`token` from `describe`; it is refused when either file has changed since.
 
 Four cases, from `describe`:
   merged    both sides merge with no clash
@@ -228,23 +228,23 @@ def _plan(vault_root: Path, copy_name: str) -> dict:
             "segments": merge3(base, a_n, b_n)}
 
 
-def _token(clashes: list) -> str:
-    """A fingerprint of the clashes the user is shown. `resolve` takes it back, so
-    choices made for one set of clashes are never applied to another."""
+def _token(plan: dict) -> str:
+    """A fingerprint of what the user is shown: the kind and both files as they are
+    now. `resolve` takes it back, so an answer given for one state of the files is
+    never applied to another, whatever the kind."""
     digest = hashlib.sha256()
-    for c in clashes:
-        for part in ("".join(c.base), "".join(c.a), "".join(c.b)):
-            digest.update(part.encode("utf-8") + b"\0")
-        digest.update(b"\1")
+    for part in (plan["kind"] or "", plan.get("a", ""), plan.get("b", "")):
+        digest.update(part.encode("utf-8") + b"\0")
     return digest.hexdigest()[:16]
 
 
 def describe(vault_root: Path, copy_name: str) -> dict:
     """What resolving `copy_name` would do. Reads only. For `conflict`, `clashes`
     lists each clash as {a, b, base} text; the user picks "a" (the kept file) or
-    "b" (the copy) for each. `token` names those clashes: give it to `resolve`."""
+    "b" (the copy) for each. `token` fingerprints both files for every kind: give
+    it to `resolve`."""
     plan = _plan(vault_root, copy_name)
-    out = {"copy": copy_name, "original": plan["original"], "kind": plan["kind"]}
+    out = {"copy": copy_name, "original": plan["original"], "kind": plan["kind"], "token": _token(plan)}
     if plan["kind"] == "restore":
         out["text"] = plan["b"]
     elif plan["kind"] == "keep-both":
@@ -255,7 +255,6 @@ def describe(vault_root: Path, copy_name: str) -> dict:
         clashes = [s for s in plan["segments"] if isinstance(s, Clash)]
         out["kind"] = "conflict" if clashes else "merged"
         if clashes:
-            out["token"] = _token(clashes)
             out["clashes"] = [{"a": "".join(c.a), "b": "".join(c.b), "base": "".join(c.base)} for c in clashes]
             out["segments"] = [
                 {"text": s} if isinstance(s, str) else {"clash": sum(isinstance(x, Clash) for x in plan["segments"][:i])}
@@ -270,9 +269,9 @@ def resolve(vault_root: Path, copy_name: str, choices: Optional[list[str]] = Non
             token: Optional[str] = None) -> dict:
     """Merge the copy into the kept file, record it in the history, delete the
     copy. `choices` holds "a" or "b" for each clash, in file order; it must be
-    given exactly when `describe` reports `conflict`. `token` is the one `describe`
-    returned with the clashes the choices answer; when it is given and the files
-    have changed so that the clashes differ, nothing is written. Raises MergeError."""
+    given exactly when `describe` reports `conflict`. `token` is required: it is the
+    one `describe` returned, and when either file has changed since, nothing is
+    written. Raises MergeError."""
     # Imported here: api imports a great deal, and this module is also used by the linter.
     from loci import api
 
@@ -282,6 +281,12 @@ def resolve(vault_root: Path, copy_name: str, choices: Optional[list[str]] = Non
         copy = vault_root / copy_name
         original = vault_root / plan["original"]
         kind = plan["kind"]
+        if not token:
+            raise MergeError(f"{plan['original']}: a token is required. Call describe (list_conflicted_copies) first.")
+        if token != _token(plan):
+            raise MergeError(f"{plan['original']} changed since you looked at it. Open it again.")
+        if choices and kind in ("restore", "keep-both"):
+            raise MergeError(f"{plan['original']} is a '{kind}' copy and takes no choices; nothing was changed.")
         message = f"Merged conflicted copy of {plan['original']}"
 
         if kind == "keep-both":
@@ -303,8 +308,6 @@ def resolve(vault_root: Path, copy_name: str, choices: Optional[list[str]] = Non
                     f"{plan['original']} has {len(clashes)} clashing edit(s); "
                     f"give one choice, 'a' or 'b', for each (got {len(choices)})."
                 )
-            if token is not None and token != _token(clashes):
-                raise MergeError(f"{plan['original']} changed since you looked at it. Open it again.")
             picks = iter(choices)
             text = "".join(s if isinstance(s, str) else "".join(s.a if next(picks) == "a" else s.b)
                            for s in segments)

@@ -13,6 +13,8 @@ from loci.tools import nx_graph, vault_history
 from loci.tools.vault_linter import lint_vault
 from loci.tools.write_file import find_uid
 
+from test_http_server import auth, client  # noqa: F401  (fixtures)
+
 
 @pytest.fixture(autouse=True)
 def history_on(monkeypatch):
@@ -136,3 +138,55 @@ def test_a_discarded_copy_leaves_no_relations_in_the_graph(tmp_vault, twin, monk
     nx_graph._graph = None
     assert not nx_graph.get(tmp_vault).has_edge(uid, "deadbeef")
 
+
+
+# ---------------------------------------------------------------------------
+# The fix as an MCP tool
+# ---------------------------------------------------------------------------
+
+def test_the_mcp_tool_fixes_the_copy_and_returns_errors_as_data(tmp_vault, twin):
+    from loci import mcp_server
+
+    original, copy, uid = twin
+    refused = mcp_server.fix_duplicate_uid(original.name)
+    assert "not the newer holder" in refused["error"]
+
+    done = mcp_server.fix_duplicate_uid(copy.name)
+    assert done["old_uid"] == uid and f"uid: {done['new_uid']}" in copy.read_text()
+    assert "error" in mcp_server.fix_duplicate_uid("no-such-file.md")
+
+
+def test_the_lint_message_names_the_tool(tmp_vault, twin):
+    original, copy, uid = twin
+    issue = next(i for i in lint_vault(tmp_vault)["errors"] if i["code"] == "duplicate-uid" and i["path"] == copy.name)
+    assert "fix_duplicate_uid" in issue["message"]
+
+
+def test_the_fix_refuses_a_path_outside_the_vault(tmp_vault, twin, tmp_path_factory):
+    original, copy, uid = twin
+    outside = tmp_path_factory.mktemp("elsewhere") / "outside.md"
+    outside.write_text(copy.read_text())            # a file with the shared uid, but not in the vault
+    before = outside.read_text()
+    with pytest.raises(ValueError, match="outside the vault"):
+        api.fix_duplicate_uid(str(outside))                       # absolute path
+    with pytest.raises(ValueError, match="outside the vault"):
+        api.fix_duplicate_uid("../" + outside.parent.name + "/outside.md")   # relative climb
+    assert outside.read_text() == before
+
+
+def test_the_fix_gives_a_clear_error_for_a_file_that_is_not_a_note(tmp_vault, twin):
+    (tmp_vault / "scan.md").write_bytes(b"\xff\xfe\x00 not utf-8")
+    (tmp_vault / "broken.md").write_text("---\nuid: [unclosed\ntitle: x\n---\nbody\n")
+    for name in ("scan.md", "broken.md"):
+        with pytest.raises(ValueError, match="nothing was changed|not the newer holder"):
+            api.fix_duplicate_uid(name)
+
+
+def test_the_fix_is_one_commit_and_undo_reverses_it(tmp_vault, twin):
+    original, copy, uid = twin
+    before = copy.read_text()
+    out = api.fix_duplicate_uid(str(copy))
+    last = api.last_change()
+    assert last["undoable"] and out["commit"].startswith(last["commit"][:7])
+    api.undo_last_change()
+    assert copy.read_text() == before

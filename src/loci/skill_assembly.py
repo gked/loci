@@ -213,5 +213,5 @@ def write_overlay(vault_root: Path, skill: str, content: str, append: bool = Fal
         if existing and not existing.endswith("\n"):
             existing += "\n"
         content = existing + "\n" + content
-    p.write_text(content, encoding="utf-8")
+    p.write_text(content, encoding="utf-8", newline="\n")
     return p

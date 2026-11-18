@@ -38,6 +38,13 @@ BASE = "one\ntwo\nthree\nfour\nfive\n"
 COPY_SUFFIX = " (conflicted copy 2026-11-14 081923).md"
 
 
+def _resolve(vault, copy_name, choices=None, token=None):
+    """node_merge.resolve with the token `describe` would hand out, like a caller that listed first."""
+    if token is None:
+        token = node_merge.describe(vault, copy_name)["token"]
+    return node_merge.resolve(vault, copy_name, choices, token=token)
+
+
 def diverge(vault, as_computer, base=BASE, a=None, b=None):
     """Computer A saves a node. Computer B edits it. A, whose disk still holds the
     version it saved, edits it too. The sync tool keeps A's file and saves B's
@@ -168,7 +175,7 @@ def test_edits_to_different_lines_merge_with_no_question(tmp_vault, as_computer)
     described = node_merge.describe(tmp_vault, copy.name)
     assert described["kind"] == "merged"
 
-    out = node_merge.resolve(tmp_vault, copy.name)
+    out = _resolve(tmp_vault, copy.name)
 
     assert out["kind"] == "merged"
     text = node.read_text()
@@ -180,7 +187,7 @@ def test_the_merge_is_one_commit_and_the_copy_is_recorded_before_it_goes(tmp_vau
     node, copy = diverge(tmp_vault, as_computer, a="ONE\ntwo\nthree\nfour\nfive\n", b=BASE.replace("five", "FIVE"))
     theirs = copy.read_text()
 
-    node_merge.resolve(tmp_vault, copy.name)
+    _resolve(tmp_vault, copy.name)
 
     # Commits made in one second have no fixed order among themselves.
     listed = vault_history.history(tmp_vault, node)
@@ -196,7 +203,7 @@ def test_the_other_computers_line_is_joined_by_the_merge(tmp_vault, as_computer)
     node, copy = diverge(tmp_vault, as_computer, a="ONE\ntwo\nthree\nfour\nfive\n", b=BASE.replace("five", "FIVE"))
     b_tip = [sha for name, sha in _tips(_open(tmp_vault)).items() if name != vault_history.computer_id().encode()][0]
 
-    node_merge.resolve(tmp_vault, copy.name)
+    _resolve(tmp_vault, copy.name)
 
     repo = _open(tmp_vault)
     head, _ = _head(repo)
@@ -212,9 +219,9 @@ def test_edits_to_the_same_line_wait_for_a_choice(tmp_vault, as_computer):
     assert [(c["a"], c["b"]) for c in described["clashes"]] == [("mine\n", "theirs\n")]
 
     with pytest.raises(MergeError, match="1 clashing"):
-        node_merge.resolve(tmp_vault, copy.name)
+        _resolve(tmp_vault, copy.name)
     with pytest.raises(MergeError):
-        node_merge.resolve(tmp_vault, copy.name, ["c"])
+        _resolve(tmp_vault, copy.name, ["c"])
     assert node.read_text() == before and copy.exists()      # nothing changed
 
 
@@ -223,7 +230,7 @@ def test_the_choice_decides_the_clashing_lines_only(tmp_vault, as_computer, pick
     node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("two", "mine").replace("five", "FIVE"),
                          b=BASE.replace("two", "theirs"))
 
-    node_merge.resolve(tmp_vault, copy.name, [pick])
+    _resolve(tmp_vault, copy.name, [pick])
 
     text = node.read_text()
     assert f"one\n{kept}\nthree\nfour\nFIVE\n" in text
@@ -239,7 +246,7 @@ def test_updated_at_alone_is_never_a_clash(tmp_vault, as_computer):
     copy.write_text("".join("updated_at: '2099-01-01T00:00:00Z'\n" if l.startswith("updated_at:") else l for l in lines))
 
     assert node_merge.describe(tmp_vault, copy.name)["kind"] == "merged"
-    node_merge.resolve(tmp_vault, copy.name)
+    _resolve(tmp_vault, copy.name)
 
     assert "updated_at: '2099-01-01T00:00:00Z'" in node.read_text()
 
@@ -248,7 +255,7 @@ def test_identical_files_merge_to_that_file(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer)
     copy.write_text(node.read_text())
     assert node_merge.describe(tmp_vault, copy.name)["kind"] == "merged"
-    node_merge.resolve(tmp_vault, copy.name)
+    _resolve(tmp_vault, copy.name)
     assert not copy.exists()
 
 
@@ -257,7 +264,7 @@ def test_an_edit_beats_a_delete(tmp_vault, as_computer):
     node.unlink()                                            # the other computer deleted it
 
     assert node_merge.describe(tmp_vault, copy.name)["kind"] == "restore"
-    node_merge.resolve(tmp_vault, copy.name)
+    _resolve(tmp_vault, copy.name)
 
     assert node.is_file() and "edited" in node.read_text()
     assert not copy.exists()
@@ -273,7 +280,7 @@ def test_two_different_nodes_with_one_file_name_are_both_kept(tmp_vault, as_comp
 
     described = node_merge.describe(tmp_vault, copy.name)
     assert described["kind"] == "keep-both"
-    node_merge.resolve(tmp_vault, copy.name)
+    _resolve(tmp_vault, copy.name)
 
     kept = tmp_vault / described["new_name"]
     assert kept.is_file() and f"uid: {other_uid}" in kept.read_text()
@@ -286,7 +293,7 @@ def test_a_name_that_is_not_a_copy_is_refused(tmp_vault):
         with pytest.raises(MergeError):
             node_merge.describe(tmp_vault, bad)
     with pytest.raises(MergeError):
-        node_merge.resolve(tmp_vault, "plain.md")
+        _resolve(tmp_vault, "plain.md")
 
 
 def test_without_history_both_files_are_clashes_for_the_user(tmp_vault, monkeypatch):
@@ -319,7 +326,7 @@ def test_choices_for_clashes_that_changed_are_refused(tmp_vault, as_computer):
     before = node.read_text()
 
     with pytest.raises(MergeError, match="changed since"):
-        node_merge.resolve(tmp_vault, copy.name, ["b"], token=token)
+        _resolve(tmp_vault, copy.name, ["b"], token=token)
 
     assert node.read_text() == before and copy.exists()
 
@@ -327,7 +334,7 @@ def test_choices_for_clashes_that_changed_are_refused(tmp_vault, as_computer):
 def test_choices_with_the_current_token_are_applied(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("two", "mine"), b=BASE.replace("two", "theirs"))
     token = node_merge.describe(tmp_vault, copy.name)["token"]
-    node_merge.resolve(tmp_vault, copy.name, ["b"], token=token)
+    _resolve(tmp_vault, copy.name, ["b"], token=token)
     assert "theirs" in node.read_text() and not copy.exists()
 
 
@@ -358,6 +365,9 @@ class TestConflictEndpoints:
 
         response = client.post("/api/conflicts/resolve", headers=self.HEADERS,
                                json={"file": copy.name, "choices": ["b"]})
+        assert response.status_code == 409 and copy.exists()        # no token: not applied blind
+        response = client.post("/api/conflicts/resolve", headers=self.HEADERS,
+                               json={"file": copy.name, "choices": ["b"], "token": listed[0]["token"]})
         assert response.status_code == 200
         assert "theirs" in node.read_text() and not copy.exists()
         assert client.get("/api/conflicts").json() == []
@@ -390,3 +400,24 @@ class TestConflictEndpoints:
         response = client.post("/api/conflicts/resolve", headers=self.HEADERS, json={"file": copy.name})
         assert response.status_code == 409
         assert copy.exists()
+
+
+def test_resolve_needs_a_token_for_every_kind(tmp_vault, as_computer):
+    node, copy = diverge(tmp_vault, as_computer, a="ONE\ntwo\nthree\nfour\nfive\n", b="one\ntwo\nthree\nfour\nFIVE\n")
+    with pytest.raises(node_merge.MergeError, match="token is required"):
+        node_merge.resolve(tmp_vault, copy.name)
+    assert copy.exists()
+    token = node_merge.describe(tmp_vault, copy.name)["token"]
+    copy.write_text(copy.read_text().replace("FIVE", "SIX"))              # the files moved on
+    with pytest.raises(node_merge.MergeError, match="changed since"):
+        node_merge.resolve(tmp_vault, copy.name, token=token)
+    assert copy.exists()
+
+
+def test_choices_for_a_restore_are_an_error_not_ignored(tmp_vault, as_computer):
+    node, copy = diverge(tmp_vault, as_computer, a=BASE, b=BASE.replace("three", "BBB"))
+    node.unlink()                                                          # deleted on the other computer
+    assert node_merge.describe(tmp_vault, copy.name)["kind"] == "restore"
+    with pytest.raises(node_merge.MergeError, match="takes no choices"):
+        _resolve(tmp_vault, copy.name, ["a"])
+    assert copy.exists() and not node.exists()

@@ -35,9 +35,12 @@ import sys
 from pathlib import Path
 from typing import Callable
 
+import yaml
+
 from loci import api as vault
 from loci.console import use_utf8_output
 from loci.tools import nx_graph as graph
+from loci.tools.node_merge import MergeError
 from loci.tools.vault_history import HistoryError
 from loci.tools import asset_registry as ar
 from mcp.server.fastmcp import FastMCP
@@ -490,6 +493,80 @@ def undo_last_vault_change(commit: str = None) -> dict:
     """
     try:
         return vault.undo_last_change(commit)
+    except (OSError, ValueError, HistoryError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+@requires_vault
+def list_conflicted_copies() -> dict:
+    """
+    List the "(conflicted copy …)" notes a sync tool (Nextcloud, Dropbox) left in
+    the vault: the same note was edited on two computers. Read-only.
+    Returns {copies: [...]}, one entry per copy with `copy` (file name),
+    `original` (the note it came from) and `kind`:
+      merged    the edits touch different lines; resolving merges them with no question
+      conflict  both computers changed the same lines; `clashes` lists each one with
+                the two versions (`a` = the kept file, `b` = the copy)
+      restore   the original was deleted on the other computer; the edit is kept
+      keep-both two different notes took one file name; both are kept
+      error     the copy could not be read; `detail` says why
+    Every entry carries a `token` for resolve_conflicted_copy.
+    lint_vault also reports each copy, as `conflicted-copy`.
+    """
+    try:
+        return {"copies": vault.conflicted_copies()}
+    except (OSError, ValueError, HistoryError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+@requires_vault
+def resolve_conflicted_copy(copy: str, choices: list[str] = None, token: str = None,
+                            user_confirmed: bool = False) -> dict:
+    """
+    Merge a conflicted copy into the note it came from, then delete the copy, as
+    one recorded change (history_vault shows it; undo_last_vault_change undoes it).
+    `copy` is the file name list_conflicted_copies returned.
+
+    Ask the user first, every time: the merge changes the note. Show the user
+    what list_conflicted_copies reported, then call this with `user_confirmed=true`
+    only after they said yes. Without it nothing is written and an error says why.
+    For kind `conflict`, never choose a side yourself. Show the user both versions
+    of each clash and pass their answers: `choices` holds "a" (the kept file) or
+    "b" (the copy) for each clash, in order. The other kinds take no `choices`;
+    passing them is an error.
+
+    `token` is required, for every kind: pass the one list_conflicted_copies
+    returned for this copy. If either file changed since the listing, nothing is
+    written and an error says so: list again.
+    Returns {resolved, kind, commit} or {error}.
+    """
+    if not user_confirmed:
+        return {"error": "Ask the user first. Show them the copy and its kind, then call again "
+                         "with user_confirmed=true once they agree. Nothing was changed."}
+    try:
+        return vault.resolve_conflicted_copy(copy, choices, token)
+    except (OSError, ValueError, HistoryError, MergeError, yaml.YAMLError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+@requires_vault
+def fix_duplicate_uid(path: str) -> dict:
+    """
+    Give a note a new uid because an older note already holds its uid (lint_vault
+    reports the newer file as `duplicate-uid`, for example a file dropped in with
+    a copied header). `path` is the file lint_vault named.
+
+    Ask the user first, every time: it rewrites the uid line of that file. The
+    older node keeps the uid. Relations that point at the old uid mean the older
+    node, so none of them is rewritten. Recorded as one commit; undo_last_vault_change
+    undoes it. Refuses a file that is not the newer holder of a shared uid.
+    Returns {path, old_uid, new_uid, commit} or {error}.
+    """
+    try:
+        return vault.fix_duplicate_uid(path)
     except (OSError, ValueError, HistoryError) as e:
         return {"error": str(e)}
 
