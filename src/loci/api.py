@@ -1041,7 +1041,7 @@ def _rewrite_yaml_entries(path: Path, list_key: str, change) -> None:
         allow_unicode=True,
         sort_keys=False,
     )
-    path.write_text(header + dumped, encoding="utf-8")
+    path.write_text(header + dumped, encoding="utf-8", newline="\n")
 
 
 def _append_yaml_entry(path: Path, list_key: str, entry: dict) -> None:
@@ -1173,7 +1173,9 @@ def conflicted_copies() -> list:
     for copy in node_merge.conflicted_copies(root):
         try:
             out.append(node_merge.describe(root, copy.name))
-        except node_merge.MergeError as e:
+        except Exception as e:      # one unreadable copy must not hide the others
+            if not isinstance(e, (node_merge.MergeError, ValueError, OSError, yaml.YAMLError)):
+                log.warning("describing %s failed: %s", copy.name, e)
             out.append({"copy": copy.name, "original": node_merge.original_name(copy.name),
                         "kind": "error", "detail": str(e)})
     return out
@@ -1186,15 +1188,21 @@ def fix_duplicate_uid(path: str) -> dict:
     file dropped in by hand with a copied header). Call it only after the user
     agrees: it changes the file. Relations that point at the old uid mean the
     older node, so none of them is rewritten.
-    Raises ValueError when the file is not the newer holder of a shared uid.
+    Raises ValueError when the path is outside the vault, when the file is not a
+    readable note, or when it is not the newer holder of a shared uid.
     Returns {path, old_uid, new_uid, commit}.
     """
     root = _vault_root()
     p = Path(path)
     p = p if p.is_absolute() else root / p
+    if not p.resolve().is_relative_to(root.resolve()):
+        raise ValueError(f"{p.name} is outside the vault; nothing was changed.")
     if not p.is_file():
         raise FileNotFoundError(f"Vault file not found: {p}")
-    text = p.read_text(encoding="utf-8")
+    try:
+        text = p.read_text(encoding="utf-8")
+    except UnicodeDecodeError as e:
+        raise ValueError(f"{p.name} is not a text note; nothing was changed.") from e
     fm, _ = load_frontmatter(text)
     old = str((fm or {}).get("uid") or "")
     elder = find_uid(root, old) if old else None
@@ -1219,12 +1227,14 @@ def conflict_count() -> int:
     return len(node_merge.conflicted_copies(_vault_root()))
 
 
+@_serialized
 def resolve_conflicted_copy(copy: str, choices: list = None, token: str = None) -> dict:
     """
     Merge a conflicted copy into the note it came from and delete the copy, as one
     recorded change. `choices` holds "a" (the kept file) or "b" (the copy) for each
-    clash `conflicted_copies` listed for it, in order. `token` is the one listed with
-    those clashes; the merge is refused if they have changed since. Raises node_merge.MergeError.
+    clash `conflicted_copies` listed for it, in order; only a `conflict` takes them.
+    `token` is required: the one `conflicted_copies` listed. The merge is refused if
+    either file has changed since. Raises node_merge.MergeError.
     """
     return node_merge.resolve(_vault_root(), copy, choices, token)
 
@@ -1430,7 +1440,7 @@ def write_meta(file: str, content: str) -> str:
     # rather than failing the write with a bare FileNotFoundError.
     p.parent.mkdir(parents=True, exist_ok=True)
     _before_write(p)
-    p.write_text(content, encoding="utf-8")
+    p.write_text(content, encoding="utf-8", newline="\n")
     _record(f"Update meta: {file}", p)
     return str(p)
 
@@ -1491,6 +1501,55 @@ def _through_paths(ref: str, read):
             return read(p)
         except vault_history.HistoryError as e:
             failure = failure or e
+    raise failure
+
+
+def _norm_uid(uid) -> str:
+    """A uid as compared across a rename: text, trimmed, unquoted, lower case."""
+    return str(uid or "").strip().strip("'\"").lower()
+
+
+def _node_bytes_at(ref: str, commit: str) -> bytes:
+    """The bytes of the node right after `commit`, from whichever of its paths held
+    it then. A path that held another node at that commit is skipped, so a name
+    reused after a rename never restores the wrong note. When the uid of the node
+    cannot be found, even in the history, nothing is restored: the check that
+    protects against a reused name would have nothing to compare."""
+    root = _vault_root()
+    uid, paths = _history_node(ref)
+    if not uid:
+        try:
+            uid = vault_history.uid_at_path(root, paths[0])
+        except vault_history.HistoryError:
+            uid = None
+    if not uid:
+        raise vault_history.HistoryError(
+            f"Cannot tell which node {paths[0].name} is (no uid in the file or in its history), "
+            "so a restore could write another node's content there. Restore by uid instead."
+        )
+    want = _norm_uid(uid)
+    failure = None
+    for q in paths:
+        try:
+            data = vault_history.show_bytes(root, commit, q)
+        except vault_history.HistoryError as e:
+            failure = failure or e
+            continue
+        try:
+            fm, _ = load_frontmatter(data.decode("utf-8", "replace"))
+        except ValueError:      # a broken header: this path held something else then
+            fm = None
+        held = _norm_uid((fm or {}).get("uid"))
+        # Asked for by path, a version of that path with no uid at all is returned
+        # as it is: restore says "no uid" for it. Asked for by uid, or at an older
+        # path, such a version may be another note.
+        by_path = not _UID_RE.fullmatch(ref.strip())
+        if held != want and not (not held and by_path and q == paths[0]):
+            failure = failure or vault_history.HistoryError(
+                f"{q.name} at {commit} holds a different node, not {uid}."
+            )
+            continue
+        return data
     raise failure
 
 
@@ -1615,15 +1674,24 @@ def restore(path: str, commit: str) -> dict:
     also a deleted one — and records the restore as a new commit, so history
     is never rewritten and a restore can itself be undone.
 
-    Edits made outside Loci and not yet committed are committed first, so the
-    restore cannot lose them.
+    A node that was renamed or moved since `commit` is written back to the path
+    it has now (or had last, if it was deleted); the old path is not recreated.
+
+    Edits made outside Loci and not yet committed are committed first (a rename
+    among them), so the restore cannot lose them. Refuses when it cannot tell which
+    node the path is (no uid in the file or its history): restore by uid then.
     Returns {restored: True, uid, path, from_commit, commit}, plus `warning`
     when the restored node has a type the registry no longer knows.
     """
     root = _vault_root()
-    p = _history_path(path)
     with vault_history.write_lock(root, required=True):
-        old = vault_history.show_bytes(root, commit, p)
+        # Record a rename or edit the watcher has not recorded yet, so the paths
+        # the node has had are known before they are looked up.
+        recorded = vault_history.snapshot_outside(root)
+        if recorded:
+            graph.invalidate()
+        p = _history_path(path)
+        old = _node_bytes_at(path, commit)      # a commit from before a rename holds it at the old path
         fm, _ = load_frontmatter(old.decode("utf-8", "replace"))   # before any write: a broken header must leave the file alone
         uid = (fm or {}).get("uid")
         if not uid:
@@ -1631,7 +1699,7 @@ def restore(path: str, commit: str) -> dict:
                 f"{commit} holds no uid for {p.name}: restoring it would leave a node that cannot be "
                 "found. Pick a commit where the node has a uid."
             )
-        snapshot = vault_history.snapshot_external(root, [p])
+        snapshot = recorded or vault_history.snapshot_external(root, [p])
         was_deleted = not p.exists()
         out = {"restored": True, "uid": uid, "path": str(p), "from_commit": commit,
                "was_deleted": was_deleted}

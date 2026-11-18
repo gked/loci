@@ -89,10 +89,9 @@ config and data folders, and shell commands in the `Makefile` or hooks.
 - Code that falls back (a timer scan when events are missing, no lock when `fcntl`
   is missing) must say in its docstring what the fallback costs.
 
-Known gaps, each its own future PR:
+Known gaps, each its own future PR (the history write lock is cross-platform through
+`filelock`, but not tested on Windows):
 
-- Windows: `vault_history.write_lock` has no lock (`fcntl`), so a write and a
-  watcher burst are not serialised. Needs a cross-platform lock (`filelock`).
 - Linux: inotify has a per-user watch limit. The watcher watches folder by folder
   and skips `.loci/`; past the limit it falls back to its timer scan for the rest
   and logs how to raise the limit (`mode` is `partial`). Needs a Linux machine to

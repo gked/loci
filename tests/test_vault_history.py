@@ -5,6 +5,7 @@ vault_root/.loci/history, a Git-format repository that dulwich reads and writes.
 
 import contextlib
 import logging
+import os
 import shutil
 import subprocess
 import threading
@@ -1500,17 +1501,61 @@ def test_a_restore_that_fails_after_saving_outside_edits_says_so(tmp_vault, monk
 def test_a_lock_file_that_cannot_be_opened_stops_an_undo(tmp_vault, monkeypatch):
     saved = save("History One")
     api.patch(saved["uid"], {}, body="oops")
-    real = open
+    real = os.open
 
-    def refuse(file, *a, **k):
+    def refuse(file, *a, **k):                      # filelock opens the lock file with os.open
         if str(file).endswith("undo.lock"):
             raise OSError("read-only")
         return real(file, *a, **k)
 
-    monkeypatch.setattr("builtins.open", refuse)
+    monkeypatch.setattr(os, "open", refuse)
     with pytest.raises(vault_history.HistoryError, match="write lock cannot be opened"):
         api.undo_last_change()
     assert "oops" in api.get(saved["uid"])
+    with vault_history.write_lock(tmp_vault):       # a plain write goes on without the lock
+        pass
+
+
+def test_the_lock_file_is_kept_after_release_and_reused(tmp_vault):
+    save("History One")
+    lock_file = vault_history.history_dir(tmp_vault).parent / f"{vault_history.computer_id()}.undo.lock"
+    with vault_history.write_lock(tmp_vault):
+        pass
+    assert lock_file.exists()
+    inode = lock_file.stat().st_ino
+    with vault_history.write_lock(tmp_vault):
+        pass
+    assert lock_file.stat().st_ino == inode            # the same file, not made again
+    assert len(list(lock_file.parent.glob("*.undo.lock"))) == 1
+
+
+def test_a_filesystem_that_cannot_lock_lets_a_write_go_on_and_stops_an_undo(tmp_vault, monkeypatch):
+    saved = save("History One")
+    api.patch(saved["uid"], {}, body="oops")
+
+    def no_locks(self, *a, **k):                    # filelock on a mount without flock
+        raise NotImplementedError("flock is not supported here")
+
+    monkeypatch.setattr(vault_history.FileLock, "acquire", no_locks)
+    with vault_history.write_lock(tmp_vault):       # a plain write goes on without the lock
+        pass
+    with pytest.raises(vault_history.HistoryError, match="write lock cannot be opened"):
+        api.undo_last_change()
+    assert "oops" in api.get(saved["uid"])
+
+
+def test_a_failed_release_does_not_hide_the_error_of_the_write(tmp_vault, monkeypatch, caplog):
+    save("History One")
+
+    def broken(self, *a, **k):
+        raise OSError("stale handle")
+
+    monkeypatch.setattr(vault_history.FileLock, "release", broken)
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(RuntimeError, match="the write failed"):
+            with vault_history.write_lock(tmp_vault):
+                raise RuntimeError("the write failed")
+    assert "release failed" in caplog.text
 
 
 def test_an_undo_commit_that_is_not_a_hash_prefix_is_refused(tmp_vault):

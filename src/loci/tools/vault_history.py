@@ -61,6 +61,7 @@ from dulwich.index import commit_tree
 from dulwich.object_store import iter_tree_contents, tree_lookup_path
 from dulwich.objects import ZERO_SHA, Blob, Commit
 from dulwich.repo import Repo
+from filelock import FileLock, Timeout
 
 from loci.tools.frontmatter import split_frontmatter
 
@@ -1131,7 +1132,7 @@ def _spec(vault_root: Path, path: Path | str) -> bytes:
 # walks again. The time is kept because a line that arrives from another computer
 # can hold commits older than ones already indexed, and the newest must win.
 # The sync HTTP endpoints run in a thread pool, so the lock guards every use.
-_UID_LINE = re.compile(rb"(?m)^uid:[ \t]*['\"]?([^\s'\"]+)['\"]?[ \t]*$")
+_UID_LINE = re.compile(rb"(?m)^uid:[ \t]*['\"]?([^\s'\"]+)['\"]?[ \t\r]*$")
 _uid_index: dict[str, tuple[tuple[bytes, ...], dict[str, tuple[str, int, frozenset[str]]]]] = {}
 _uid_index_lock = threading.Lock()
 
@@ -1304,23 +1305,31 @@ def write_lock(vault_root: Path, required: bool = False):
     undo and restore pass, HistoryError is raised instead, because an undo that
     runs unlocked can overwrite another process's write.
 
-    POSIX only: it uses fcntl.flock. On Windows there is no lock, and the HEAD
-    re-check in undo and restore is the only guard. It leaves a small gap
-    between the check and the write."""
-    try:
-        import fcntl
-    except ImportError:     # no flock on this platform: the HEAD re-check is the guard
-        yield
-        return
+    It uses `filelock`, which takes flock on macOS and Linux and a byte-range lock
+    on Windows, so the same code locks on every platform. Windows is not a tested
+    platform. Things to know:
+      - The lock file `.loci/<computer>.undo.lock` is kept after release
+        (`preserve_lock_file=True`), on every platform: one small file per
+        computer, reused, never re-created while another process opens it. If a
+        user deletes it during a write, a second writer could lock a new file.
+      - A filesystem that cannot lock at all (some network mounts) makes filelock
+        raise NotImplementedError; with `preserve_lock_file` it does not fall back
+        to a soft lock file that a crash could leave behind. The error is handled
+        like a lock file that cannot be opened: a plain write goes on unlocked;
+        undo and restore refuse."""
     held = _lock_held.__dict__.setdefault("roots", set())
     key = str(Path(vault_root))
     if key in held or not enabled() or not is_repo(vault_root):
         yield
         return
-    lock_dir = Path(vault_root) / ".loci"
+    lock = FileLock(str(Path(vault_root) / ".loci" / f"{computer_id()}.undo.lock"), preserve_lock_file=True)
     try:
-        handle = open(lock_dir / f"{computer_id()}.undo.lock", "a", encoding="utf-8")
-    except OSError as e:    # a lock file that cannot be made must not stop a plain write
+        lock.acquire(timeout=LOCK_TIMEOUT_S, poll_interval=0.05)
+    except Timeout:
+        raise HistoryError(
+            "The vault is busy: another write, undo or restore is still running. Nothing was changed. Try again in a moment."
+        ) from None
+    except (OSError, NotImplementedError) as e:    # no lock file, or a filesystem that cannot lock: a plain write goes on
         if required:
             raise HistoryError(
                 f"The vault's write lock cannot be opened ({e}), so the change was not made."
@@ -1328,24 +1337,15 @@ def write_lock(vault_root: Path, required: bool = False):
         log.warning("write lock unavailable, continuing without it: %s", e)
         yield
         return
-    with handle:
-        deadline = time.monotonic() + LOCK_TIMEOUT_S
-        while True:
-            try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    raise HistoryError(
-                        "The vault is busy: another write, undo or restore is still running. Nothing was changed. Try again in a moment."
-                    ) from None
-                time.sleep(0.05)
-        held.add(key)
+    held.add(key)
+    try:
+        yield
+    finally:
+        held.discard(key)
         try:
-            yield
-        finally:
-            held.discard(key)
-            fcntl.flock(handle, fcntl.LOCK_UN)
+            lock.release()
+        except OSError as e:    # must not hide the error of the write itself
+            log.warning("write lock release failed: %s", e)
 
 
 def snapshot_external(vault_root: Path, paths: Iterable[Path | str]) -> Optional[str]:

@@ -33,9 +33,9 @@ Operating systems
     folders already watched keep giving events, the rest are covered by the timer
     scan only (an edit there is recorded up to SCAN_SECONDS late), and a warning
     says how to raise the limit. `mode` tells which case applies.
-  - Windows: not a tested platform. vault_history.write_lock uses fcntl, which
-    Windows lacks, so a burst there is not serialised with a Loci write. That
-    needs a cross-platform lock in its own PR.
+  - Windows: not a tested platform. vault_history.write_lock uses `filelock`
+    (a byte-range lock there), so a burst is serialised with a Loci write as on
+    macOS and Linux, but that has not been run on Windows.
   - Network and synced folders may give no events on any OS: the timer scan.
 
 The watcher never raises into the server. When `watchdog` cannot start, the
