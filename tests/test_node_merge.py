@@ -8,6 +8,7 @@ import pytest
 
 from loci import api, http_server
 from loci.tools import node_merge, nx_graph, vault_history
+from loci.tools.frontmatter import load_frontmatter
 from loci.tools.node_merge import Clash, MergeError, merge3
 from loci.tools.vault_linter import lint_vault
 from loci.tools.write_file import find_uid
@@ -145,8 +146,18 @@ def test_a_copy_is_not_a_node(tmp_vault, as_computer):
     paths = [d.get("path") for _, d in graph.nodes(data=True)]
     assert str(node) in paths
     assert str(copy) not in paths
-    fm_uid = [l for l in node.read_text().splitlines() if l.startswith("uid:")][0].split(": ")[1].strip()
+    fm_uid = str(load_frontmatter(node.read_text())[0]["uid"])    # not split by hand: an all-digit uid is quoted
     assert find_uid(tmp_vault, fm_uid) == node
+
+
+def test_a_copy_is_not_a_node_when_the_uid_is_all_digits(tmp_vault, as_computer, monkeypatch):
+    """YAML quotes an all-digit uid (`uid: '12345678'`); the lookup must still find the node."""
+    monkeypatch.setattr("loci.tools.write_file.generate_uid", lambda: "12345678")
+    node, copy = diverge(tmp_vault, as_computer, a=BASE + "mine\n", b=BASE + "theirs\n")
+    assert "uid: '12345678'" in node.read_text()
+    nx_graph._graph = None
+    assert find_uid(tmp_vault, "12345678") == node
+    assert str(copy) not in [d.get("path") for _, d in nx_graph.get(tmp_vault).nodes(data=True)]
 
 
 def test_lint_reports_the_copy_once_and_not_as_a_duplicate(tmp_vault, as_computer):
