@@ -1314,7 +1314,12 @@ def write_lock(vault_root: Path, required: bool = False):
       - filelock may use a plain lock file where it has no system lock. A process
         that crashes can leave that file behind, and every request then fails as
         "busy" until someone removes `.loci/<computer>.undo.lock`. The 10-second
-        timeout only ends the wait with that error; it does not free the lock."""
+        timeout only ends the wait with that error; it does not free the lock.
+      - On Windows filelock removes its lock file at release, and its own
+        handshake (no delete right while a handle is open, a retry while a
+        delete is pending) is what keeps a peer from locking a vanished file.
+        That is read from its source, not tested here. Keeping the file instead
+        would be Windows-only code (own PR)."""
     held = _lock_held.__dict__.setdefault("roots", set())
     key = str(Path(vault_root))
     if key in held or not enabled() or not is_repo(vault_root):
