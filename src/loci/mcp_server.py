@@ -553,18 +553,23 @@ def resolve_conflicted_copy(copy: str, choices: list[str] = None, token: str = N
 
 @mcp.tool()
 @requires_vault
-def fix_duplicate_uid(path: str) -> dict:
+def fix_duplicate_uid(path: str, user_confirmed: bool = False) -> dict:
     """
     Give a note a new uid because an older note already holds its uid (lint_vault
     reports the newer file as `duplicate-uid`, for example a file dropped in with
     a copied header). `path` is the file lint_vault named.
 
-    Ask the user first, every time: it rewrites the uid line of that file. The
+    Ask the user first, every time: it rewrites the uid line of that file. Show
+    the user both files, then call this with `user_confirmed=true` only after they
+    said yes. Without it nothing is written and an error says why. The
     older node keeps the uid. Relations that point at the old uid mean the older
     node, so none of them is rewritten. Recorded as one commit; undo_last_vault_change
     undoes it. Refuses a file that is not the newer holder of a shared uid.
     Returns {path, old_uid, new_uid, commit} or {error}.
     """
+    if not user_confirmed:
+        return {"error": "Ask the user first. Show them both files, then call again "
+                         "with user_confirmed=true once they agree. Nothing was changed."}
     try:
         return vault.fix_duplicate_uid(path)
     except (OSError, ValueError, HistoryError) as e:
