@@ -313,6 +313,13 @@ def _eligible(rel: Path) -> bool:
     )
 
 
+def folder_recorded(rel: Path) -> bool:
+    """True when history records files in this vault-relative folder: not the store,
+    an editor's folder or a user's `.git`. Folder names are not matched against the
+    file-name patterns (swap files and the like), which apply to files only."""
+    return not any(part in _SKIP_DIRS for part in rel.parts)
+
+
 def _key(rel: Path) -> bytes:
     return rel.as_posix().encode("utf-8", "surrogateescape")
 

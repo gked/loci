@@ -4,6 +4,7 @@ file events become one commit, a timer scan catches what events miss, and
 nothing it does disturbs a Loci write.
 """
 
+import sys
 import threading
 import time
 
@@ -238,16 +239,25 @@ import logging
 
 
 class FakeObserver:
-    """Records what is watched, and refuses after `limit` watches, as inotify does."""
-    def __init__(self, limit=None):
-        self.limit, self.scheduled, self.started, self.stopped = limit, [], False, False
+    """Records what is watched, and refuses after `limit` watches, as inotify does.
+    `fail_at_start` makes start() refuse instead: a watchdog observer that schedules
+    folders before start() reports the limit there."""
+    def __init__(self, limit=None, fail_at_start=False):
+        self.limit, self.fail_at_start = limit, fail_at_start
+        self.scheduled, self.unscheduled, self.started, self.stopped = [], [], False, False
 
     def schedule(self, handler, path, recursive=False):
-        if self.limit is not None and len(self.scheduled) >= self.limit:
+        if self.limit is not None and len(self.scheduled) - len(self.unscheduled) >= self.limit:
             raise OSError(errno.ENOSPC, "inotify watch limit reached")
         self.scheduled.append((path, recursive))
+        return path
+
+    def unschedule(self, watch):
+        self.unscheduled.append(watch)
 
     def start(self):
+        if self.fail_at_start:
+            raise OSError(errno.ENOSPC, "inotify watch limit reached")
         self.started = True
 
     def stop(self):
@@ -335,3 +345,88 @@ def test_stop_survives_an_observer_that_never_started(tmp_vault):
     w = _watcher(tmp_vault, FakeObserver(limit=0))
     w._start_observer()
     w.stop()
+
+
+def test_a_limit_reported_by_start_says_how_to_raise_it_and_stops_the_observer(tmp_vault, caplog):
+    observer = FakeObserver(fail_at_start=True)
+    w = _watcher(tmp_vault, observer)
+    with caplog.at_level(logging.WARNING):
+        w._start_observer()
+    assert w.mode == "scan" and w._observer is None and observer.stopped
+    assert "max_user_watches" in caplog.text
+
+
+def test_the_limit_is_warned_about_once(tmp_vault, caplog):
+    from watchdog.events import DirCreatedEvent
+    (tmp_vault / "a").mkdir(exist_ok=True)
+    observer = FakeObserver(limit=1)
+    w = _watcher(tmp_vault, observer)
+    with caplog.at_level(logging.WARNING):
+        w._start_observer()
+        for name in ("n1", "n2", "n3"):
+            (tmp_vault / name).mkdir()
+            w._handler.on_any_event(DirCreatedEvent(str(tmp_vault / name)))
+    assert caplog.text.count("max_user_watches") == 1
+    assert len(observer.scheduled) == 1 and w.mode == "partial"
+
+
+def test_a_folder_deleted_and_made_again_is_watched_again(tmp_vault):
+    from watchdog.events import DirCreatedEvent, DirDeletedEvent
+    observer = FakeObserver()
+    w = _watcher(tmp_vault, observer)
+    w._start_observer()
+    folder = tmp_vault / "cycle"
+    folder.mkdir()
+    w._handler.on_any_event(DirCreatedEvent(str(folder)))
+    assert str(folder) in w._watched
+    folder.rmdir()
+    w._handler.on_any_event(DirDeletedEvent(str(folder)))
+    assert str(folder) not in w._watched and str(folder) in observer.unscheduled
+    folder.mkdir()
+    w._handler.on_any_event(DirCreatedEvent(str(folder)))
+    assert str(folder) in w._watched
+    assert [p for p, _ in observer.scheduled].count(str(folder)) == 2
+
+
+def test_a_freed_watch_lets_the_watcher_try_again_after_the_limit(tmp_vault):
+    from watchdog.events import DirCreatedEvent, DirDeletedEvent
+    (tmp_vault / "a").mkdir(exist_ok=True)
+    observer = FakeObserver(limit=2)
+    w = _watcher(tmp_vault, observer)
+    w._start_observer()                              # the vault folder and "a"
+    (tmp_vault / "b").mkdir()
+    w._handler.on_any_event(DirCreatedEvent(str(tmp_vault / "b")))
+    assert str(tmp_vault / "b") not in w._watched and w._limit_hit
+    (tmp_vault / "a").rmdir()
+    w._handler.on_any_event(DirDeletedEvent(str(tmp_vault / "a")))
+    w._handler.on_any_event(DirCreatedEvent(str(tmp_vault / "b")))
+    assert str(tmp_vault / "b") in w._watched
+
+
+def test_a_folder_named_like_a_swap_file_is_still_watched(tmp_vault):
+    (tmp_vault / "notes~").mkdir()
+    observer = FakeObserver()
+    w = _watcher(tmp_vault, observer)
+    w._start_observer()
+    assert str(tmp_vault / "notes~") in w._watched
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="folder-by-folder watching is the Linux mode; "
+                    "FSEvents does not report folders to a non-recursive watch")
+def test_a_folder_made_while_running_is_seen_by_a_real_observer(tmp_vault):
+    pytest.importorskip("watchdog")
+    api.save(type="document", title="First", body="hello", extra_fields={"status": "draft", "subtype": "note"})
+    done = threading.Event()
+    w = VaultWatcher(tmp_vault, quiet=0.3, scan_every=3600, on_recorded=lambda c: done.set(), per_directory=True)
+    w.start()
+    try:
+        if w._observer is None:
+            pytest.skip("no native file events here; the timer scan covers this platform")
+        time.sleep(0.5)
+        (tmp_vault / "later" / "inner").mkdir(parents=True)
+        deadline = time.time() + 10
+        while str(tmp_vault / "later" / "inner") not in w._watched and time.time() < deadline:
+            time.sleep(0.1)
+        assert str(tmp_vault / "later" / "inner") in w._watched
+    finally:
+        w.stop()
