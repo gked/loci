@@ -24,7 +24,7 @@ import yaml
 from loci import skill_assembly
 from loci.language import get_language
 from loci.tools.uid_generator import generate_uid as _generate_uid
-from loci.tools.vault_init import NOT_CONFIGURED_MESSAGE, load_config
+from loci.tools.vault_init import NON_NODE_DIRS, NOT_CONFIGURED_MESSAGE, load_config
 from loci.tools.write_file import (
     write_item as _write_item,
     patch_item as _patch_item,
@@ -1202,6 +1202,10 @@ def fix_duplicate_uid(path: str) -> dict:
         raise ValueError(f"{p.name} is a folder, not a note; nothing was changed.")
     if not p.is_file():
         raise FileNotFoundError(f"Vault file not found: {p}")
+    # Only a node the linter can flag: the same rule find_uid and the linter use.
+    if (p.suffix != ".md" or p.parent.name in NON_NODE_DIRS
+            or node_merge.is_conflicted_copy(p)):
+        raise ValueError(f"{p.name} is not a note that can hold a uid; nothing was changed.")
     try:
         text = p.read_text(encoding="utf-8")
     except UnicodeDecodeError as e:
@@ -1222,6 +1226,8 @@ def fix_duplicate_uid(path: str) -> dict:
     header, _ = split_frontmatter(text)
     start = text.index(header)
     fixed = re.sub(r"(?m)^uid:.*$", f"uid: {new}", header, count=1)
+    if fixed == header:     # the key is written in a form the line match does not know
+        raise ValueError(f"{p.name} has no plain `uid:` line to change; nothing was changed.")
     out = {"path": str(p), "old_uid": old, "new_uid": new}
     _before_write(p)
     _apply_files({p: (text[:start] + fixed + text[start + len(header):]).encode("utf-8")},

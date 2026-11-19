@@ -13,8 +13,6 @@ from loci.tools import nx_graph, vault_history
 from loci.tools.vault_linter import lint_vault
 from loci.tools.write_file import find_uid
 
-from test_http_server import auth, client  # noqa: F401  (fixtures)
-
 
 @pytest.fixture(autouse=True)
 def history_on(monkeypatch):
@@ -148,12 +146,22 @@ def test_the_mcp_tool_fixes_the_copy_and_returns_errors_as_data(tmp_vault, twin)
     from loci import mcp_server
 
     original, copy, uid = twin
-    refused = mcp_server.fix_duplicate_uid(original.name)
+    refused = mcp_server.fix_duplicate_uid(original.name, user_confirmed=True)
     assert "not the newer holder" in refused["error"]
 
-    done = mcp_server.fix_duplicate_uid(copy.name)
+    done = mcp_server.fix_duplicate_uid(copy.name, user_confirmed=True)
     assert done["old_uid"] == uid and f"uid: {done['new_uid']}" in copy.read_text()
-    assert "error" in mcp_server.fix_duplicate_uid("no-such-file.md")
+    assert "error" in mcp_server.fix_duplicate_uid("no-such-file.md", user_confirmed=True)
+
+
+def test_the_mcp_tool_writes_nothing_without_the_users_yes(tmp_vault, twin):
+    from loci import mcp_server
+
+    original, copy, uid = twin
+    before = copy.read_text()
+    out = mcp_server.fix_duplicate_uid(copy.name)
+    assert "Ask the user first" in out["error"] and "Nothing was changed" in out["error"]
+    assert copy.read_text() == before
 
 
 def test_the_lint_message_names_the_tool(tmp_vault, twin):
@@ -195,6 +203,36 @@ def test_the_fix_names_what_is_wrong_with_a_file_that_is_not_a_note(tmp_vault, t
             api.fix_duplicate_uid(name)
         if before is not None:
             assert (tmp_vault / name).read_bytes() == before        # nothing was changed
+
+
+
+def test_the_fix_refuses_a_file_the_linter_never_flags(tmp_vault, twin):
+    """A conflicted copy, a note in a non-node folder and a non-.md file share the
+    uid, but find_uid and the linter skip them; the fix must too."""
+    original, copy, uid = twin
+    text = copy.read_text()
+    skipped = {
+        "conflicted": tmp_vault / "zz (conflicted copy 2099-01-01).md",
+        "folder": tmp_vault / "meta" / "x.md",
+        "suffix": tmp_vault / "x.yaml",
+    }
+    (tmp_vault / "meta").mkdir(exist_ok=True)
+    for p in skipped.values():
+        p.write_text(text)
+    for p in skipped.values():
+        with pytest.raises(ValueError, match="nothing was changed"):
+            api.fix_duplicate_uid(str(p))
+        assert p.read_text() == text
+
+
+def test_the_fix_refuses_when_the_uid_line_cannot_be_matched(tmp_vault, twin):
+    """`"uid": x` is the same key to YAML but not to the line match: no silent success."""
+    original, copy, uid = twin
+    text = copy.read_text().replace(f"uid: {uid}", f'"uid": {uid}', 1)
+    copy.write_text(text)
+    with pytest.raises(ValueError, match="no plain `uid:` line"):
+        api.fix_duplicate_uid(str(copy))
+    assert copy.read_text() == text
 
 
 def test_the_fix_is_one_commit_and_undo_reverses_it(tmp_vault, twin):
