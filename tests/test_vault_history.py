@@ -1867,3 +1867,21 @@ def test_a_write_works_while_another_computers_line_is_missing_older_commits(tmp
 
     assert saved.get("commit")
     assert vault_history.status(tmp_vault)["state"] == "on"
+
+
+def test_an_edit_is_seen_where_ctime_is_not_a_change_time(tmp_vault, monkeypatch):
+    """Windows: st_ctime is the creation time, so an edit that keeps the size and
+    the modification time leaves the stat signature unchanged. The cache must
+    then not be trusted, or the edit is never committed before the next write."""
+    import os
+    monkeypatch.setattr(vault_history, "_ctime_is_change_time", lambda: False)
+    save("History One")
+    hand = tmp_vault / "by-hand.md"
+    hand.write_text("aaaa")
+    save("History Two")
+    stat = hand.stat()
+    hand.write_text("bbbb")
+    os.utime(hand, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    save("History Three")
+    r = repo(tmp_vault)
+    assert blob_at(tmp_vault, r[tip(r)], "by-hand.md") == "bbbb"
