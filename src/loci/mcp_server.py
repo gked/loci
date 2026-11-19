@@ -11,7 +11,8 @@ Transport is selected by the LOCI_TRANSPORT environment variable:
 Claude Code registration (~/.claude.json, via CLI):
   claude mcp add --scope user loci uv -- run --directory /absolute/path/to/loci loci-mcp
 
-Claude Desktop registration (~/Library/Application Support/Claude/claude_desktop_config.json):
+Claude Desktop registration (~/Library/Application Support/Claude/claude_desktop_config.json,
+or %APPDATA%\\Claude\\claude_desktop_config.json on Windows):
   {
     "mcpServers": {
       "loci": {

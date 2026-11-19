@@ -59,6 +59,9 @@ exists and neither `claude` nor `hermes` is on PATH. `--target claude` installs
 anyway. `loci register` also adds Loci to Claude Desktop's config on macOS when
 Claude Desktop is installed, and leaves an existing `loci` entry alone.
 
+On Windows (untested, not supported) the same two commands look in Hermes's native home,
+`%LOCALAPPDATA%\hermes` (or `$HERMES_HOME`), and in `%APPDATA%\Claude` for Claude Desktop.
+
 What lands in `~/.claude/skills/` is a stub per skill — its name and trigger
 description, over "call `read_skill` and follow it". The skill itself is
 served by the MCP server, assembled from the packaged procedure and

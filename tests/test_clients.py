@@ -26,7 +26,10 @@ def fake_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))      # Path.home() on Windows
     monkeypatch.delenv("HERMES_HOME", raising=False)
+    # The tests below describe the POSIX layout; the Windows one has its own.
+    monkeypatch.setattr(clients, "_on_windows", lambda: False)
     # No real `claude` / `hermes` binary may make a client look detected.
     monkeypatch.setattr(clients.shutil, "which", lambda name: None)
     return home
@@ -476,3 +479,63 @@ def test_run_register_for_claude_also_reports_claude_desktop(desktop, monkeypatc
 
     assert clients.run_register(["--target", "claude"], stdout=out) == 0
     assert "Claude Desktop: registered" in out.getvalue()
+
+
+# --- Windows: where the agents keep their files --------------------------------
+
+
+@pytest.fixture
+def windows(fake_home, monkeypatch):
+    monkeypatch.setattr(clients, "_on_windows", lambda: True)
+    local = fake_home / "AppData" / "Local"
+    roaming = fake_home / "AppData" / "Roaming"
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.setenv("APPDATA", str(roaming))
+    return fake_home
+
+
+def test_hermes_home_on_windows_is_localappdata_not_dot_hermes(windows):
+    assert HERMES.home() == windows / "AppData" / "Local" / "hermes"
+    assert HERMES.skills_root() == windows / "AppData" / "Local" / "hermes" / "skills"
+
+
+def test_hermes_home_env_still_wins_on_windows(windows, monkeypatch, tmp_path):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "profile"))
+    assert HERMES.skills_root() == tmp_path / "profile" / "skills"
+
+
+def test_hermes_home_on_windows_without_localappdata_uses_the_profile_default(windows, monkeypatch):
+    monkeypatch.delenv("LOCALAPPDATA")
+    assert HERMES.home() == windows / "AppData" / "Local" / "hermes"
+
+
+def test_windows_hermes_is_detected_by_its_home_and_stubs_land_there(windows):
+    assert not HERMES.detected()
+    (windows / "AppData" / "Local" / "hermes").mkdir(parents=True)
+    assert HERMES.detected()          # ~/.hermes does not exist: the old path would say no
+
+    skills_install.install_all(HERMES.skills_root(), client=HERMES)
+    assert (windows / "AppData" / "Local" / "hermes" / "skills" / "loci-save" / "SKILL.md").is_file()
+    assert not (windows / ".hermes").exists()
+
+
+def test_claude_desktop_on_windows_is_registered_under_appdata(windows):
+    config = windows / "AppData" / "Roaming" / "Claude" / "claude_desktop_config.json"
+    assert clients.claude_desktop_config() == config
+    assert clients.register_claude_desktop() is None            # not installed: stay silent
+
+    config.parent.mkdir(parents=True)
+    config.write_bytes(b'{"mcpServers": {}, "preferences": {"keep": true}}')
+    ok, _ = clients.register_claude_desktop()
+
+    import json
+    saved = json.loads(config.read_text(encoding="utf-8"))
+    assert ok and "loci" in saved["mcpServers"]
+    assert saved["preferences"] == {"keep": True}                # the app's own settings survive
+    assert b"\r\n" not in config.read_bytes()
+
+
+def test_claude_desktop_on_macos_keeps_its_library_path(fake_home):
+    assert clients.claude_desktop_config() == (
+        fake_home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+    )
