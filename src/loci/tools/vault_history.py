@@ -113,7 +113,12 @@ def _ctime_is_change_time() -> bool:
 
 
 def _signature(st: os.stat_result) -> tuple[int, int, int]:
-    """What the stat cache compares to decide a file has not been edited."""
+    """What the stat cache compares to decide a file has not been edited.
+
+    Where ctime is not a change time it is zeroed so the stored signature does
+    not pretend to carry information; `_differences` does not trust the cache
+    there at all.
+    """
     return (st.st_mtime_ns, st.st_size, st.st_ctime_ns if _ctime_is_change_time() else 0)
 
 
@@ -742,11 +747,18 @@ def record(
             # progress stays out of it so that write gets its own commit.
             root = str(vault_root.resolve())
             if head is None or _walk_due(root):
-                if walked is None:
-                    started = _clock()
+                scanned_now = walked is None
+                started = _clock()
+                if scanned_now:
                     walked = _scan(vault_root)
-                    _last_walk[root] = (_clock(), _clock() - started)
+                    scanned = _clock()
                 outside = _differences(vault_root, entries, skip=frozenset(specs), walked=walked)
+                if scanned_now:
+                    # Where the stat cache is not trusted (Windows) _differences reads
+                    # every file, which is most of the cost; the throttle has to see it.
+                    ended = _clock()
+                    took = (ended - started) if not _ctime_is_change_time() else (scanned - started)
+                    _last_walk[root] = (ended, took)
             else:
                 outside = {}
             if outside or head is None:
