@@ -25,6 +25,7 @@ from loci.tools import tag_hygiene
 from loci.tools.frontmatter import load_frontmatter, uid_rank
 from loci.tools.vault_init import NON_NODE_DIRS
 from loci.tools.node_merge import is_conflicted_copy
+from loci.tools.vault_files import is_appledouble
 
 _graph: Optional[nx.DiGraph] = None
 _vault_root: Optional[Path] = None
@@ -76,7 +77,7 @@ def _build(vault_root: Path) -> nx.DiGraph:
 
     for md_file in vault_root.rglob("*.md"):
         # Skip meta files and skill overlays — they are not vault items
-        if md_file.parent.name in NON_NODE_DIRS or is_conflicted_copy(md_file):
+        if md_file.parent.name in NON_NODE_DIRS or is_conflicted_copy(md_file) or is_appledouble(md_file):
             continue
 
         fm = _parse_frontmatter(md_file)

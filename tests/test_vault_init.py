@@ -1288,3 +1288,23 @@ def test_skill_overlays_are_not_in_user_meta_files():
     for skill in USER_SKILL_OVERLAYS:
         assert f"{skill}-user.md" not in USER_META_FILES
         assert f"{skill}-user.md" not in META_FILES
+
+
+def test_expand_user_path_refuses_another_users_tilde_on_windows(monkeypatch):
+    """Windows' expanduser turns ~name into a sibling of the profile folder
+    instead of failing, so a typo would create a vault in the wrong place."""
+    from loci.tools import vault_init
+    monkeypatch.setattr(vault_init, "_on_windows", lambda: True)
+    for bad in ("~nosuchuser/vault", "~nosuchuser", "~x\\vault"):
+        with pytest.raises(RuntimeError):
+            vault_init.expand_user_path(bad)
+    home = vault_init.Path.home()
+    assert vault_init.expand_user_path("~") == home
+    assert vault_init.expand_user_path("~/vault") == home / "vault"
+    assert vault_init.expand_user_path("/plain/path") == vault_init.Path("/plain/path")
+
+
+def test_expand_user_path_leaves_posix_behaviour_alone(monkeypatch):
+    from loci.tools import vault_init
+    monkeypatch.setattr(vault_init, "_on_windows", lambda: False)
+    assert vault_init.expand_user_path("~/vault") == vault_init.Path.home() / "vault"

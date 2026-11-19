@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from loci.tools.frontmatter import load_frontmatter
+from loci.tools.vault_files import is_appledouble
 
 _IGNORED_NAMES = {".DS_Store", ".localized", "Thumbs.db", "desktop.ini"}
 
@@ -58,6 +59,8 @@ def _local_path_index(vault_root: Path) -> dict[str, str]:
     """
     index: dict[str, str] = {}
     for vf in vault_root.glob("*.md"):
+        if is_appledouble(vf):
+            continue
         try:
             fm, _ = load_frontmatter(vf.read_text(encoding="utf-8"))
             if fm is None:
