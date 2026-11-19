@@ -182,13 +182,28 @@ def test_the_fix_refuses_a_path_outside_the_vault(tmp_vault, twin, tmp_path_fact
     assert outside.read_text() == before
 
 
-def test_the_fix_gives_a_clear_error_for_a_file_that_is_not_a_note(tmp_vault, twin):
+def test_the_fix_names_what_is_wrong_with_a_file_that_is_not_a_note(tmp_vault, twin):
     (tmp_vault / "scan.md").write_bytes(b"\xff\xfe\x00 not utf-8")
     (tmp_vault / "broken.md").write_text("---\nuid: [unclosed\ntitle: x\n---\nbody\n")
-    with pytest.raises(ValueError, match="is not a text note"):
-        api.fix_duplicate_uid("scan.md")
-    with pytest.raises(ValueError, match="is not the newer holder"):
-        api.fix_duplicate_uid("broken.md")
+    (tmp_vault / "plain.md").write_text("no header at all\n")
+    (tmp_vault / "listy.md").write_text("---\n- uid\n- title\n---\nbody\n")
+    (tmp_vault / "nouid.md").write_text("---\ntitle: x\n---\nbody\n")
+    (tmp_vault / "a-folder.md").mkdir()
+    expected = {
+        "scan.md": "not a text note",
+        "broken.md": "no readable frontmatter",
+        "plain.md": "no readable frontmatter",
+        "listy.md": "not a mapping",
+        "nouid.md": "no uid",
+        "a-folder.md": "is a folder",
+    }
+    for name, words in expected.items():
+        before = (tmp_vault / name).read_bytes() if (tmp_vault / name).is_file() else None
+        with pytest.raises(ValueError, match=words):
+            api.fix_duplicate_uid(name)
+        if before is not None:
+            assert (tmp_vault / name).read_bytes() == before        # nothing was changed
+
 
 
 def test_the_fix_refuses_a_file_the_linter_never_flags(tmp_vault, twin):
