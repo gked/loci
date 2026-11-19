@@ -178,12 +178,14 @@ def test_the_fix_names_what_is_wrong_with_a_file_that_is_not_a_note(tmp_vault, t
     (tmp_vault / "scan.md").write_bytes(b"\xff\xfe\x00 not utf-8")
     (tmp_vault / "broken.md").write_text("---\nuid: [unclosed\ntitle: x\n---\nbody\n")
     (tmp_vault / "plain.md").write_text("no header at all\n")
+    (tmp_vault / "listy.md").write_text("---\n- uid\n- title\n---\nbody\n")
     (tmp_vault / "nouid.md").write_text("---\ntitle: x\n---\nbody\n")
     (tmp_vault / "a-folder.md").mkdir()
     expected = {
         "scan.md": "not a text note",
         "broken.md": "no readable frontmatter",
         "plain.md": "no readable frontmatter",
+        "listy.md": "not a mapping",
         "nouid.md": "no uid",
         "a-folder.md": "is a folder",
     }

@@ -1208,13 +1208,13 @@ def fix_duplicate_uid(path: str) -> dict:
         raise ValueError(f"{p.name} is not a text note; nothing was changed.") from e
     fm, _ = load_frontmatter(text)
     if fm is None:
-        raise ValueError(f"{p.name} has no readable frontmatter (it is missing, not closed, or not valid YAML); "
+        raise ValueError(f"{p.name} has no readable frontmatter (it is missing, not closed, not valid YAML, or not a mapping); "
                          "nothing was changed.")
     old = str(fm.get("uid") or "")
     if not old:
         raise ValueError(f"{p.name} has no uid in its frontmatter; nothing was changed.")
-    elder = find_uid(root, old) if old else None
-    if not old or elder is None or elder.resolve() == p.resolve():
+    elder = find_uid(root, old)
+    if elder is None or elder.resolve() == p.resolve():
         raise ValueError(f"{p.name} is not the newer holder of a shared uid; nothing was changed.")
     new = _generate_uid()
     while find_uid(root, new):
