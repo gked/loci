@@ -26,6 +26,30 @@ def vault_with_junk(tmp_vault):
     return tmp_vault, real, junk
 
 
+TEXT_JUNK = """---
+uid: deadbeef
+type: document
+title: Ghost of a copied note
+has_asset:
+- format: pdf
+  primary: true
+  locations:
+  - scheme: local
+    path: assets/ghost0001.pdf
+---
+body
+"""
+
+
+@pytest.fixture
+def readable_junk(tmp_vault):
+    """A `._` file that happens to be valid text with frontmatter (a hand-made one, or a
+    tool that copies the header). A reader that opens it as a note would index it."""
+    junk = tmp_vault / "._ghost.md"
+    junk.write_text(TEXT_JUNK, encoding="utf-8", newline="\n")
+    return tmp_vault, junk
+
+
 def test_is_appledouble_matches_only_the_dot_underscore_prefix(tmp_path):
     assert is_appledouble("._note.md")
     assert is_appledouble(tmp_path / "sub" / "._note.md")
@@ -48,21 +72,29 @@ def test_lint_does_not_count_an_appledouble_file_as_a_node(vault_with_junk):
     assert junk.name not in str(report)
 
 
-def test_the_duplicate_search_steps_over_an_appledouble_file(vault_with_junk):
-    vault, _, _ = vault_with_junk
-    assert write_file.check_duplicate(vault, "A title nobody used") is None
+def test_the_duplicate_search_does_not_match_an_appledouble_file(readable_junk):
+    vault, _ = readable_junk
+    assert write_file.check_duplicate(vault, "Ghost of a copied note") is None
 
 
-def test_the_graph_does_not_hold_an_appledouble_file(vault_with_junk):
-    vault, _, junk = vault_with_junk
+def test_the_graph_does_not_hold_an_appledouble_file(readable_junk):
+    vault, _ = readable_junk
     nx_graph.invalidate()
-    graph = nx_graph.get(vault)
-    assert all(junk.name not in str(data) for _, data in graph.nodes(data=True))
+    assert "deadbeef" not in nx_graph.get(vault).nodes
 
 
-def test_the_asset_index_steps_over_an_appledouble_file(vault_with_junk):
-    vault, _, _ = vault_with_junk
-    directory_scanner._local_path_index(vault)          # must not raise
+def test_the_asset_index_does_not_hold_an_appledouble_files_assets(readable_junk, tmp_path):
+    vault, _ = readable_junk
+    loci_root = vault.parent
+    (loci_root / "assets").mkdir(exist_ok=True)
+    (loci_root / "assets" / "ghost0001.pdf").write_bytes(b"%PDF")
+    # Registered only by the junk file, so it must still be reported as unregistered.
+    assert "assets/ghost0001.pdf" in api.find_unregistered_assets()
+
+
+def test_the_local_path_index_does_not_hold_an_appledouble_files_paths(readable_junk):
+    vault, _ = readable_junk
+    assert "deadbeef" not in directory_scanner._local_path_index(vault).values()
 
 
 def test_history_does_not_record_an_appledouble_file(vault_with_junk, monkeypatch):

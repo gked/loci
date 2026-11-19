@@ -9,6 +9,7 @@ from pathlib import Path
 
 from loci.tools.frontmatter import load_frontmatter
 from loci.tools.vault_files import is_appledouble
+from loci.tools.vault_init import expand_user_path
 
 _IGNORED_NAMES = {".DS_Store", ".localized", "Thumbs.db", "desktop.ini"}
 
@@ -112,7 +113,7 @@ def scan_directory(
     `asset` / `book`, anything else `document`; the title is the humanized
     filename. They are a starting point for the model, not a decision.
     """
-    dir_path = Path(directory).expanduser().resolve()
+    dir_path = expand_user_path(directory).resolve()
     if not dir_path.exists():
         raise FileNotFoundError(f"Directory not found: {dir_path}")
     if not dir_path.is_dir():
