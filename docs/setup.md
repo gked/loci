@@ -56,7 +56,7 @@ Hermes), they ask which. Skip the question with `--target claude`,
 `~/.claude/skills/` unconditionally. It now looks for an agent first, and stops
 with "No supported agent found" when neither `~/.claude` nor `~/.hermes`
 exists and neither `claude` nor `hermes` is on PATH. `--target claude` installs
-anyway. `loci register` also adds Loci to Claude Desktop's config on macOS when
+anyway. `loci register` also adds Loci to Claude Desktop's config on macOS and Windows when
 Claude Desktop is installed, and leaves an existing `loci` entry alone.
 
 On Windows the same two commands look in Hermes's native home,
