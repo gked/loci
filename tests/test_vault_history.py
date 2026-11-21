@@ -558,6 +558,50 @@ def test_a_slow_walk_runs_at_most_once_per_interval(tmp_vault, monkeypatch):
     assert in_head(tmp_vault, "by-hand.md")
 
 
+def _slow_comparison(monkeypatch, now):
+    """The stat walk is instant; comparing the files takes 5 s."""
+    monkeypatch.setattr(vault_history, "_clock", lambda: now[0])
+    real = vault_history._differences
+
+    def slow(*args, **kwargs):
+        now[0] += 5.0
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(vault_history, "_differences", slow)
+
+
+def test_where_every_file_is_read_the_throttle_counts_that_time(tmp_vault, monkeypatch):
+    """Windows reads every file on each walk (no trusted stat cache), so a vault
+    whose stat walk is fast can still be slow to compare. Timing only the walk
+    would re-read it all on every write."""
+    now = [1000.0]
+    _slow_comparison(monkeypatch, now)
+    monkeypatch.setattr(vault_history, "_ctime_is_change_time", lambda: False)
+    save("History One")
+    (tmp_vault / "by-hand.md").write_text("typed in Obsidian")
+    save("History Two")
+    assert "Changes made outside Loci" not in subjects(tmp_vault)      # the walk was skipped
+    now[0] += 61
+    save("History Three")
+    assert in_head(tmp_vault, "by-hand.md")
+
+
+def test_where_the_cache_is_trusted_only_the_stat_walk_is_timed(tmp_vault, monkeypatch):
+    now = [1000.0]
+    _slow_comparison(monkeypatch, now)
+    monkeypatch.setattr(vault_history, "_ctime_is_change_time", lambda: True)
+    save("History One")
+    (tmp_vault / "by-hand.md").write_text("typed in Obsidian")
+    save("History Two")
+    assert subjects(tmp_vault)[1] == "Changes made outside Loci"       # unchanged behaviour
+
+
+def test_ctime_is_a_change_time_everywhere_but_windows(monkeypatch):
+    for platform, expected in (("darwin", True), ("linux", True), ("win32", False)):
+        monkeypatch.setattr(vault_history.sys, "platform", platform)
+        assert vault_history._ctime_is_change_time() is expected
+
+
 def test_a_fast_walk_runs_on_every_write(tmp_vault, monkeypatch):
     monkeypatch.setattr(vault_history, "_SCAN_FAST_SECONDS", 3600)
     save("History One")
@@ -1867,3 +1911,21 @@ def test_a_write_works_while_another_computers_line_is_missing_older_commits(tmp
 
     assert saved.get("commit")
     assert vault_history.status(tmp_vault)["state"] == "on"
+
+
+def test_an_edit_is_seen_where_ctime_is_not_a_change_time(tmp_vault, monkeypatch):
+    """Windows: st_ctime is the creation time, so an edit that keeps the size and
+    the modification time leaves the stat signature unchanged. The cache must
+    then not be trusted, or the edit is never committed before the next write."""
+    import os
+    monkeypatch.setattr(vault_history, "_ctime_is_change_time", lambda: False)
+    save("History One")
+    hand = tmp_vault / "by-hand.md"
+    hand.write_text("aaaa")
+    save("History Two")
+    stat = hand.stat()
+    hand.write_text("bbbb")
+    os.utime(hand, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    save("History Three")
+    r = repo(tmp_vault)
+    assert blob_at(tmp_vault, r[tip(r)], "by-hand.md") == "bbbb"

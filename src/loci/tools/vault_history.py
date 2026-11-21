@@ -45,6 +45,7 @@ import json
 import logging
 import os
 import re
+import sys
 import threading
 import time
 import uuid
@@ -100,6 +101,26 @@ _FILE_MODE = 0o100644
 _SCAN_FAST_SECONDS = 0.1
 _SLOW_SCAN_INTERVAL_SECONDS = 60.0
 _clock = time.monotonic
+
+def _ctime_is_change_time() -> bool:
+    """True where `st_ctime` moves on every edit (POSIX: the inode change time).
+
+    On Windows it is the creation time, which an edit never touches, so there
+    an edit that keeps the size and puts the old modification time back (rsync
+    -t, a sync client) leaves the whole signature as it was.
+    """
+    return sys.platform != "win32"
+
+
+def _signature(st: os.stat_result) -> tuple[int, int, int]:
+    """What the stat cache compares to decide a file has not been edited.
+
+    Where ctime is not a change time it is zeroed so the stored signature does
+    not pretend to carry information; `_differences` does not trust the cache
+    there at all.
+    """
+    return (st.st_mtime_ns, st.st_size, st.st_ctime_ns if _ctime_is_change_time() else 0)
+
 
 # vault root -> (when the last full walk ended, how long it took).
 _last_walk: dict[str, tuple[float, float]] = {}
@@ -364,7 +385,7 @@ def _scan(vault_root: Path) -> dict[bytes, tuple[int, int, int]]:
                     rel = Path(entry.path).relative_to(vault_root)
                     if entry.is_file() and _eligible(rel):
                         st = entry.stat()
-                        found[_key(rel)] = (st.st_mtime_ns, st.st_size, st.st_ctime_ns)
+                        found[_key(rel)] = _signature(st)
                 except OSError:
                     continue  # the file went away between listing and stat
     return found
@@ -429,7 +450,7 @@ def _differences(
             path = vault_root / os.fsdecode(key)
             if path.is_file() and not path.is_symlink():
                 st = path.stat()
-                on_disk[key] = (st.st_mtime_ns, st.st_size, st.st_ctime_ns)
+                on_disk[key] = _signature(st)
 
     changes: dict[bytes, Optional[Blob]] = {}
     for key in candidates - skip:
@@ -439,7 +460,17 @@ def _differences(
                 changes[key] = None
             continue
         cached = _stat_cache.get((root, key))
-        if only is None and cached and cached[0] == sig and key in entries and entries[key][1] == cached[1]:
+        # Where ctime is not a change time (Windows) the signature cannot tell a
+        # same-size edit with a restored mtime from no edit, so every file is
+        # read: slower on a big vault, but no hand edit goes unrecorded.
+        if (
+            only is None
+            and _ctime_is_change_time()
+            and cached
+            and cached[0] == sig
+            and key in entries
+            and entries[key][1] == cached[1]
+        ):
             continue
         try:
             blob = Blob.from_string((vault_root / os.fsdecode(key)).read_bytes())
@@ -716,11 +747,18 @@ def record(
             # progress stays out of it so that write gets its own commit.
             root = str(vault_root.resolve())
             if head is None or _walk_due(root):
-                if walked is None:
-                    started = _clock()
+                scanned_now = walked is None
+                started = _clock()
+                if scanned_now:
                     walked = _scan(vault_root)
-                    _last_walk[root] = (_clock(), _clock() - started)
+                    scanned = _clock()
                 outside = _differences(vault_root, entries, skip=frozenset(specs), walked=walked)
+                if scanned_now:
+                    # Where the stat cache is not trusted (Windows) _differences reads
+                    # every file, which is most of the cost; the throttle has to see it.
+                    ended = _clock()
+                    took = (ended - started) if not _ctime_is_change_time() else (scanned - started)
+                    _last_walk[root] = (ended, took)
             else:
                 outside = {}
             if outside or head is None:
