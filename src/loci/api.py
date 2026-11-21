@@ -569,10 +569,10 @@ def find_unregistered_assets() -> list:
                     p = Path(raw)
                     if p.is_absolute():
                         try:
-                            raw = str(p.relative_to(loci_root))
+                            raw = p.relative_to(loci_root).as_posix()    # frontmatter paths use /
                         except ValueError:
                             pass
-                    registered.add(raw)
+                    registered.add(raw.replace("\\", "/"))   # nodes written on Windows by older versions
         except Exception:
             continue
 

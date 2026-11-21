@@ -20,7 +20,12 @@ def env(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))   # what Path.home() reads on Windows
     monkeypatch.delenv("HERMES_HOME", raising=False)
+    # These tests describe the POSIX layout (~/.hermes). On Windows Hermes lives in
+    # %LOCALAPPDATA%\\hermes (#34, which adds `_on_windows`); raising=False keeps this
+    # fixture valid on a tree that does not have it yet.
+    monkeypatch.setattr(clients, "_on_windows", lambda: False, raising=False)
     monkeypatch.setattr(clients.shutil, "which", lambda n: f"/bin/{n}")
     calls = []
     state = {"hermes": False}

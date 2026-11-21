@@ -211,6 +211,20 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+VITE_ENTRY = APP_DIR / "node_modules" / "vite" / "bin" / "vite.js"
+
+
+def vite_command() -> list[str]:
+    """Run vite's own JS entry with node, not `node_modules/.bin/vite`.
+
+    `.bin/vite` is a symlink to the same file on POSIX, but on Windows it is a
+    shell script (npm adds a `vite.cmd` beside it), which `subprocess` cannot
+    execute (WinError 193). Going through node works everywhere, and node is
+    the process that holds the port, so `_terminate` still reaches the server.
+    """
+    return [shutil.which("node") or "node", str(VITE_ENTRY)]
+
+
 def _spawn(cmd: list[str], cwd: Path, env: dict, log_path: Path) -> subprocess.Popen:
     """
     Start a long-running server with its output redirected to `log_path`.
@@ -272,7 +286,7 @@ def _terminate(proc: subprocess.Popen) -> None:
         return
     except subprocess.TimeoutExpired:  # pragma: no cover - slow shutdown
         pass
-    _signal_group(proc, signal.SIGKILL)
+    _signal_group(proc, getattr(signal, "SIGKILL", signal.SIGTERM))
     try:  # pragma: no cover - slow shutdown
         proc.wait(timeout=10)
     except subprocess.TimeoutExpired:
@@ -412,8 +426,7 @@ def web_server(api_server, server_logs) -> str:
     so a skip here turns the whole e2e suite into skips and pytest reports the
     run as green — silently disabling the UI-impact check CLAUDE.md relies on.
     """
-    vite_bin = APP_DIR / "node_modules" / ".bin" / "vite"
-    if not vite_bin.exists():
+    if not VITE_ENTRY.exists():
         pytest.fail(
             "app/node_modules missing — run `npm ci --prefix app` (or `make test`, "
             "which does it for you). Set LOCI_E2E_BASE_URL to test a deployment "
@@ -424,7 +437,7 @@ def web_server(api_server, server_logs) -> str:
     env = {**os.environ, "LOCI_API_URL": api_server, "LOCI_API_TOKEN": E2E_API_TOKEN}
 
     build = subprocess.run(
-        [str(vite_bin), "build"],
+        [*vite_command(), "build"],
         cwd=APP_DIR, env=env, capture_output=True, text=True,
     )
     if build.returncode != 0:
@@ -433,7 +446,7 @@ def web_server(api_server, server_logs) -> str:
     proc, url = _start_server(
         "web-server",
         cmd_for_port=lambda port: [
-            str(vite_bin), "preview", "--port", str(port), "--strictPort",
+            *vite_command(), "preview", "--port", str(port), "--strictPort",
         ],
         url_for_port=lambda port: f"http://localhost:{port}",
         cwd=APP_DIR,

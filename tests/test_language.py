@@ -68,14 +68,14 @@ def test_env_var_selects_the_language(monkeypatch):
 
 def test_config_file_selects_the_language(monkeypatch, tmp_path):
     cfg = tmp_path / "config.yml"
-    cfg.write_text("vault_root: /x\nlanguage: ru-RU\n")
+    cfg.write_text("vault_root: /x\nlanguage: ru-RU\n", encoding="utf-8", newline="\n")
     monkeypatch.setenv("LOCI_CONFIG", str(cfg))
     assert get_language() == "ru-RU"
 
 
 def test_env_var_wins_over_the_config_file(monkeypatch, tmp_path):
     cfg = tmp_path / "config.yml"
-    cfg.write_text("language: ru-RU\n")
+    cfg.write_text("language: ru-RU\n", encoding="utf-8", newline="\n")
     monkeypatch.setenv("LOCI_CONFIG", str(cfg))
     monkeypatch.setenv(ENV_VAR, "en")
     assert get_language() == "en"
@@ -84,7 +84,7 @@ def test_env_var_wins_over_the_config_file(monkeypatch, tmp_path):
 def test_config_file_is_read_even_with_vault_root_in_the_environment(monkeypatch, tmp_path):
     """load_config() returns only the vault root in that mode; the key must survive."""
     cfg = tmp_path / "config.yml"
-    cfg.write_text("language: ru-RU\n")
+    cfg.write_text("language: ru-RU\n", encoding="utf-8", newline="\n")
     monkeypatch.setenv("LOCI_CONFIG", str(cfg))
     monkeypatch.setenv("LOCI_VAULT_ROOT", str(tmp_path))
     assert get_language() == "ru-RU"
@@ -93,7 +93,7 @@ def test_config_file_is_read_even_with_vault_root_in_the_environment(monkeypatch
 @pytest.mark.parametrize("body", ["language: klingon\n", "language: [unclosed\n", "- a\n- b\n"])
 def test_a_bad_value_or_file_falls_back_to_english(monkeypatch, tmp_path, body):
     cfg = tmp_path / "config.yml"
-    cfg.write_text(body)
+    cfg.write_text(body, encoding="utf-8", newline="\n")
     monkeypatch.setenv("LOCI_CONFIG", str(cfg))
     assert get_language() == "en"
 
@@ -186,7 +186,7 @@ def test_a_skill_without_a_translation_is_served_in_english(tmp_vault, monkeypat
     monkeypatch.setattr(skill_assembly, "SKILLS_DIR", tmp_vault / "skills-pkg")
     pkg = tmp_vault / "skills-pkg" / "loci-save"
     pkg.mkdir(parents=True)
-    (pkg / "SKILL.md").write_text("---\nname: loci-save\n---\n# english only 🔒\n")
+    (pkg / "SKILL.md").write_text("---\nname: loci-save\n---\n# english only 🔒\n", encoding="utf-8", newline="\n")
 
     out = skill_assembly.assemble("loci-save", tmp_vault, "ru-RU")
 

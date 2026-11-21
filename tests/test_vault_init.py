@@ -701,6 +701,7 @@ def test_prompt_vault_root_rejects_relative_path(tmp_path, monkeypatch):
 def test_prompt_vault_root_expands_tilde(tmp_path, monkeypatch):
     from loci.tools.vault_init import prompt_vault_root
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))   # what Path.home() reads on Windows
     monkeypatch.setattr("builtins.input", lambda _: "~/loci/knowledge-vault")
     assert prompt_vault_root() == tmp_path / "loci" / "knowledge-vault"
 
@@ -838,6 +839,7 @@ def test_init_force_expands_a_tilde_in_the_configured_root(tmp_path, fake_config
     ./~/vault/meta relative to the cwd."""
     from loci.tools.vault_init import init
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))   # what Path.home() reads on Windows
     fake_config_path.write_text(
         yaml.dump({"vault_root": "~/vault", "meta_version": META_VERSION}),
         encoding="utf-8",
@@ -894,6 +896,7 @@ def test_config_path_prefers_loci_config_env(tmp_path, monkeypatch):
 
 def test_config_path_expands_tilde_in_override(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))   # what Path.home() reads on Windows
     monkeypatch.setenv("LOCI_CONFIG", "~/somewhere/config.yml")
     assert vault_init.config_path() == tmp_path / "somewhere" / "config.yml"
 

@@ -9,6 +9,7 @@ install that sets LOCI_VAULT_ROOT and never writes a config file at all —
 load_config() short-circuits on the env var before it opens one.
 """
 import getpass
+import json
 import sys
 from pathlib import Path
 
@@ -54,7 +55,8 @@ def test_an_apostrophe_inside_the_path_survives(tmp_path):
     """Stripping every quote in the value turned Bob's Vault into Bobs Vault."""
     vault = tmp_path / "Bob's Vault"
     vault.mkdir()
-    config = _config(tmp_path, f'vault_root: "{vault}"\n')
+    # JSON string syntax is valid YAML and escapes the backslashes of a Windows path.
+    config = _config(tmp_path, f"vault_root: {json.dumps(str(vault))}\n")
 
     assert resolve_vault(config) == vault
 

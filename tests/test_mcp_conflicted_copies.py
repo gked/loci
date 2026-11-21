@@ -47,7 +47,7 @@ def test_a_clean_merge_through_the_tools(tmp_vault, as_computer):
     assert "token is required" in ask(copy.name)["error"] and copy.exists()
     done = ask(copy.name, None, listed[0]["token"])
     assert done["kind"] == "merged" and not copy.exists()
-    assert "ONE" in node.read_text() and "FIVE" in node.read_text()
+    assert "ONE" in node.read_text(encoding="utf-8") and "FIVE" in node.read_text(encoding="utf-8")
     assert mcp_server.list_conflicted_copies() == {"copies": []}
 
 
@@ -60,13 +60,13 @@ def test_a_clash_needs_a_choice_per_clash_and_a_token(tmp_vault, as_computer):
     assert "token is required" in ask(copy.name, ["b"])["error"] and copy.exists()   # no token: not applied blind
 
     done = ask(copy.name, ["b"], listed["token"])
-    assert done["kind"] == "conflict" and "BBB" in node.read_text() and not copy.exists()
+    assert done["kind"] == "conflict" and "BBB" in node.read_text(encoding="utf-8") and not copy.exists()
 
 
 def test_a_stale_token_is_refused(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("three", "AAA"), b=BASE.replace("three", "BBB"))
     listed = mcp_server.list_conflicted_copies()["copies"][0]
-    copy.write_text(copy.read_text().replace("BBB", "CCC"))               # changed since the listing
+    copy.write_text(copy.read_text(encoding="utf-8").replace("BBB", "CCC"), newline="\n", encoding="utf-8")               # changed since the listing
     refused = ask(copy.name, ["a"], listed["token"])
     assert "changed since" in refused["error"] and copy.exists()
 
@@ -74,7 +74,7 @@ def test_a_stale_token_is_refused(tmp_vault, as_computer):
 def test_a_merged_copy_that_changed_since_the_listing_is_refused(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer, a="ONE\ntwo\nthree\nfour\nfive\n", b="one\ntwo\nthree\nfour\nFIVE\n")
     token = mcp_server.list_conflicted_copies()["copies"][0]["token"]
-    copy.write_text(copy.read_text().replace("FIVE", "SIX"))
+    copy.write_text(copy.read_text(encoding="utf-8").replace("FIVE", "SIX"), newline="\n", encoding="utf-8")
     assert "changed since" in ask(copy.name, None, token)["error"] and copy.exists()
 
 
@@ -85,7 +85,7 @@ def test_restore_and_keep_both_through_the_tools(tmp_vault, as_computer):
     assert listed["kind"] == "restore"
     assert "takes no choices" in ask(copy.name, ["a"], listed["token"])["error"] and copy.exists()
     done = ask(copy.name, None, listed["token"])
-    assert done["kind"] == "restore" and "BBB" in node.read_text() and not copy.exists()
+    assert done["kind"] == "restore" and "BBB" in node.read_text(encoding="utf-8") and not copy.exists()
 
 
 def test_one_unreadable_copy_does_not_hide_the_others(tmp_vault, as_computer, monkeypatch):

@@ -19,7 +19,7 @@ import sys
 import pytest
 from playwright.sync_api import expect
 
-from conftest import APP_DIR, REPO_ROOT, _start_server, _terminate
+from conftest import APP_DIR, REPO_ROOT, VITE_ENTRY, _start_server, _terminate, vite_command
 
 # A known value so the meta-tag assertion has something to compare against.
 # The real server generates one and writes it to config.yml.
@@ -27,19 +27,22 @@ PACKAGED_TOKEN = "e2e-packaged-token"
 
 pytestmark = pytest.mark.e2e
 
+# Absolute on the platform under test: "/x" is relative on Windows, where the
+# server would answer 400 before it ever looks for the file.
+MISSING_PATH = "C:/nonexistent/loci-e2e.txt" if sys.platform == "win32" else "/nonexistent/loci-e2e.txt"
+
 
 @pytest.fixture(scope="module")
 def packaged_server(e2e_vault, server_logs) -> str:
     """`vite build`, then uvicorn serving that bundle from the package path."""
-    vite_bin = APP_DIR / "node_modules" / ".bin" / "vite"
-    if not vite_bin.exists():
+    if not VITE_ENTRY.exists():
         pytest.fail(
             "app/node_modules missing — run `npm ci --prefix app` (or `make test`).",
             pytrace=False,
         )
 
     build = subprocess.run(
-        [str(vite_bin), "build"], cwd=APP_DIR, capture_output=True, text=True,
+        [*vite_command(), "build"], cwd=APP_DIR, capture_output=True, text=True,
     )
     if build.returncode != 0:
         raise RuntimeError(f"vite build failed:\n{build.stdout}\n{build.stderr}")
@@ -125,16 +128,17 @@ def test_the_page_can_call_open_local(packaged_page):
     means the request got past authorization, which is the whole assertion.
     """
     result = packaged_page.evaluate(
-        """async () => {
+        """async (missing) => {
             const token = document
                 .querySelector('meta[name="loci-token"]')
                 .getAttribute("content");
             const res = await fetch(
-                "/api/open-local?path=" + encodeURIComponent("/nonexistent/loci-e2e.txt"),
+                "/api/open-local?path=" + encodeURIComponent(missing),
                 { method: "POST", headers: { "X-Loci-Token": token } },
             );
             return { status: res.status, detail: (await res.json()).detail };
-        }"""
+        }""",
+        MISSING_PATH,
     )
 
     assert result["status"] == 404, result

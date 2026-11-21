@@ -55,8 +55,8 @@ class LocalResolver(Resolver):
         for f in sorted(dir_path.iterdir()):
             if f.is_file() and not f.name.startswith("."):
                 try:
-                    rel_path = f.relative_to(self.loci_root)
-                    path_str = str(rel_path)
+                    # Stored in node frontmatter, which syncs between machines: always `/`.
+                    path_str = f.relative_to(self.loci_root).as_posix()
                 except ValueError:
                     path_str = str(f)
                 items.append({

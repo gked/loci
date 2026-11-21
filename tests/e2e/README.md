@@ -41,9 +41,11 @@ processes start once for the whole run (~5s overhead, then ~1s/test).
 3. **`web_server`** runs `vite build` then `vite preview`, with
    `LOCI_API_URL` set so `app/vite.config.js` proxies `/api` to the API server.
    Preview rather than dev: tests the shipped bundle, no HMR websocket noise.
-   It invokes `app/node_modules/.bin/vite` directly — **not** `npm run …`, which
-   would not forward signals to vite and would leave it holding the port after
-   teardown. Missing `node_modules` fails the run rather than skipping it.
+   It runs vite directly (`node app/node_modules/vite/bin/vite.js`, via
+   `vite_command()` in `conftest.py`) — **not** `npm run …`, which would not
+   forward signals to vite and would leave it holding the port after teardown.
+   Not `node_modules/.bin/vite` either: on Windows that is a shell script
+   `subprocess` cannot execute. Missing `node_modules` fails the run rather than skipping it.
    Both servers share one made-up API token (`E2E_API_TOKEN` in `conftest.py`), passed as
    `LOCI_API_TOKEN` to the API and to the UI build (`vite.config.js` reads it). Without it every UI write
    fails with "Missing or invalid API token".
