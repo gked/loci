@@ -13,6 +13,7 @@ The vault markdown files are the source of truth.
 
 from __future__ import annotations
 
+import os
 import re
 import threading
 from datetime import datetime, timedelta, timezone
@@ -21,7 +22,7 @@ from typing import Optional
 
 import networkx as nx
 
-from loci.tools import tag_hygiene
+from loci.tools import tag_hygiene, vault_history
 from loci.tools.frontmatter import load_frontmatter, uid_rank
 from loci.tools.vault_init import NON_NODE_DIRS
 from loci.tools.node_merge import is_conflicted_copy
@@ -29,7 +30,7 @@ from loci.tools.vault_files import is_appledouble
 
 _graph: Optional[nx.DiGraph] = None
 _vault_root: Optional[Path] = None
-_built_at: float = 0.0  # vault dir mtime observed at last build
+_built_at: float = 0.0  # newest folder/note change time observed at last build
 _lock = threading.Lock()
 
 
@@ -54,14 +55,39 @@ def _date_str(val) -> str:
 
 def _vault_dir_mtime(vault_root: Path) -> float:
     """
-    Return the most recent mtime across vault_root and its immediate subdirectories.
-    Creating or deleting a file updates the containing directory's mtime, so this
-    is a cheap O(subdirs) staleness signal — no need to stat every .md file.
+    The newest change time seen in vault_root and its immediate subdirectories:
+    the folders themselves and the notes (`*.md`) directly in them.
+
+    Folders catch a note added or removed. Notes catch an edit made in place by
+    another process (the MCP server writes, the UI server reads): an in-place
+    write never touches its folder's mtime. It is still a single pass of
+    `scandir`, about 2 ms for a thousand notes; on Windows the listing already
+    carries the timestamps, so it costs no extra call per file.
+
+    A note's `st_ctime` counts where it is the inode change time (POSIX), so an
+    edit that restores the old mtime (rsync -t) is still seen. On Windows it is
+    the creation time and adds nothing; there such an edit goes unnoticed here.
     """
+    use_ctime = vault_history._ctime_is_change_time()
+
+    def stamp(st) -> float:
+        return max(st.st_mtime, st.st_ctime) if use_ctime else st.st_mtime
+
     latest = vault_root.stat().st_mtime
-    for entry in vault_root.iterdir():
-        if entry.is_dir():
-            latest = max(latest, entry.stat().st_mtime)
+    folders = [vault_root]
+    with os.scandir(vault_root) as entries:
+        for entry in entries:
+            if entry.is_dir():
+                folders.append(Path(entry.path))
+                latest = max(latest, entry.stat().st_mtime)
+    for folder in folders:
+        try:
+            with os.scandir(folder) as entries:
+                for entry in entries:
+                    if entry.name.endswith(".md") and not is_appledouble(entry.name) and entry.is_file():
+                        latest = max(latest, stamp(entry.stat()))
+        except OSError:
+            continue    # the folder went away between the two listings
     return latest
 
 
@@ -150,9 +176,9 @@ def get(vault_root: Path) -> nx.DiGraph:
 
     Rebuilds when:
     - the graph has never been built (_graph is None), or
-    - any directory under vault_root has a newer mtime than when the graph
-      was last built, indicating files were added or removed outside this
-      server process.
+    - a folder or a note under vault_root has a newer change time than when
+      the graph was last built: files were added, removed or edited outside
+      this server process (see _vault_dir_mtime).
     """
     global _graph, _vault_root, _built_at
     with _lock:
@@ -201,8 +227,9 @@ def mark_fresh(vault_root: Path) -> None:
 
 def invalidate() -> None:
     """Make the next get() rebuild the graph. For a change another process or
-    program made to a file in place: get() watches the vault folder's mtime,
-    and an edit inside a file does not move it."""
+    program made to a file in place, when get()'s timestamps cannot say so (an
+    edit that restores the mtime on Windows). Normally get() sees such an edit
+    from the note's own timestamp (see _vault_dir_mtime)."""
     global _built_at
     with _lock:
         _built_at = 0.0

@@ -347,17 +347,18 @@ def test_check_duplicate_url_is_equality_not_substring(tmp_vault):
     assert check_duplicate(tmp_vault, "Python Docs", url="https://docs.python.org/3/library/re.html") == p
 
 
-def test_check_duplicate_sees_an_in_place_edit_the_graph_index_missed(tmp_vault):
-    # An external editor retitling a note rewrites the file in place, which
-    # does not move any directory mtime — the graph index's only staleness
-    # signal. The gate refuses saves, so it must read the disk, not the index.
+def test_check_duplicate_sees_an_in_place_edit_the_graph_index_missed(tmp_vault, monkeypatch):
+    # The graph index can be stale: an edit that no timestamp betrays (Windows,
+    # mtime restored) leaves it as it was. The gate refuses saves, so it must read
+    # the disk, not the index. The staleness check is frozen here to make the index
+    # stale whatever the platform; nx_graph sees an ordinary in-place edit itself.
     from loci.tools import nx_graph
     p = tmp_vault / "weekly-sync.md"
     p.write_text("---\nuid: doc00099\ntype: document\ntitle: Weekly sync\n---\n\nBody.", encoding="utf-8")
     nx_graph.get(tmp_vault)
-    dir_mtime = tmp_vault.stat().st_mtime
+    frozen = nx_graph._vault_dir_mtime(tmp_vault)
+    monkeypatch.setattr(nx_graph, "_vault_dir_mtime", lambda root: frozen)
     p.write_text("---\nuid: doc00099\ntype: document\ntitle: Weekly sync — Q3\n---\n\nBody.", encoding="utf-8")
-    os.utime(tmp_vault, (dir_mtime, dir_mtime))
     assert nx_graph.get(tmp_vault).nodes["doc00099"]["title"] == "Weekly sync", "precondition: index is stale"
     assert check_duplicate(tmp_vault, "Weekly sync") is None
     assert check_duplicate(tmp_vault, "Weekly sync — Q3") == p
