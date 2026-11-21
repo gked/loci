@@ -1791,6 +1791,33 @@ def test_a_delete_is_not_joined_until_it_has_reached_the_vault(tmp_vault, as_com
     assert rel(tmp_vault, alpha) in files_changed(tmp_vault, merge)
 
 
+def test_a_file_edited_here_and_deleted_there_keeps_the_edit_and_joins_the_line(tmp_vault, as_computer):
+    a = as_computer("a")
+    alpha = save("Alpha")
+    path = Path(alpha["path"])
+    b = as_computer("b")
+    save("Beta")
+    api.delete(alpha["uid"])                             # B deletes Alpha
+    as_computer("a")
+    assert not path.exists()                             # the delete has reached this computer's folder
+    path.write_bytes(b"---\nuid: " + alpha["uid"].encode() + b"\n---\nedited on A\n")   # A edited Alpha meanwhile
+
+    save("Gamma")
+
+    assert f"Synced from {b.decode()}" not in subjects(tmp_vault)   # the edit is not recorded yet: hold the join
+    assert vault_history.OUTSIDE_MESSAGE in subjects(tmp_vault)      # now it is
+
+    save("Delta")
+
+    merge = next(c for c in commits(tmp_vault) if c.message.decode().startswith("Synced from"))
+    assert merge.parents[1] == branches(tmp_vault)[b]
+    assert path.read_bytes().endswith(b"edited on A\n")              # the edit survives
+    head = repo(tmp_vault)[branches(tmp_vault)[a]]
+    tree_paths = {c.new.path.decode() for c in tree_changes(repo(tmp_vault).object_store, None, head.tree)}
+    assert rel(tmp_vault, alpha) in tree_paths
+    assert vault_history.status(tmp_vault).get("error") is None
+
+
 def test_a_local_edit_made_while_files_arrive_is_still_an_outside_edit(tmp_vault, as_computer):
     a, b, alpha, beta = sync_in(tmp_vault, as_computer)
     (tmp_vault / "by-hand.md").write_text("typed in Obsidian")
