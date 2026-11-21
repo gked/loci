@@ -415,6 +415,47 @@ def read_vault(path: str, commit: str = None) -> str:
 
 @mcp.tool()
 @requires_vault
+def read_vault_context(path: str, max_tokens: int = 4000, commit: str | None = None) -> dict:
+    """Read a node in full if small, otherwise return its overview and chunks.
+
+    Returns mode="full" with content when the note fits the approximate budget;
+    otherwise mode="outline" with title, summary, estimated token count, a
+    content hash, and heading-aware chunk descriptors with short excerpts.
+    Token estimates use characters/4 and are not model-specific guarantees.
+    Pass the same max_tokens and content_hash to read_vault_chunk for a selected
+    chunk. Accepts a UID, absolute path, or vault-relative path.
+    """
+    try:
+        return vault.get_context(path, max_tokens=max_tokens, commit=commit)
+    except (OSError, ValueError, HistoryError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+@requires_vault
+def read_vault_chunk(
+    path: str,
+    chunk_id: str,
+    content_hash: str,
+    max_tokens: int = 4000,
+    commit: str | None = None,
+) -> dict:
+    """Read one bounded chunk from a read_vault_context outline.
+
+    Pass the path, chunk id, content hash, and max_tokens from the outline.
+    Returns the chunk text and heading path. If the note changed since the
+    outline was created, returns an error and the outline should be refreshed.
+    """
+    try:
+        return vault.get_chunk(
+            path, chunk_id, content_hash, max_tokens=max_tokens, commit=commit,
+        )
+    except (OSError, ValueError, HistoryError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+@requires_vault
 def history_vault(path: str, limit: int = 20) -> dict:
     """
     List the commits that changed a node, newest first:

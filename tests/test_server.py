@@ -98,6 +98,23 @@ def test_read_vault_returns_error_string_on_missing_file(tmp_vault):
     assert "no file" in result
 
 
+def test_read_vault_context_wraps_read_errors(tmp_vault):
+    with patch("loci.mcp_server.vault.get_context", side_effect=FileNotFoundError("missing node")):
+        result = server.read_vault_context("/ghost.md")
+    assert result == {"error": "missing node"}
+
+
+def test_read_vault_chunk_wraps_stale_outline_errors(tmp_vault):
+    with patch("loci.mcp_server.vault.get_chunk", side_effect=ValueError("stale outline")):
+        result = server.read_vault_chunk("/note.md", "chunk-1", "hash")
+    assert result == {"error": "stale outline"}
+
+
+def test_context_tools_are_registered():
+    registered = set(server.mcp._tool_manager._tools)
+    assert {"read_vault_context", "read_vault_chunk"} <= registered
+
+
 def test_read_meta_returns_error_string_on_unknown_key(tmp_vault):
     with patch("loci.mcp_server.vault.read_meta", side_effect=ValueError("Unknown meta file")):
         result = read_meta("bad-key")

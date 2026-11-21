@@ -32,6 +32,17 @@ Identify which mode fits the user's request, then follow that workflow.
 
 ---
 
+### Reading node content
+
+For a node you need to inspect, call `loci__read_vault_context(path=<uid>, max_tokens=4000)`.
+
+- If `mode="full"`, use its `content` as the node text.
+- If `mode="outline"`, use its title, summary, heading paths, excerpts, and estimated sizes to choose only relevant chunks. Fetch each chosen chunk with `loci__read_vault_chunk(path=<uid>, chunk_id=<id>, content_hash=<hash>, max_tokens=<same limit>)`.
+- Do not fetch every chunk by default. If a chunk read reports that the node changed, request a fresh context outline.
+- Token estimates are approximate (characters divided by four), not guarantees for a specific model. Keep the existing eight-node cap and be selective when reading several large nodes.
+
+---
+
 ### Mode 1 — Lookup: "what do I know about X?"
 
 Use when the user names a specific topic, person, project, or concept.
@@ -40,9 +51,9 @@ Use when the user names a specific topic, person, project, or concept.
    searches only active nodes; pass `state="archived"` to search archived content or
    `state=None` to search everything.
 2. If multiple results: present the list and ask which one (or "all of them").
-3. For each target node: call `loci__read_vault(path=<path>)` to read the full content.
+3. For each target node, follow **Reading node content** above to read it in full or fetch relevant chunks.
 4. Call `loci__query_neighbors(uid=<uid>)` to surface direct connections with their relation types and directions.
-5. Present: the node content, then a "Connected to:" section listing neighbors with type, relation type, and direction (in/out).
+5. Present the node content, then a "Connected to:" section listing neighbors with type, relation type, and direction (in/out).
 
 **If the target node is type `topic`:** topics are graph hubs, so automatically continue into Mode 3 (neighborhood) without waiting to be asked — call `loci__query_related(uid=<uid>, depth=2)` and present the full neighborhood grouped by distance. The user's intent when looking up a topic is almost always "show me everything under this concept."
 
@@ -254,5 +265,5 @@ Every query ends here, whichever mode ran.
 
 - **Never invent content.** Only report what is in vault files.
 - **UIDs are stable identifiers.** Always pass the uid (not the title) to graph tools.
-- **Read before summarizing.** Do not summarize from the graph node attributes alone — always call `loci__read_vault` for the full content.
+- **Read before summarizing.** Do not summarize from the graph node attributes alone — read the node's content first via **Reading node content** above (`loci__read_vault_context`, plus `loci__read_vault_chunk` for the chunks you need).
 - **Signal low confidence, not high.** Do not add confidence labels to every claim. Only flag when a synthesis draws primarily from distance=2 nodes or from summaries alone without full reads — add a single closing line such as: "Note: some of this is inferred from loosely connected nodes — worth verifying by reading the source files."

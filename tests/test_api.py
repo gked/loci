@@ -394,6 +394,65 @@ def test_get_by_uid_unknown_raises(tmp_vault):
         api.get("deadbeef")
 
 
+def test_get_context_returns_full_note_below_token_limit(tmp_vault):
+    node = api.save(
+        type="document", title="Small note", body="# Purpose\n\nA short note.",
+        summary="A concise summary.", extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    result = api.get_context(node["uid"], max_tokens=1000)
+
+    assert result["mode"] == "full"
+    assert result["title"] == "Small note"
+    assert result["summary"] == "A concise summary."
+    assert "A short note." in result["content"]
+    assert result["estimated_tokens"] > 0
+
+
+def test_get_context_returns_overview_and_chunks_for_large_note(tmp_vault):
+    node = api.save(
+        type="document", title="Large note", body="# Findings\n\n" + ("Evidence. " * 30),
+        summary="A note with a long findings section.",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    result = api.get_context(node["uid"], max_tokens=5)
+
+    assert result["mode"] == "outline"
+    assert result["title"] == "Large note"
+    assert result["summary"] == "A note with a long findings section."
+    assert "content" not in result
+    assert result["content_hash"]
+    assert result["chunks"]
+    assert all("text" not in chunk for chunk in result["chunks"])
+    assert any(chunk["heading_path"] == ["Findings"] for chunk in result["chunks"])
+
+
+def test_get_chunk_reads_only_selected_chunk_and_rejects_stale_outline(tmp_vault):
+    node = api.save(
+        type="document", title="Chunked note",
+        body="# One\n\nFirst section.\n\n# Two\n\nSecond section.",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    outline = api.get_context(node["uid"], max_tokens=25)
+    first = next(chunk for chunk in outline["chunks"] if chunk["heading_path"] == ["One"])
+
+    result = api.get_chunk(
+        node["uid"], first["id"], outline["content_hash"], max_tokens=25,
+    )
+
+    assert result["heading_path"] == ["One"]
+    assert "First section." in result["content"]
+    assert "Second section." not in result["content"]
+    with pytest.raises(ValueError, match="changed since"):
+        api.get_chunk(node["uid"], first["id"], "stale-hash", max_tokens=2)
+
+
+def test_get_context_rejects_nonpositive_token_limit(tmp_vault):
+    with pytest.raises(ValueError, match="positive"):
+        api.get_context("missing.md", max_tokens=0)
+
+
 def test_get_appends_asset_path_for_large_asset(tmp_vault):
     """When has_asset is a list and asset is large/binary, path reference is appended."""
     loci_root = tmp_vault.parent

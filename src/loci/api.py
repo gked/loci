@@ -11,6 +11,7 @@ Internal implementation lives in tools/. This module is the public facade.
 
 import contextlib
 import functools
+import hashlib
 import io
 import logging
 import re
@@ -37,6 +38,7 @@ from loci.tools.frontmatter import load_frontmatter, split_frontmatter
 from loci.tools import nx_graph as graph
 from loci.tools import tag_hygiene
 from loci.tools import fs_retry, node_merge, vault_history
+from loci.tools.markdown_sections import split_markdown_sections
 from loci.tools.vault_files import is_appledouble
 from loci.tools.vault_linter import lint_vault as _lint_vault
 from loci.tools import asset_registry as ar
@@ -418,7 +420,7 @@ def check_duplicate(type: str, title: str, url: str = None) -> dict:
     return {"duplicate": False}
 
 
-def get(path: str, commit: str = None) -> str:
+def get(path: str, commit: Optional[str] = None) -> str:
     """
     Read a vault file. Accepts an absolute path, a path relative to vault_root,
     or an 8-character hex UID.
@@ -479,6 +481,111 @@ def get(path: str, commit: str = None) -> str:
                 text += f"\n\nasset_content: null\nasset_error: {err_msg}"
 
     return text
+
+
+def _context_char_limit(max_tokens: int) -> int:
+    """Translate a rough token budget into a conservative text-size limit.
+
+    This is a model-independent estimate (four characters per token), not a
+    tokenizer guarantee. It is used only to choose between a full read and an
+    outline, and to keep individual heading chunks bounded.
+    """
+    if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens < 1:
+        raise ValueError("max_tokens must be a positive integer")
+    return max_tokens * 4
+
+
+def _chunk_excerpt(text: str, limit: int = 180) -> str:
+    """Return a compact preview, omitting a leading Markdown heading."""
+    lines = text.strip().splitlines()
+    if lines and re.match(r"^ {0,3}#{1,6}(?:[ \t]+|$)", lines[0]):
+        lines = lines[1:]
+    excerpt = " ".join(" ".join(lines).split())
+    if len(excerpt) > limit:
+        return excerpt[:limit].rstrip() + "…"
+    return excerpt
+
+
+def _node_context_text(text: str) -> tuple[dict, str]:
+    """Return parsed frontmatter and body for a note read or history snapshot."""
+    frontmatter, body = load_frontmatter(text)
+    return frontmatter or {}, body
+
+
+def get_context(path: str, max_tokens: int = 4000, commit: Optional[str] = None) -> dict:
+    """Read a node in full when small, or return its summary and chunk outline.
+
+    Token counts are approximate (characters divided by four), independent of
+    any particular model tokenizer. Large-node outlines include heading-aware
+    chunks and short excerpts; read selected content with get_chunk().
+    """
+    max_chars = _context_char_limit(max_tokens)
+    text = get(path, commit)
+    frontmatter, body = _node_context_text(text)
+    estimated_tokens = (len(text) + 3) // 4
+    result = {
+        "mode": "full" if len(text) <= max_chars else "outline",
+        "uid": frontmatter.get("uid"),
+        "title": frontmatter.get("title", ""),
+        "summary": frontmatter.get("summary", ""),
+        "size_chars": len(text),
+        "estimated_tokens": estimated_tokens,
+        "max_tokens": max_tokens,
+    }
+    if result["mode"] == "full":
+        result["content"] = text
+        return result
+
+    chunks = split_markdown_sections(body, max_chars)
+    if not chunks:
+        chunks = split_markdown_sections(text, max_chars)
+    result["content_hash"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    result["chunks"] = [
+        {
+            "id": chunk["id"],
+            "heading_path": chunk["heading_path"],
+            "part": chunk["part"],
+            "parts": chunk["parts"],
+            "estimated_tokens": chunk["estimated_tokens"],
+            "excerpt": _chunk_excerpt(chunk["text"]),
+        }
+        for chunk in chunks
+    ]
+    return result
+
+
+def get_chunk(
+    path: str,
+    chunk_id: str,
+    content_hash: str,
+    max_tokens: int = 4000,
+    commit: Optional[str] = None,
+) -> dict:
+    """Read one chunk from an outline, rejecting stale outline references."""
+    max_chars = _context_char_limit(max_tokens)
+    text = get(path, commit)
+    current_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    if current_hash != content_hash:
+        raise ValueError("Node changed since the outline was created; request a new outline")
+
+    frontmatter, body = _node_context_text(text)
+    chunks = split_markdown_sections(body, max_chars)
+    if not chunks:
+        chunks = split_markdown_sections(text, max_chars)
+    for chunk in chunks:
+        if chunk["id"] == chunk_id:
+            return {
+                "chunk_id": chunk_id,
+                "uid": frontmatter.get("uid"),
+                "title": frontmatter.get("title", ""),
+                "summary": frontmatter.get("summary", ""),
+                "heading_path": chunk["heading_path"],
+                "part": chunk["part"],
+                "parts": chunk["parts"],
+                "estimated_tokens": chunk["estimated_tokens"],
+                "content": chunk["text"],
+            }
+    raise ValueError(f"Unknown chunk id for this node: {chunk_id}")
 
 
 def resolve_asset(uid: str, format: str = None) -> dict:
