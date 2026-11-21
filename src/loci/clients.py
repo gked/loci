@@ -17,6 +17,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -49,10 +50,29 @@ def packaged_skill_names() -> frozenset[str]:
     )
 
 
+def _on_windows() -> bool:
+    return sys.platform == "win32"
+
+
+def _windows_dir(var: str, *fallback: str) -> Path:
+    """`%LOCALAPPDATA%` / `%APPDATA%`, or the profile-relative default when unset."""
+    value = os.environ.get(var, "").strip()
+    return Path(value) if value else Path.home().joinpath("AppData", *fallback)
+
+
 def _hermes_home() -> Path:
-    # Profiles move the whole tree, so HERMES_HOME wins over ~/.hermes.
+    """Where Hermes keeps its state, resolved the way Hermes itself does.
+
+    `HERMES_HOME` wins (profiles move the whole tree). Otherwise native
+    Windows Hermes lives in `%LOCALAPPDATA%\\hermes`, not `~/.hermes`: skills
+    written to the latter are never read. Everywhere else it is `~/.hermes`.
+    """
     override = os.environ.get("HERMES_HOME", "").strip()
-    return Path(override).expanduser() if override else Path.home() / ".hermes"
+    if override:
+        return Path(override).expanduser()
+    if _on_windows():
+        return _windows_dir("LOCALAPPDATA", "Local") / "hermes"
+    return Path.home() / ".hermes"
 
 
 @dataclass(frozen=True)
@@ -283,6 +303,9 @@ def register_mcp(
 
 
 def claude_desktop_config() -> Path:
+    """Claude Desktop's config file: `%APPDATA%\\Claude` on Windows, else macOS's."""
+    if _on_windows():
+        return _windows_dir("APPDATA", "Roaming") / "Claude" / "claude_desktop_config.json"
     return Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
 
 
@@ -310,7 +333,8 @@ def register_claude_desktop(
         return True, "already registered"
     servers["loci"] = {"command": shutil.which(command) or command, "args": args or []}
     try:
-        path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(json.dumps(config, indent=2))
     except OSError as e:
         return False, f"could not write {path}: {e}"
     return True, f"registered ({path}). Restart Claude Desktop."

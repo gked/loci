@@ -7,7 +7,7 @@ is how an agent learns the skills exist. Each packaged skill
 (`loci/skills/<name>/SKILL.md`) is the procedure the MCP server serves through
 `read_skill`, assembled with the user's own additions from the vault (see
 skill_assembly.py). What goes into `<skills dir>/<name>/SKILL.md` (for Claude
-Code, `~/.claude/skills/`; for Hermes, `~/.hermes/skills/`) is not that file but
+Code, `~/.claude/skills/`; for Hermes, `~/.hermes/skills/`, or `%LOCALAPPDATA%\\hermes\\skills\\` on Windows) is not that file but
 a stub generated from it: the same frontmatter — name and the trigger
 description the agent matches on — over a body that says "call the
 `read_skill` tool and follow what it returns" (spelled the way that agent names
