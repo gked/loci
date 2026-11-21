@@ -67,6 +67,14 @@ def _vault_dir_mtime(vault_root: Path) -> float:
     A note's `st_ctime` counts where it is the inode change time (POSIX), so an
     edit that restores the old mtime (rsync -t) is still seen. On Windows it is
     the creation time and adds nothing; there such an edit goes unnoticed here.
+
+    Limits, all pre-existing in kind:
+    - Depth: only the vault folder and its immediate subfolders are watched,
+      while `_build` reads the whole tree (`rglob`), so a change in a folder two
+      levels down is still not seen.
+    - Cost grows with the number of notes: about 2 ms for 1,000, about 35 ms
+      for 10,000 (a Mac), paid by every `get()`.
+    - One watermark: see `mark_fresh` for what it cannot tell apart.
     """
     use_ctime = vault_history._ctime_is_change_time()
 
@@ -77,9 +85,12 @@ def _vault_dir_mtime(vault_root: Path) -> float:
     folders = [vault_root]
     with os.scandir(vault_root) as entries:
         for entry in entries:
-            if entry.is_dir():
-                folders.append(Path(entry.path))
-                latest = max(latest, entry.stat().st_mtime)
+            try:
+                if entry.is_dir():
+                    folders.append(Path(entry.path))
+                    latest = max(latest, entry.stat().st_mtime)
+            except OSError:
+                continue    # the folder went away between listing and stat
     for folder in folders:
         try:
             with os.scandir(folder) as entries:
@@ -218,11 +229,17 @@ def mark_fresh(vault_root: Path) -> None:
     after a save re-parsed the whole vault, even though index_node had just
     applied that very write. Callers that write a file and then index it
     call this last; the graph stays incremental across a batch ingest.
-    Another process writing within the same mtime tick goes unnoticed, as
-    it already did between one get() and the next."""
+    The graph keeps one watermark, so this cannot tell this process's write
+    from another process's edit that landed between the last get() and now:
+    if note A was edited elsewhere and this process then saves note B, the
+    watermark moves past A's edit too and A is not re-read until the next
+    change, or until the file watcher calls invalidate() (the UI server runs
+    one). Another process writing within the same timestamp tick goes
+    unnoticed as well."""
     global _built_at
-    if _graph is not None and _vault_root == vault_root:
-        _built_at = max(_built_at, _vault_dir_mtime(vault_root))
+    with _lock:
+        if _graph is not None and _vault_root == vault_root:
+            _built_at = max(_built_at, _vault_dir_mtime(vault_root))
 
 
 def invalidate() -> None:
