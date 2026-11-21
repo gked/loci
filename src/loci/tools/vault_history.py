@@ -562,14 +562,22 @@ def _incoming(
     for a file to take, key -> None for one to drop. None when any of those
     changes has not reached the vault, or when it clashes with the write in
     progress. Joining a line before it has fully arrived would let a later
-    three-way merge mistake the missing change for a revert. `settled` names
+    three-way merge mistake the missing change for a revert. A file the other
+    line deleted and this line edited keeps the edit once the edit is recorded;
+    an edit still unrecorded holds the join back until the next write records
+    it. `settled` names
     files whose changes on that line a merge has just taken in by hand: the disk
     holds the merge result, not their blob, and that is not a missing change."""
     bases = find_merge_base(repo, [head, tip])
     base_tree = repo.object_store[bases[0]].tree if bases else None
     theirs: dict[bytes, Optional[bytes]] = {}
+    deleted: dict[bytes, bytes] = {}    # key -> the blob the other line deleted
     for change in tree_changes(repo.object_store, base_tree, repo.object_store[tip].tree):
-        theirs[change.new.path or change.old.path] = change.new.sha
+        # A file the other line deleted has no new side: take it in as a delete.
+        key = (change.new or change.old).path
+        theirs[key] = change.new.sha if change.new else None
+        if not change.new:
+            deleted[key] = change.old.sha
     for key in settled:
         theirs.pop(key, None)
     if skip & theirs.keys():
@@ -583,8 +591,13 @@ def _incoming(
             take[key] = blob
         else:
             have = entries.get(key, (None, None))[1]
-        if have != sha:
-            return None
+        if have == sha:
+            continue
+        if key in deleted and key not in on_disk and have not in (None, deleted[key]):
+            # The other line deleted a file this line edited, and the edit is
+            # already recorded: the edit wins. Join the line and leave the file.
+            continue
+        return None
     return take
 
 

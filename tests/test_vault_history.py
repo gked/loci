@@ -76,7 +76,7 @@ def files_changed(vault, commit):
     r = repo(vault)
     parent_tree = r[commit.parents[0]].tree if commit.parents else None
     return sorted(
-        (c.new.path or c.old.path).decode() for c in tree_changes(r.object_store, parent_tree, commit.tree)
+        (c.new or c.old).path.decode() for c in tree_changes(r.object_store, parent_tree, commit.tree)
     )
 
 
@@ -1747,6 +1747,75 @@ def test_the_merge_commit_holds_exactly_what_the_other_computer_changed(tmp_vaul
     found = branches(tmp_vault)
     merge = repo(tmp_vault)[repo(tmp_vault)[found[a]].parents[0]]
     assert files_changed(tmp_vault, merge) == [rel(tmp_vault, beta)]
+
+
+def test_a_file_the_other_computer_deleted_is_part_of_the_merge(tmp_vault, as_computer):
+    a = as_computer("a")
+    alpha = save("Alpha")
+    b = as_computer("b")
+    beta = save("Beta")
+    api.delete(alpha["uid"])                             # B deletes what A's line still holds
+    as_computer("a")                                     # the sync tool has copied B's files and the delete over
+
+    save("Gamma")
+
+    found = branches(tmp_vault)
+    merge = repo(tmp_vault)[repo(tmp_vault)[found[a]].parents[0]]
+    assert merge.message.decode().splitlines()[0] == f"Synced from {b.decode()}"
+    assert merge.parents[1] == found[b]
+    assert files_changed(tmp_vault, merge) == sorted([rel(tmp_vault, alpha), rel(tmp_vault, beta)])
+    assert vault_history.OUTSIDE_MESSAGE not in subjects(tmp_vault)
+    assert vault_history.status(tmp_vault).get("error") is None
+
+
+def test_a_delete_is_not_joined_until_it_has_reached_the_vault(tmp_vault, as_computer):
+    a = as_computer("a")
+    alpha = save("Alpha")
+    text = Path(alpha["path"]).read_bytes()              # bytes: a text round trip would turn LF into CRLF on Windows
+    b = as_computer("b")
+    save("Beta")
+    api.delete(alpha["uid"])                             # B deletes Alpha
+    as_computer("a")
+    gone = Path(alpha["path"])
+    gone.write_bytes(text)                               # the sync tool has not removed Alpha on A yet
+
+    save("Gamma")
+
+    assert f"Synced from {b.decode()}" not in subjects(tmp_vault)   # a missing delete is not a revert
+
+    gone.unlink()                                        # now the delete arrives
+    save("Delta")
+
+    merge = next(c for c in commits(tmp_vault) if c.message.decode().startswith("Synced from"))
+    assert merge.parents[1] == branches(tmp_vault)[b]
+    assert rel(tmp_vault, alpha) in files_changed(tmp_vault, merge)
+
+
+def test_a_file_edited_here_and_deleted_there_keeps_the_edit_and_joins_the_line(tmp_vault, as_computer):
+    a = as_computer("a")
+    alpha = save("Alpha")
+    path = Path(alpha["path"])
+    b = as_computer("b")
+    save("Beta")
+    api.delete(alpha["uid"])                             # B deletes Alpha
+    as_computer("a")
+    assert not path.exists()                             # the delete has reached this computer's folder
+    path.write_bytes(b"---\nuid: " + alpha["uid"].encode() + b"\n---\nedited on A\n")   # A edited Alpha meanwhile
+
+    save("Gamma")
+
+    assert f"Synced from {b.decode()}" not in subjects(tmp_vault)   # the edit is not recorded yet: hold the join
+    assert vault_history.OUTSIDE_MESSAGE in subjects(tmp_vault)      # now it is
+
+    save("Delta")
+
+    merge = next(c for c in commits(tmp_vault) if c.message.decode().startswith("Synced from"))
+    assert merge.parents[1] == branches(tmp_vault)[b]
+    assert path.read_bytes().endswith(b"edited on A\n")              # the edit survives
+    head = repo(tmp_vault)[branches(tmp_vault)[a]]
+    tree_paths = {c.new.path.decode() for c in tree_changes(repo(tmp_vault).object_store, None, head.tree)}
+    assert rel(tmp_vault, alpha) in tree_paths
+    assert vault_history.status(tmp_vault).get("error") is None
 
 
 def test_a_local_edit_made_while_files_arrive_is_still_an_outside_edit(tmp_vault, as_computer):
