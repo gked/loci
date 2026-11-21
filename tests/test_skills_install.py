@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from loci import skills_install
+from loci import clients, skills_install
 from loci.http_server import split_command
 
 
@@ -449,3 +449,77 @@ def test_serving_arguments_are_untouched():
     assert split_command(["--host", "0.0.0.0", "--port", "9000"]) == (
         None, ["--host", "0.0.0.0", "--port", "9000"]
     )
+
+
+def _busy_replace(monkeypatch, times):
+    """os.replace refuses `times` times (the file is open elsewhere), then works."""
+    real = skills_install.os.replace
+    calls = []
+
+    def replace(src, dst):
+        calls.append(1)
+        if len(calls) <= times:
+            raise PermissionError(13, "Access is denied")
+        return real(src, dst)
+
+    monkeypatch.setattr(skills_install.os, "replace", replace)
+    monkeypatch.setattr("time.sleep", lambda s: None)      # by name: valid whatever skills_install imports
+    return calls
+
+
+def test_replacing_a_stub_that_is_briefly_in_use_is_retried_on_windows(tmp_path, monkeypatch):
+    root = tmp_path / "skills"
+    skills_install.install_all(root, client=clients.CLAUDE)               # stubs exist: the next install replaces them
+    stub = root / "loci-save" / "SKILL.md"
+    stub.write_text("old", encoding="utf-8")
+    monkeypatch.setattr(skills_install.sys, "platform", "win32")
+    calls = _busy_replace(monkeypatch, times=3)
+
+    skills_install.install_all(root, client=clients.CLAUDE)
+
+    assert len(calls) > 3
+    assert stub.read_text(encoding="utf-8") != "old"
+
+
+def test_a_stub_that_stays_in_use_still_raises_after_the_retries(tmp_path, monkeypatch):
+    root = tmp_path / "skills"
+    skills_install.install_all(root, client=clients.CLAUDE)
+    (root / "loci-save" / "SKILL.md").write_text("old", encoding="utf-8")
+    monkeypatch.setattr(skills_install.sys, "platform", "win32")
+    calls = _busy_replace(monkeypatch, times=10_000)
+    with pytest.raises(PermissionError):
+        skills_install.install_all(root, client=clients.CLAUDE)
+    assert len(calls) == skills_install._REPLACE_ATTEMPTS      # the bound is the bound
+
+
+def test_a_permission_error_is_not_retried_off_windows(tmp_path, monkeypatch):
+    root = tmp_path / "skills"
+    skills_install.install_all(root, client=clients.CLAUDE)
+    (root / "loci-save" / "SKILL.md").write_text("old", encoding="utf-8")
+    monkeypatch.setattr(skills_install.sys, "platform", "linux")
+    calls = _busy_replace(monkeypatch, times=10_000)
+
+    with pytest.raises(PermissionError):
+        skills_install.install_all(root, client=clients.CLAUDE)
+    assert len(calls) == 1
+
+
+def test_a_leftover_file_that_is_in_use_does_not_fail_the_install(tmp_path, monkeypatch):
+    """Older installs copied the whole skill folder; removing those leftovers is
+    housekeeping, so a file an agent holds open (PermissionError on Windows) is
+    left for the next run instead of failing `loci skills`."""
+    root = tmp_path / "skills"
+    skills_install.install_all(root, client=clients.CLAUDE)
+    leftover = root / "loci-save" / "old-reference.md"
+    leftover.write_text("legacy", encoding="utf-8")
+    (root / "loci-save" / "SKILL.md").write_text("stale", encoding="utf-8")   # so the install rewrites it
+    real_unlink = Path.unlink
+
+    def busy(self, *a, **k):
+        if self.name == "old-reference.md":
+            raise PermissionError(13, "Access is denied")
+        return real_unlink(self, *a, **k)
+
+    monkeypatch.setattr(Path, "unlink", busy)
+    skills_install.install_all(root, client=clients.CLAUDE)          # must not raise
+    assert (root / "loci-save" / "SKILL.md").is_file()

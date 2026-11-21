@@ -435,59 +435,6 @@ def test_losing_the_rename_to_a_concurrent_install_is_not_an_error(tmp_path, mon
     assert (status.dest / "SKILL.md").is_file()
 
 
-def _busy_replace(monkeypatch, times):
-    """os.replace refuses `times` times (the file is open elsewhere), then works."""
-    real = skills_install.os.replace
-    calls = []
-
-    def replace(src, dst):
-        calls.append(1)
-        if len(calls) <= times:
-            raise PermissionError(13, "Access is denied")
-        return real(src, dst)
-
-    monkeypatch.setattr(skills_install.os, "replace", replace)
-    monkeypatch.setattr(skills_install.time, "sleep", lambda s: None)
-    return calls
-
-
-def test_replacing_a_stub_that_is_briefly_in_use_is_retried_on_windows(tmp_path, monkeypatch):
-    root = tmp_path / "skills"
-    skills_install.install_all(root, client=CLAUDE)               # stubs exist: the next install replaces them
-    stub = root / "loci-save" / "SKILL.md"
-    stub.write_text("old", encoding="utf-8")
-    monkeypatch.setattr(skills_install.sys, "platform", "win32")
-    calls = _busy_replace(monkeypatch, times=3)
-
-    skills_install.install_all(root, client=CLAUDE)
-
-    assert len(calls) > 3
-    assert stub.read_text(encoding="utf-8") != "old"
-
-
-def test_a_stub_that_stays_in_use_still_raises_after_the_retries(tmp_path, monkeypatch):
-    root = tmp_path / "skills"
-    skills_install.install_all(root, client=CLAUDE)
-    (root / "loci-save" / "SKILL.md").write_text("old", encoding="utf-8")
-    monkeypatch.setattr(skills_install.sys, "platform", "win32")
-    _busy_replace(monkeypatch, times=10_000)
-
-    with pytest.raises(PermissionError):
-        skills_install.install_all(root, client=CLAUDE)
-
-
-def test_a_permission_error_is_not_retried_off_windows(tmp_path, monkeypatch):
-    root = tmp_path / "skills"
-    skills_install.install_all(root, client=CLAUDE)
-    (root / "loci-save" / "SKILL.md").write_text("old", encoding="utf-8")
-    monkeypatch.setattr(skills_install.sys, "platform", "linux")
-    calls = _busy_replace(monkeypatch, times=10_000)
-
-    with pytest.raises(PermissionError):
-        skills_install.install_all(root, client=CLAUDE)
-    assert len(calls) == 1
-
-
 @pytest.fixture
 def desktop(fake_home, monkeypatch):
     path = fake_home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
