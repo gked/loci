@@ -36,7 +36,7 @@ from loci.tools.relation_registry import get_relation_registry
 from loci.tools.frontmatter import load_frontmatter, split_frontmatter
 from loci.tools import nx_graph as graph
 from loci.tools import tag_hygiene
-from loci.tools import node_merge, vault_history
+from loci.tools import fs_retry, node_merge, vault_history
 from loci.tools.vault_files import is_appledouble
 from loci.tools.vault_linter import lint_vault as _lint_vault
 from loci.tools import asset_registry as ar
@@ -1044,7 +1044,7 @@ def _rewrite_yaml_entries(path: Path, list_key: str, change) -> None:
         allow_unicode=True,
         sort_keys=False,
     )
-    path.write_text(header + dumped, encoding="utf-8", newline="\n")
+    fs_retry.write_utf8(path, header + dumped)
 
 
 def _append_yaml_entry(path: Path, list_key: str, entry: dict) -> None:
@@ -1457,7 +1457,7 @@ def write_meta(file: str, content: str) -> str:
     # rather than failing the write with a bare FileNotFoundError.
     p.parent.mkdir(parents=True, exist_ok=True)
     _before_write(p)
-    p.write_text(content, encoding="utf-8", newline="\n")
+    fs_retry.write_utf8(p, content)
     _record(f"Update meta: {file}", p)
     return str(p)
 
@@ -1640,10 +1640,10 @@ def _apply_files(writes: dict, message: str, into: dict, settled=()) -> None:
     try:
         for p, data in writes.items():
             if data is None:
-                p.unlink(missing_ok=True)
+                fs_retry.unlink(p)
             else:
                 p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_bytes(data)
+                fs_retry.write_bytes(p, data)
         _record(message, *writes, into=into, settled=settled)
         # No commit is normal when the write changed no bytes. History says it
         # failed by flagging an error, and then the change must not stand. An
@@ -1659,10 +1659,10 @@ def _apply_files(writes: dict, message: str, into: dict, settled=()) -> None:
         for p, data in before.items():
             try:
                 if data is None:
-                    p.unlink(missing_ok=True)
+                    fs_retry.unlink(p)
                 else:
                     p.parent.mkdir(parents=True, exist_ok=True)
-                    p.write_bytes(data)
+                    fs_retry.write_bytes(p, data)
             except OSError as e:
                 log.error("could not put %s back after a failed write: %s", p, e)
         for folder in sorted(set(made), key=lambda d: len(d.parts), reverse=True):

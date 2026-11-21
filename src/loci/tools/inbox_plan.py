@@ -11,6 +11,8 @@ from pathlib import Path
 
 import yaml
 
+from loci.tools import fs_retry
+
 
 PLAN_FILENAME = ".inbox-plan.yaml"
 _LOCK_FILENAME = ".inbox-plan.lock"
@@ -75,8 +77,8 @@ def _plan_lock(stage_root: Path):
 def _atomic_write(path: Path, content: str) -> None:
     """Write content to a temp file then rename over target (atomic on POSIX)."""
     tmp = path.with_suffix(".yaml.tmp")
-    tmp.write_text(content, encoding="utf-8")
-    os.replace(tmp, path)
+    fs_retry.write_utf8(tmp, content)
+    fs_retry.replace(tmp, path)
 
 
 def plan_path(stage_root: Path) -> Path:
