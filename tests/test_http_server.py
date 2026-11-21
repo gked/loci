@@ -13,6 +13,18 @@ from loci import api as vault_api
 from loci.tools import vault_init
 from loci.http_server import _parse_file
 
+# An absolute path needs a drive letter on Windows; "/Users/..." is relative there.
+if sys.platform == "win32":
+    ABS = "C:/Users/example"
+    FILE_URI_ROOT = "file:///C:/Users/example"
+    LOCALHOST_URI_ROOT = "file://localhost/C:/Users/example"
+    ABS_TMP = "C:/tmp"
+else:
+    ABS = "/Users/example"
+    FILE_URI_ROOT = "file:///Users/example"
+    LOCALHOST_URI_ROOT = "file://localhost/Users/example"
+    ABS_TMP = "/tmp"
+
 
 class TestParseFilePlain:
     def test_no_frontmatter_returns_raw_as_body(self):
@@ -127,11 +139,11 @@ class TestLocalPath:
     @pytest.mark.parametrize(
         ("raw", "expected"),
         [
-            ("/Users/example/My File.pdf", Path("/Users/example/My File.pdf")),
-            ("file:///Users/example/My%20File.pdf", Path("/Users/example/My File.pdf")),
-            ("file://localhost/Users/example/note.txt", Path("/Users/example/note.txt")),
+            (f"{ABS}/My File.pdf", Path(f"{ABS}/My File.pdf")),
+            (f"{FILE_URI_ROOT}/My%20File.pdf", Path(f"{ABS}/My File.pdf")),
+            (f"{LOCALHOST_URI_ROOT}/note.txt", Path(f"{ABS}/note.txt")),
             # Already decoded by Starlette — a literal '%' must survive intact.
-            ("/Users/example/Report%20v2.pdf", Path("/Users/example/Report%20v2.pdf")),
+            (f"{ABS}/Report%20v2.pdf", Path(f"{ABS}/Report%20v2.pdf")),
         ],
     )
     def test_accepts_local_paths(self, raw, expected):
@@ -175,19 +187,19 @@ class TestOpenLocalPath:
             patch.object(http_server, "_launch_system_handler") as launch,
         ):
             result = http_server.open_local_path(
-                "/Users/example/My File.pdf",
+                f"{ABS}/My File.pdf",
                 origin="http://localhost:5173",
                 x_loci_token=TOKEN,
             )
 
-        assert result == {"opened": "/Users/example/My File.pdf"}
-        launch.assert_called_once_with(Path("/Users/example/My File.pdf"))
+        assert result == {"opened": str(Path(f"{ABS}/My File.pdf"))}
+        launch.assert_called_once_with(Path(f"{ABS}/My File.pdf"))
 
     def test_rejects_missing_paths(self, auth):
         with patch.object(Path, "exists", return_value=False):
             with pytest.raises(http_server.HTTPException) as exc_info:
                 http_server.open_local_path(
-                    "/missing/file.txt",
+                    f"{ABS}/missing/file.txt",
                     origin="http://localhost:5173",
                     x_loci_token=TOKEN,
                 )
@@ -201,7 +213,7 @@ class TestOpenLocalAuth:
     reachable from any page other than this app's own frontend.
     """
 
-    def _post(self, client, path="/tmp/f.txt", **headers):
+    def _post(self, client, path=f"{ABS_TMP}/f.txt", **headers):
         with (
             patch.object(Path, "exists", return_value=True),
             patch.object(http_server, "_launch_system_handler") as launch,

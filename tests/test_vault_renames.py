@@ -4,6 +4,8 @@ new.md" commit, and the history of the node (by uid) joins the commits of every
 path the note has had.
 """
 
+import sys
+
 import pytest
 
 from loci import api
@@ -150,6 +152,7 @@ def test_the_history_by_an_old_path_spans_the_rename(tmp_vault):
     assert subjects(tmp_vault, path.name) == subjects(tmp_vault, uid)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="NTFS cannot hold a newline in a file name")
 def test_a_new_name_with_a_newline_keeps_the_subject_on_one_line(tmp_vault):
     uid, path = node(tmp_vault, "Odd name")
     new = path.with_name("odd\nname.md")

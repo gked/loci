@@ -1108,4 +1108,4 @@ def test_read_skill_defaults_to_loci_save(tmp_vault):
 def test_write_skill_defaults_to_loci_save(tmp_vault):
     path = api.write_skill("- rule\n")
 
-    assert path.endswith("skills/loci-save.md")
+    assert Path(path).parts[-2:] == ("skills", "loci-save.md")      # native separators on Windows

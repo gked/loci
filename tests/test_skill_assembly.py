@@ -50,7 +50,7 @@ def test_read_skill_returns_procedure_then_additions(tmp_vault, skill):
     out = api.read_skill(skill)
 
     procedure = skill_assembly.split_frontmatter(
-        skill_assembly.canonical_path(skill).read_text()
+        skill_assembly.canonical_path(skill).read_text(encoding="utf-8")
     )[1].strip()
     assert procedure in out
     assert out.index(procedure) < out.index(f"# {skill_assembly.OVERLAY_HEADING}")
@@ -67,7 +67,7 @@ def test_read_skill_strips_the_frontmatter():
 
 def test_read_skill_appends_the_vault_overlay(tmp_vault):
     _overlay(tmp_vault).parent.mkdir()
-    _overlay(tmp_vault).write_text("# mine\n\n- Always tag meeting notes #meeting.\n")
+    _overlay(tmp_vault).write_text("# mine\n\n- Always tag meeting notes #meeting.\n", encoding="utf-8", newline="\n")
 
     out = api.read_skill("loci-save")
 
@@ -83,7 +83,7 @@ def test_read_skill_falls_back_to_the_seed_when_the_vault_has_no_overlay(tmp_vau
 
     out = api.read_skill("loci-save")
 
-    seed = (REFERENCES_DIR / "loci-save-user.md").read_text().strip()
+    seed = (REFERENCES_DIR / "loci-save-user.md").read_text(encoding="utf-8").strip()
     assert seed in out
 
 
@@ -105,7 +105,7 @@ def test_read_skill_labels_the_seed_fallback_as_not_the_vault_file(tmp_vault):
 
 def test_read_skill_labels_a_real_overlay_as_the_vault_file(tmp_vault):
     _overlay(tmp_vault).parent.mkdir()
-    _overlay(tmp_vault).write_text("# mine\n")
+    _overlay(tmp_vault).write_text("# mine\n", encoding="utf-8", newline="\n")
 
     out = api.read_skill("loci-save")
     heading = next(l for l in out.splitlines() if l.startswith(f"# {skill_assembly.OVERLAY_HEADING}"))
@@ -174,13 +174,13 @@ def test_read_skill_without_a_vault_says_so(monkeypatch, tmp_path):
 
 def test_write_skill_writes_the_overlay_and_only_the_overlay(tmp_vault):
     canonical = skill_assembly.canonical_path("loci-save")
-    before = canonical.read_text()
+    before = canonical.read_text(encoding="utf-8")
 
     path = api.write_skill("# mine\n\n- rule one\n", "loci-save")
 
     assert Path(path) == _overlay(tmp_vault)
-    assert _overlay(tmp_vault).read_text() == "# mine\n\n- rule one\n"
-    assert canonical.read_text() == before
+    assert _overlay(tmp_vault).read_text(encoding="utf-8") == "# mine\n\n- rule one\n"
+    assert canonical.read_text(encoding="utf-8") == before
 
 
 def test_write_skill_is_visible_on_the_next_read(tmp_vault):
@@ -194,21 +194,21 @@ def test_write_skill_creates_meta_if_missing(tmp_vault):
 
     api.write_skill("- rule one\n", "loci-inbox")
 
-    assert _overlay(tmp_vault, "loci-inbox").read_text() == "- rule one\n"
+    assert _overlay(tmp_vault, "loci-inbox").read_text(encoding="utf-8") == "- rule one\n"
 
 
 def test_write_skill_replaces_by_default(tmp_vault):
     api.write_skill("- rule one\n", "loci-save")
     api.write_skill("- rule two\n", "loci-save")
 
-    assert _overlay(tmp_vault).read_text() == "- rule two\n"
+    assert _overlay(tmp_vault).read_text(encoding="utf-8") == "- rule two\n"
 
 
 def test_write_skill_append_keeps_what_was_there(tmp_vault):
     api.write_skill("- rule one", "loci-save")
     api.write_skill("- rule two\n", "loci-save", append=True)
 
-    assert _overlay(tmp_vault).read_text() == "- rule one\n\n- rule two\n"
+    assert _overlay(tmp_vault).read_text(encoding="utf-8") == "- rule one\n\n- rule two\n"
 
 
 def test_write_skill_append_to_an_unseeded_vault_starts_from_the_seed(tmp_vault):
@@ -217,7 +217,7 @@ def test_write_skill_append_to_an_unseeded_vault_starts_from_the_seed(tmp_vault)
     the explanation of what the file is for."""
     api.write_skill("- rule one\n", "loci-save", append=True)
 
-    text = _overlay(tmp_vault).read_text()
+    text = _overlay(tmp_vault).read_text(encoding="utf-8")
     assert text.startswith("# loci-save — your additions")
     assert text.rstrip().endswith("- rule one")
 
@@ -238,7 +238,7 @@ def test_overlay_seed_carries_no_rules(skill):
     """The seed is appended to the skill verbatim, so anything instruction-
     shaped in it is a rule the user never wrote. Explanation and an empty
     section, nothing else — examples belong in the docs."""
-    seed = (REFERENCES_DIR / skill_assembly.seed_filename(skill)).read_text()
+    seed = (REFERENCES_DIR / skill_assembly.seed_filename(skill)).read_text(encoding="utf-8")
 
     rules = seed.split("## Rules", 1)[1].strip()
     assert rules == "_None yet._"

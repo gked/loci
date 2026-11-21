@@ -8,6 +8,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -346,6 +347,7 @@ def test_litter_and_the_store_itself_are_never_recorded(tmp_vault):
     assert vault_history.record(tmp_vault, "swap", [tmp_vault / "draft.swp"]) is None
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="NTFS cannot hold a * in a file name")
 def test_a_glob_in_a_filename_commits_only_that_file(tmp_vault):
     save("History One")
     (tmp_vault / "Q1 notes.md").write_text("a")
@@ -1501,14 +1503,14 @@ def test_a_restore_that_fails_after_saving_outside_edits_says_so(tmp_vault, monk
 def test_a_lock_file_that_cannot_be_opened_stops_an_undo(tmp_vault, monkeypatch):
     saved = save("History One")
     api.patch(saved["uid"], {}, body="oops")
-    real = os.open
+    real = vault_history.FileLock.acquire
 
-    def refuse(file, *a, **k):                      # filelock opens the lock file with os.open
-        if str(file).endswith("undo.lock"):
+    def refuse(lock, *a, **k):          # not os.open: filelock opens the file its own way on Windows
+        if str(lock.lock_file).endswith("undo.lock"):
             raise OSError("read-only")
-        return real(file, *a, **k)
+        return real(lock, *a, **k)
 
-    monkeypatch.setattr(os, "open", refuse)
+    monkeypatch.setattr(vault_history.FileLock, "acquire", refuse)
     with pytest.raises(vault_history.HistoryError, match="write lock cannot be opened"):
         api.undo_last_change()
     assert "oops" in api.get(saved["uid"])
@@ -1724,7 +1726,7 @@ def test_another_computers_line_is_not_joined_until_all_of_it_has_arrived(tmp_va
     second = save("Delta")
     as_computer("a")
     held_back = Path(second["path"])
-    text = held_back.read_text()
+    text = held_back.read_bytes()                        # bytes: a text round trip would turn LF into CRLF on Windows
     held_back.unlink()                                   # the sync tool has not delivered it yet
 
     save("Gamma")
@@ -1732,7 +1734,7 @@ def test_another_computers_line_is_not_joined_until_all_of_it_has_arrived(tmp_va
     assert f"Synced from {b.decode()}" not in subjects(tmp_vault)
     assert vault_history.OUTSIDE_MESSAGE in subjects(tmp_vault)   # Beta is recorded as what it looks like
 
-    held_back.write_text(text)                           # now it arrives
+    held_back.write_bytes(text)                          # now it arrives
     save("Epsilon")
 
     merge = next(c for c in commits(tmp_vault) if c.message.decode().startswith("Synced from"))

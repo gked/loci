@@ -70,7 +70,7 @@ def test_not_configured_message_tells_the_model_to_ask(unconfigured):
 def test_configured_but_missing_directory_is_unreachable(monkeypatch, tmp_path):
     """A vault on an unmounted drive is a different problem from having none."""
     config = tmp_path / "config.yml"
-    config.write_text(yaml.dump({"vault_root": str(tmp_path / "gone")}))
+    config.write_text(yaml.dump({"vault_root": str(tmp_path / "gone")}), encoding="utf-8", newline="\n")
     monkeypatch.delenv("LOCI_VAULT_ROOT", raising=False)
     monkeypatch.setenv("LOCI_CONFIG", str(config))
 
@@ -170,8 +170,9 @@ def test_a_tilde_in_the_configured_root_is_expanded(monkeypatch, tmp_path):
     ./~/vault/meta relative to the process cwd.
     """
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))   # what Path.home() reads on Windows
     config = tmp_path / "config.yml"
-    config.write_text(yaml.dump({"vault_root": "~/vault"}))
+    config.write_text(yaml.dump({"vault_root": "~/vault"}), encoding="utf-8", newline="\n")
     monkeypatch.delenv("LOCI_VAULT_ROOT", raising=False)
     monkeypatch.setenv("LOCI_CONFIG", str(config))
     (tmp_path / "vault" / "meta").mkdir(parents=True)  # a vault due an upgrade
@@ -180,7 +181,7 @@ def test_a_tilde_in_the_configured_root_is_expanded(monkeypatch, tmp_path):
 
     assert (tmp_path / "vault" / "meta" / "ontology.yaml").exists()
     assert not Path("~").exists(), "reseeded into a literal ~ under the cwd"
-    assert yaml.safe_load(config.read_text())["vault_root"] == "~/vault"  # left as written
+    assert yaml.safe_load(config.read_text(encoding="utf-8"))["vault_root"] == "~/vault"  # left as written
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +204,7 @@ def test_set_vault_root_creates_seeds_and_records_in_one_call(unconfigured, tmp_
     assert result["created"] is True
     assert (target / "meta" / "ontology.yaml").exists()          # seeded
     assert (target / "meta" / vault_init.VERSION_MARKER).exists()  # versioned
-    saved = yaml.safe_load(config.read_text())
+    saved = yaml.safe_load(config.read_text(encoding="utf-8"))
     assert saved["vault_root"] == str(target)
     assert saved["meta_version"] == vault_init.META_VERSION
 
@@ -227,12 +228,12 @@ def test_set_vault_root_keeps_the_rest_of_the_config(unconfigured, tmp_path, mon
         "sync_remote": "nextcloud",
         "sync_remote_path": "loci",
         "created_at": "2026-01-01T00:00:00+00:00",
-    }))
+    }), encoding="utf-8", newline="\n")
     monkeypatch.setenv("LOCI_CONFIG", str(config))
 
     set_vault_root(str(tmp_path / "new"), create=True)
 
-    saved = yaml.safe_load(config.read_text())
+    saved = yaml.safe_load(config.read_text(encoding="utf-8"))
     assert saved["vault_root"] == str(tmp_path / "new")
     assert saved["sync_remote"] == "nextcloud"
     assert saved["created_at"] == "2026-01-01T00:00:00+00:00"  # first setup, not this one
@@ -301,13 +302,13 @@ def test_adopting_an_older_vault_upgrades_its_meta_files(unconfigured, tmp_path,
     vault = tmp_path / "vault"
     (vault / "meta").mkdir(parents=True)
     for name in vault_init.META_FILES:
-        (vault / "meta" / name).write_text("stale content from v5\n")
+        (vault / "meta" / name).write_text("stale content from v5\n", encoding="utf-8", newline="\n")
     vault_init.write_vault_meta_version(vault, 5)
 
     set_vault_root(str(vault), create=True)
 
-    ontology = (vault / "meta" / "ontology.yaml").read_text()
-    assert ontology == (vault_init.REFERENCES_DIR / "ontology.yaml").read_text()
+    ontology = (vault / "meta" / "ontology.yaml").read_text(encoding="utf-8")
+    assert ontology == (vault_init.REFERENCES_DIR / "ontology.yaml").read_text(encoding="utf-8")
     assert vault_init.read_vault_meta_version(vault) == vault_init.META_VERSION
     assert ensure_ready() is None  # nothing left for the next call to do
 
@@ -323,13 +324,13 @@ def test_adopting_an_unversioned_complete_vault_keeps_the_users_files(unconfigur
     (vault / "meta").mkdir(parents=True)
     for name in vault_init.META_FILES:
         (vault / "meta" / name).write_text(
-            (vault_init.REFERENCES_DIR / name).read_text()
-        )
-    (vault / "meta" / "type-dictionary.md").write_text("# my own types\n")
+            (vault_init.REFERENCES_DIR / name).read_text(encoding="utf-8")
+        , encoding="utf-8", newline="\n")
+    (vault / "meta" / "type-dictionary.md").write_text("# my own types\n", encoding="utf-8", newline="\n")
 
     set_vault_root(str(vault), create=True)
 
-    assert (vault / "meta" / "type-dictionary.md").read_text() == "# my own types\n"
+    assert (vault / "meta" / "type-dictionary.md").read_text(encoding="utf-8") == "# my own types\n"
     assert vault_init.read_vault_meta_version(vault) == vault_init.META_VERSION
 
 
@@ -347,7 +348,7 @@ def test_set_vault_root_migrates_a_legacy_config(tmp_path, monkeypatch):
         "sync_remote": "nextcloud",
         "sync_remote_path": "loci",
         "created_at": "2026-01-01T00:00:00+00:00",
-    }))
+    }), encoding="utf-8", newline="\n")
     monkeypatch.setattr(vault_init, "LEGACY_CONFIG_PATH", legacy)
     monkeypatch.delenv("LOCI_VAULT_ROOT", raising=False)
     monkeypatch.delenv("LOCI_CONFIG", raising=False)   # migration is skipped under it
@@ -355,7 +356,7 @@ def test_set_vault_root_migrates_a_legacy_config(tmp_path, monkeypatch):
 
     set_vault_root(str(tmp_path / "new"), create=True)
 
-    saved = yaml.safe_load((tmp_path / "xdg" / "loci" / "config.yml").read_text())
+    saved = yaml.safe_load((tmp_path / "xdg" / "loci" / "config.yml").read_text(encoding="utf-8"))
     assert saved["vault_root"] == str(tmp_path / "new")
     assert saved["sync_remote"] == "nextcloud"
     assert saved["created_at"] == "2026-01-01T00:00:00+00:00"
@@ -384,13 +385,14 @@ def test_set_vault_root_rejects_unusable_paths(unconfigured, bad):
 
 def test_set_vault_root_rejects_a_file(unconfigured, tmp_path):
     target = tmp_path / "notes.md"
-    target.write_text("not a vault")
+    target.write_text("not a vault", encoding="utf-8", newline="\n")
     with pytest.raises(ValueError, match="file, not a directory"):
         set_vault_root(str(target))
 
 
 def test_set_vault_root_expands_a_tilde(unconfigured, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))   # what Path.home() reads on Windows
     monkeypatch.setenv("LOCI_CONFIG", str(tmp_path / "cfg" / "config.yml"))
 
     result = set_vault_root("~/vault", create=True)

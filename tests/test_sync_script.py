@@ -21,6 +21,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the script under test is bash")
+
 SYNC_SCRIPT = Path(__file__).parent.parent / "sync" / "sync.sh"
 
 

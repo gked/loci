@@ -66,7 +66,7 @@ def test_a_clash_needs_a_choice_per_clash_and_a_token(tmp_vault, as_computer):
 def test_a_stale_token_is_refused(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("three", "AAA"), b=BASE.replace("three", "BBB"))
     listed = mcp_server.list_conflicted_copies()["copies"][0]
-    copy.write_text(copy.read_text().replace("BBB", "CCC"))               # changed since the listing
+    copy.write_text(copy.read_text().replace("BBB", "CCC"), newline="\n")               # changed since the listing
     refused = ask(copy.name, ["a"], listed["token"])
     assert "changed since" in refused["error"] and copy.exists()
 
@@ -74,7 +74,7 @@ def test_a_stale_token_is_refused(tmp_vault, as_computer):
 def test_a_merged_copy_that_changed_since_the_listing_is_refused(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer, a="ONE\ntwo\nthree\nfour\nfive\n", b="one\ntwo\nthree\nfour\nFIVE\n")
     token = mcp_server.list_conflicted_copies()["copies"][0]["token"]
-    copy.write_text(copy.read_text().replace("FIVE", "SIX"))
+    copy.write_text(copy.read_text().replace("FIVE", "SIX"), newline="\n")
     assert "changed since" in ask(copy.name, None, token)["error"] and copy.exists()
 
 

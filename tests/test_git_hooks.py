@@ -17,10 +17,13 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="the git hooks are POSIX shell scripts that the tests execute directly")
 
 REPO_ROOT = Path(__file__).parent.parent
 HOOKS_DIR = REPO_ROOT / ".githooks"

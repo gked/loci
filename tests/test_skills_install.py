@@ -38,7 +38,7 @@ def fake_package(tmp_path):
     for name in ("loci-save", "loci-query"):
         skill = source / name
         skill.mkdir(parents=True)
-        (skill / "SKILL.md").write_text(_skill_md(name))
+        (skill / "SKILL.md").write_text(_skill_md(name), encoding="utf-8", newline="\n")
     return source
 
 
@@ -46,12 +46,12 @@ def _install(skills_root, text, name="loci-save"):
     """Put a skill at the destination as if an older Loci had installed it."""
     dest = skills_root / name
     dest.mkdir(parents=True)
-    (dest / "SKILL.md").write_text(text)
+    (dest / "SKILL.md").write_text(text, encoding="utf-8", newline="\n")
     return dest
 
 
 def _installed(skills_root, name="loci-save"):
-    return (skills_root / name / "SKILL.md").read_text()
+    return (skills_root / name / "SKILL.md").read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +158,7 @@ def test_a_reworded_description_is_an_update(skills_root, fake_package):
     skills_install.install_all(skills_root, fake_package)
     (fake_package / "loci-save" / "SKILL.md").write_text(
         "---\nname: loci-save\ndescription: now also triggers on 'stash this'\n---\nbody\n"
-    )
+    , encoding="utf-8", newline="\n")
 
     plan = skills_install.plan(skills_root, fake_package)
 
@@ -169,7 +169,7 @@ def test_a_reworded_description_is_an_update(skills_root, fake_package):
 def test_a_procedure_edit_alone_is_not_an_update(skills_root, fake_package):
     """The server reads the procedure live; nothing installed changes."""
     skills_install.install_all(skills_root, fake_package)
-    (fake_package / "loci-save" / "SKILL.md").write_text(_skill_md("loci-save", "rewritten\n"))
+    (fake_package / "loci-save" / "SKILL.md").write_text(_skill_md("loci-save", "rewritten\n"), encoding="utf-8", newline="\n")
 
     plan = skills_install.plan(skills_root, fake_package)
 
@@ -204,13 +204,13 @@ def test_a_symlink_elsewhere_is_replaced_not_followed(skills_root, tmp_path, fak
     """Replacing the link must not write through it into whatever it points at."""
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    (elsewhere / "SKILL.md").write_text("theirs\n")
+    (elsewhere / "SKILL.md").write_text("theirs\n", encoding="utf-8", newline="\n")
     skills_root.mkdir(parents=True)
     (skills_root / "loci-save").symlink_to(elsewhere)
 
     skills_install.install_all(skills_root, fake_package)
 
-    assert (elsewhere / "SKILL.md").read_text() == "theirs\n"
+    assert (elsewhere / "SKILL.md").read_text(encoding="utf-8") == "theirs\n"
     assert not (skills_root / "loci-save").is_symlink()
 
 
@@ -219,7 +219,7 @@ def test_a_symlink_elsewhere_is_replaced_not_followed(skills_root, tmp_path, fak
 # ---------------------------------------------------------------------------
 
 def test_install_writes_the_stub_and_only_the_stub(skills_root, fake_package):
-    (fake_package / "loci-save" / "extra.md").write_text("reference\n")
+    (fake_package / "loci-save" / "extra.md").write_text("reference\n", encoding="utf-8", newline="\n")
 
     skills_install.install_all(skills_root, fake_package)
 
@@ -231,7 +231,7 @@ def test_install_writes_the_stub_and_only_the_stub(skills_root, fake_package):
 def test_install_replaces_leftovers_from_a_whole_directory_copy(skills_root, fake_package):
     """Older installs copied the skill directory wholesale."""
     dest = _install(skills_root, "old\n")
-    (dest / "reference.md").write_text("stale\n")
+    (dest / "reference.md").write_text("stale\n", encoding="utf-8", newline="\n")
 
     skills_install.install_all(skills_root, fake_package)
 
@@ -255,7 +255,7 @@ def test_nothing_packaged_writes_nothing(skills_root, tmp_path):
     written = skills_install.install_all(skills_root, tmp_path / "nowhere")
 
     assert written == []
-    assert (existing / "SKILL.md").read_text() == "the user's working skill\n"
+    assert (existing / "SKILL.md").read_text(encoding="utf-8") == "the user's working skill\n"
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +305,7 @@ def test_a_bare_directory_with_the_prefix_is_left_alone(skills_root, fake_packag
     skills_root.mkdir(parents=True)
     odd = skills_root / "loci-notes"
     odd.mkdir()
-    (odd / "README.md").write_text("mine\n")
+    (odd / "README.md").write_text("mine\n", encoding="utf-8", newline="\n")
 
     skills_install.install_all(skills_root, fake_package)
 

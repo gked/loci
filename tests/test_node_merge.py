@@ -58,11 +58,11 @@ def diverge(vault, as_computer, base=BASE, a=None, b=None):
     as_computer("b")
     api.patch(saved["uid"], {}, body=b if b is not None else BASE)
     theirs = node.read_text()
-    node.write_text(first)                      # A's disk: B's edit has not arrived
+    node.write_text(first, newline="\n")                      # A's disk: B's edit has not arrived
     as_computer("a")
     api.patch(saved["uid"], {}, body=a if a is not None else BASE)
     copy = node.with_name(node.stem + COPY_SUFFIX)
-    copy.write_text(theirs)
+    copy.write_text(theirs, newline="\n")
     return node, copy
 
 
@@ -134,8 +134,8 @@ def test_other_names_are_not_copies(name):
 
 
 def test_conflicted_copies_lists_only_the_copies(tmp_path):
-    (tmp_path / "a.md").write_text("x")
-    (tmp_path / ("a" + COPY_SUFFIX)).write_text("x")
+    (tmp_path / "a.md").write_text("x", newline="\n")
+    (tmp_path / ("a" + COPY_SUFFIX)).write_text("x", newline="\n")
     assert [p.name for p in node_merge.conflicted_copies(tmp_path)] == ["a" + COPY_SUFFIX]
 
 
@@ -254,7 +254,7 @@ def test_updated_at_alone_is_never_a_clash(tmp_vault, as_computer):
     The merged node takes the later stamp."""
     node, copy = diverge(tmp_vault, as_computer, a="ONE\ntwo\nthree\nfour\nfive\n", b=BASE.replace("five", "FIVE"))
     lines = copy.read_text().splitlines(keepends=True)
-    copy.write_text("".join("updated_at: '2099-01-01T00:00:00Z'\n" if l.startswith("updated_at:") else l for l in lines))
+    copy.write_text("".join("updated_at: '2099-01-01T00:00:00Z'\n" if l.startswith("updated_at:") else l for l in lines), newline="\n")
 
     assert node_merge.describe(tmp_vault, copy.name)["kind"] == "merged"
     _resolve(tmp_vault, copy.name)
@@ -264,7 +264,7 @@ def test_updated_at_alone_is_never_a_clash(tmp_vault, as_computer):
 
 def test_identical_files_merge_to_that_file(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer)
-    copy.write_text(node.read_text())
+    copy.write_text(node.read_text(), newline="\n")
     assert node_merge.describe(tmp_vault, copy.name)["kind"] == "merged"
     _resolve(tmp_vault, copy.name)
     assert not copy.exists()
@@ -287,7 +287,7 @@ def test_two_different_nodes_with_one_file_name_are_both_kept(tmp_vault, as_comp
     node, copy = diverge(tmp_vault, as_computer)
     other_uid = "deadbeef"
     old_uid = [l for l in copy.read_text().splitlines() if l.startswith("uid:")][0]
-    copy.write_text(copy.read_text().replace(old_uid, f"uid: {other_uid}"))
+    copy.write_text(copy.read_text().replace(old_uid, f"uid: {other_uid}"), newline="\n")
 
     described = node_merge.describe(tmp_vault, copy.name)
     assert described["kind"] == "keep-both"
@@ -299,7 +299,7 @@ def test_two_different_nodes_with_one_file_name_are_both_kept(tmp_vault, as_comp
 
 
 def test_a_name_that_is_not_a_copy_is_refused(tmp_vault):
-    (tmp_vault / "plain.md").write_text("x")
+    (tmp_vault / "plain.md").write_text("x", newline="\n")
     for bad in ("plain.md", "../x (conflicted copy 1).md", "missing (conflicted copy 1).md"):
         with pytest.raises(MergeError):
             node_merge.describe(tmp_vault, bad)
@@ -309,8 +309,8 @@ def test_a_name_that_is_not_a_copy_is_refused(tmp_vault):
 
 def test_without_history_both_files_are_clashes_for_the_user(tmp_vault, monkeypatch):
     monkeypatch.setenv("LOCI_VAULT_HISTORY", "0")
-    (tmp_vault / "n.md").write_text("---\nuid: 11111111\n---\nmine\n")
-    (tmp_vault / ("n" + COPY_SUFFIX)).write_text("---\nuid: 11111111\n---\ntheirs\n")
+    (tmp_vault / "n.md").write_text("---\nuid: 11111111\n---\nmine\n", newline="\n")
+    (tmp_vault / ("n" + COPY_SUFFIX)).write_text("---\nuid: 11111111\n---\ntheirs\n", newline="\n")
     described = node_merge.describe(tmp_vault, "n" + COPY_SUFFIX)
     assert described["kind"] == "conflict"
 
@@ -333,7 +333,7 @@ def test_choices_for_clashes_that_changed_are_refused(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("two", "mine"), b=BASE.replace("two", "theirs"))
     token = node_merge.describe(tmp_vault, copy.name)["token"]
     # New edits arrive after the page loaded. There is still one clash, but a different one.
-    copy.write_text(copy.read_text().replace("theirs", "other"))
+    copy.write_text(copy.read_text().replace("theirs", "other"), newline="\n")
     before = node.read_text()
 
     with pytest.raises(MergeError, match="changed since"):
@@ -386,7 +386,7 @@ class TestConflictEndpoints:
     def test_a_stale_token_is_a_409_and_changes_nothing(self, client, tmp_vault, as_computer):
         node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("two", "mine"), b=BASE.replace("two", "theirs"))
         token = client.get("/api/conflicts").json()[0]["token"]
-        copy.write_text(copy.read_text().replace("theirs", "other"))
+        copy.write_text(copy.read_text().replace("theirs", "other"), newline="\n")
         response = client.post("/api/conflicts/resolve", headers=self.HEADERS,
                                json={"file": copy.name, "choices": ["b"], "token": token})
         assert response.status_code == 409
@@ -419,7 +419,7 @@ def test_resolve_needs_a_token_for_every_kind(tmp_vault, as_computer):
         node_merge.resolve(tmp_vault, copy.name)
     assert copy.exists()
     token = node_merge.describe(tmp_vault, copy.name)["token"]
-    copy.write_text(copy.read_text().replace("FIVE", "SIX"))              # the files moved on
+    copy.write_text(copy.read_text().replace("FIVE", "SIX"), newline="\n")              # the files moved on
     with pytest.raises(node_merge.MergeError, match="changed since"):
         node_merge.resolve(tmp_vault, copy.name, token=token)
     assert copy.exists()

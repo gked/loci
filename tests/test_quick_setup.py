@@ -20,6 +20,7 @@ def env(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))   # what Path.home() reads on Windows
     monkeypatch.delenv("HERMES_HOME", raising=False)
     monkeypatch.setattr(clients.shutil, "which", lambda n: f"/bin/{n}")
     calls = []

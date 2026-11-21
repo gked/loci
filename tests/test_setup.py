@@ -29,6 +29,7 @@ def fake_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))   # what Path.home() reads on Windows
     return home
 
 
@@ -49,7 +50,7 @@ def test_install_skill_stubs_writes_a_stub_per_skill(fake_home):
         # A stub, never a link: a symlink into the checkout would hand Claude
         # Code the procedure directly and skip the user's overlay.
         assert not dest.is_symlink()
-        assert (dest / "SKILL.md").read_text() == skills_install.packaged_stub(
+        assert (dest / "SKILL.md").read_text(encoding="utf-8") == skills_install.packaged_stub(
             setup.SKILLS_DIR / skill_name
         )
 
@@ -73,11 +74,11 @@ def test_install_skill_stubs_keeps_an_existing_skill_when_the_source_is_gone(
     monkeypatch.setattr(setup, "SKILLS_DIR", tmp_path / "nowhere")
     existing = fake_home / ".claude" / "skills" / setup.SKILLS[0]
     existing.mkdir(parents=True)
-    (existing / "SKILL.md").write_text("# the user's working skill\n")
+    (existing / "SKILL.md").write_text("# the user's working skill\n", encoding="utf-8", newline="\n")
 
     setup.install_skill_stubs()
 
-    assert (existing / "SKILL.md").read_text() == "# the user's working skill\n"
+    assert (existing / "SKILL.md").read_text(encoding="utf-8") == "# the user's working skill\n"
 
 
 def test_desktop_fallback_prints_the_stubs_not_the_procedures(capsys):
