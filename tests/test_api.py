@@ -1109,3 +1109,35 @@ def test_write_skill_defaults_to_loci_save(tmp_vault):
     path = api.write_skill("- rule\n")
 
     assert Path(path).parts[-2:] == ("skills", "loci-save.md")      # native separators on Windows
+
+
+def test_find_unregistered_recognises_a_backslash_path_written_on_windows(tmp_vault):
+    """Nodes saved on Windows by older versions hold `assets\\x.pdf`; the file is registered."""
+    from loci.tools import asset_registry as ar
+    loci_root = tmp_vault.parent
+    uid = "winp0001"
+    ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
+    (ar.assets_dir(loci_root) / f"{uid}.pdf").write_bytes(b"%PDF")
+    has_asset = [{"format": "pdf", "primary": True,
+                  "locations": [{"scheme": "local", "path": f"assets\\{uid}.pdf"}]}]
+    _write_raw(tmp_vault, f"{uid}-doc.md",
+               {"uid": uid, "type": "document", "title": "Windows Path Asset", "has_asset": has_asset})
+    assert f"assets/{uid}.pdf" not in api.find_unregistered_assets()
+
+
+def test_an_absolute_asset_path_is_matched_with_forward_slashes_on_any_os(tmp_vault):
+    """relative_to() gives `assets\\x.pdf` on Windows; the registered set holds `assets/x.pdf`."""
+    from pathlib import Path, PureWindowsPath
+    from unittest.mock import patch
+    from loci.tools import asset_registry as ar
+    loci_root = tmp_vault.parent
+    uid = "absp0002"
+    ar.assets_dir(loci_root).mkdir(parents=True, exist_ok=True)
+    asset_file = ar.assets_dir(loci_root) / f"{uid}.pdf"
+    asset_file.write_bytes(b"%PDF")
+    has_asset = [{"format": "pdf", "primary": True, "locations": [{"scheme": "local", "path": str(asset_file)}]}]
+    _write_raw(tmp_vault, f"{uid}-doc.md",
+               {"uid": uid, "type": "document", "title": "Abs Path Asset Two", "has_asset": has_asset})
+    with patch.object(Path, "relative_to", return_value=PureWindowsPath("assets") / f"{uid}.pdf"):
+        result = api.find_unregistered_assets()
+    assert f"assets/{uid}.pdf" not in result

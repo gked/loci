@@ -8,8 +8,8 @@ inline comment or a quote in a hand-edited config, a `~alice` path, or an
 install that sets LOCI_VAULT_ROOT and never writes a config file at all —
 load_config() short-circuits on the env var before it opens one.
 """
-import json
 import getpass
+import json
 import sys
 from pathlib import Path
 

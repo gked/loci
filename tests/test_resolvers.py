@@ -63,6 +63,16 @@ class TestLocalResolverResolve:
 
 
 class TestLocalResolverEnumerate:
+    def test_stored_paths_use_forward_slashes_even_where_the_os_does_not(self, loci_root):
+        """The path goes into node frontmatter, which syncs between computers. On
+        Windows relative_to() returns a backslash path; it must be stored with `/`."""
+        from pathlib import PureWindowsPath
+        windows_style = PureWindowsPath("assets") / "abc12345.pdf"
+        with patch.object(Path, "relative_to", return_value=windows_style):
+            items = LocalResolver(loci_root).enumerate({"scheme": "local", "path": "assets"})
+        assert items and all("\\" not in i["path"] for i in items)
+        assert items[0]["path"] == "assets/abc12345.pdf"
+
     def test_enumerates_directory(self, loci_root):
         r = LocalResolver(loci_root)
         items = r.enumerate({"scheme": "local", "path": "assets"})

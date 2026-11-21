@@ -54,15 +54,15 @@ def diverge(vault, as_computer, base=BASE, a=None, b=None):
     saved = api.save(type="document", title="Shared", body=base,
                      extra_fields={"status": "draft", "subtype": "note"})
     node = vault / saved["path"].rsplit("/", 1)[-1]
-    first = node.read_text()
+    first = node.read_text(encoding="utf-8")
     as_computer("b")
     api.patch(saved["uid"], {}, body=b if b is not None else BASE)
-    theirs = node.read_text()
-    node.write_text(first, newline="\n")                      # A's disk: B's edit has not arrived
+    theirs = node.read_text(encoding="utf-8")
+    node.write_text(first, newline="\n", encoding="utf-8")                      # A's disk: B's edit has not arrived
     as_computer("a")
     api.patch(saved["uid"], {}, body=a if a is not None else BASE)
     copy = node.with_name(node.stem + COPY_SUFFIX)
-    copy.write_text(theirs, newline="\n")
+    copy.write_text(theirs, newline="\n", encoding="utf-8")
     return node, copy
 
 
@@ -134,8 +134,8 @@ def test_other_names_are_not_copies(name):
 
 
 def test_conflicted_copies_lists_only_the_copies(tmp_path):
-    (tmp_path / "a.md").write_text("x", newline="\n")
-    (tmp_path / ("a" + COPY_SUFFIX)).write_text("x", newline="\n")
+    (tmp_path / "a.md").write_text("x", newline="\n", encoding="utf-8")
+    (tmp_path / ("a" + COPY_SUFFIX)).write_text("x", newline="\n", encoding="utf-8")
     assert [p.name for p in node_merge.conflicted_copies(tmp_path)] == ["a" + COPY_SUFFIX]
 
 
@@ -146,7 +146,7 @@ def test_a_copy_is_not_a_node(tmp_vault, as_computer):
     paths = [d.get("path") for _, d in graph.nodes(data=True)]
     assert str(node) in paths
     assert str(copy) not in paths
-    fm_uid = str(load_frontmatter(node.read_text())[0]["uid"])    # not split by hand: an all-digit uid is quoted
+    fm_uid = str(load_frontmatter(node.read_text(encoding="utf-8"))[0]["uid"])    # not split by hand: an all-digit uid is quoted
     assert find_uid(tmp_vault, fm_uid) == node
 
 
@@ -154,7 +154,7 @@ def test_a_copy_is_not_a_node_when_the_uid_is_all_digits(tmp_vault, as_computer,
     """YAML quotes an all-digit uid (`uid: '12345678'`); the lookup must still find the node."""
     monkeypatch.setattr("loci.tools.write_file.generate_uid", lambda: "12345678")
     node, copy = diverge(tmp_vault, as_computer, a=BASE + "mine\n", b=BASE + "theirs\n")
-    assert "uid: '12345678'" in node.read_text()
+    assert "uid: '12345678'" in node.read_text(encoding="utf-8")
     nx_graph._graph = None
     assert find_uid(tmp_vault, "12345678") == node
     assert str(copy) not in [d.get("path") for _, d in nx_graph.get(tmp_vault).nodes(data=True)]
@@ -189,14 +189,14 @@ def test_edits_to_different_lines_merge_with_no_question(tmp_vault, as_computer)
     out = _resolve(tmp_vault, copy.name)
 
     assert out["kind"] == "merged"
-    text = node.read_text()
+    text = node.read_text(encoding="utf-8")
     assert "ONE\ntwo\nthree\nfour\nFIVE\n" in text
     assert not copy.exists()
 
 
 def test_the_merge_is_one_commit_and_the_copy_is_recorded_before_it_goes(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer, a="ONE\ntwo\nthree\nfour\nfive\n", b=BASE.replace("five", "FIVE"))
-    theirs = copy.read_text()
+    theirs = copy.read_text(encoding="utf-8")
 
     _resolve(tmp_vault, copy.name)
 
@@ -223,7 +223,7 @@ def test_the_other_computers_line_is_joined_by_the_merge(tmp_vault, as_computer)
 
 def test_edits_to_the_same_line_wait_for_a_choice(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("two", "mine"), b=BASE.replace("two", "theirs"))
-    before = node.read_text()
+    before = node.read_text(encoding="utf-8")
 
     described = node_merge.describe(tmp_vault, copy.name)
     assert described["kind"] == "conflict"
@@ -233,7 +233,7 @@ def test_edits_to_the_same_line_wait_for_a_choice(tmp_vault, as_computer):
         _resolve(tmp_vault, copy.name)
     with pytest.raises(MergeError):
         _resolve(tmp_vault, copy.name, ["c"])
-    assert node.read_text() == before and copy.exists()      # nothing changed
+    assert node.read_text(encoding="utf-8") == before and copy.exists()      # nothing changed
 
 
 @pytest.mark.parametrize("pick, kept, dropped", [("a", "mine", "theirs"), ("b", "theirs", "mine")])
@@ -243,7 +243,7 @@ def test_the_choice_decides_the_clashing_lines_only(tmp_vault, as_computer, pick
 
     _resolve(tmp_vault, copy.name, [pick])
 
-    text = node.read_text()
+    text = node.read_text(encoding="utf-8")
     assert f"one\n{kept}\nthree\nfour\nFIVE\n" in text
     assert dropped not in text
     assert not copy.exists()
@@ -253,18 +253,18 @@ def test_updated_at_alone_is_never_a_clash(tmp_vault, as_computer):
     """Both computers stamp updated_at on every edit, so it differs on every merge.
     The merged node takes the later stamp."""
     node, copy = diverge(tmp_vault, as_computer, a="ONE\ntwo\nthree\nfour\nfive\n", b=BASE.replace("five", "FIVE"))
-    lines = copy.read_text().splitlines(keepends=True)
-    copy.write_text("".join("updated_at: '2099-01-01T00:00:00Z'\n" if l.startswith("updated_at:") else l for l in lines), newline="\n")
+    lines = copy.read_text(encoding="utf-8").splitlines(keepends=True)
+    copy.write_text("".join("updated_at: '2099-01-01T00:00:00Z'\n" if l.startswith("updated_at:") else l for l in lines), newline="\n", encoding="utf-8")
 
     assert node_merge.describe(tmp_vault, copy.name)["kind"] == "merged"
     _resolve(tmp_vault, copy.name)
 
-    assert "updated_at: '2099-01-01T00:00:00Z'" in node.read_text()
+    assert "updated_at: '2099-01-01T00:00:00Z'" in node.read_text(encoding="utf-8")
 
 
 def test_identical_files_merge_to_that_file(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer)
-    copy.write_text(node.read_text(), newline="\n")
+    copy.write_text(node.read_text(encoding="utf-8"), newline="\n", encoding="utf-8")
     assert node_merge.describe(tmp_vault, copy.name)["kind"] == "merged"
     _resolve(tmp_vault, copy.name)
     assert not copy.exists()
@@ -277,7 +277,7 @@ def test_an_edit_beats_a_delete(tmp_vault, as_computer):
     assert node_merge.describe(tmp_vault, copy.name)["kind"] == "restore"
     _resolve(tmp_vault, copy.name)
 
-    assert node.is_file() and "edited" in node.read_text()
+    assert node.is_file() and "edited" in node.read_text(encoding="utf-8")
     assert not copy.exists()
     subjects = [c["subject"] for c in vault_history.history(tmp_vault, node)]
     assert any(x.startswith("Edit on the other computer overrode a delete") for x in subjects)
@@ -286,20 +286,20 @@ def test_an_edit_beats_a_delete(tmp_vault, as_computer):
 def test_two_different_nodes_with_one_file_name_are_both_kept(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer)
     other_uid = "deadbeef"
-    old_uid = [l for l in copy.read_text().splitlines() if l.startswith("uid:")][0]
-    copy.write_text(copy.read_text().replace(old_uid, f"uid: {other_uid}"), newline="\n")
+    old_uid = [l for l in copy.read_text(encoding="utf-8").splitlines() if l.startswith("uid:")][0]
+    copy.write_text(copy.read_text(encoding="utf-8").replace(old_uid, f"uid: {other_uid}"), newline="\n", encoding="utf-8")
 
     described = node_merge.describe(tmp_vault, copy.name)
     assert described["kind"] == "keep-both"
     _resolve(tmp_vault, copy.name)
 
     kept = tmp_vault / described["new_name"]
-    assert kept.is_file() and f"uid: {other_uid}" in kept.read_text()
+    assert kept.is_file() and f"uid: {other_uid}" in kept.read_text(encoding="utf-8")
     assert not copy.exists() and node.is_file()
 
 
 def test_a_name_that_is_not_a_copy_is_refused(tmp_vault):
-    (tmp_vault / "plain.md").write_text("x", newline="\n")
+    (tmp_vault / "plain.md").write_text("x", newline="\n", encoding="utf-8")
     for bad in ("plain.md", "../x (conflicted copy 1).md", "missing (conflicted copy 1).md"):
         with pytest.raises(MergeError):
             node_merge.describe(tmp_vault, bad)
@@ -309,8 +309,8 @@ def test_a_name_that_is_not_a_copy_is_refused(tmp_vault):
 
 def test_without_history_both_files_are_clashes_for_the_user(tmp_vault, monkeypatch):
     monkeypatch.setenv("LOCI_VAULT_HISTORY", "0")
-    (tmp_vault / "n.md").write_text("---\nuid: 11111111\n---\nmine\n", newline="\n")
-    (tmp_vault / ("n" + COPY_SUFFIX)).write_text("---\nuid: 11111111\n---\ntheirs\n", newline="\n")
+    (tmp_vault / "n.md").write_text("---\nuid: 11111111\n---\nmine\n", newline="\n", encoding="utf-8")
+    (tmp_vault / ("n" + COPY_SUFFIX)).write_text("---\nuid: 11111111\n---\ntheirs\n", newline="\n", encoding="utf-8")
     described = node_merge.describe(tmp_vault, "n" + COPY_SUFFIX)
     assert described["kind"] == "conflict"
 
@@ -333,20 +333,20 @@ def test_choices_for_clashes_that_changed_are_refused(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("two", "mine"), b=BASE.replace("two", "theirs"))
     token = node_merge.describe(tmp_vault, copy.name)["token"]
     # New edits arrive after the page loaded. There is still one clash, but a different one.
-    copy.write_text(copy.read_text().replace("theirs", "other"), newline="\n")
-    before = node.read_text()
+    copy.write_text(copy.read_text(encoding="utf-8").replace("theirs", "other"), newline="\n", encoding="utf-8")
+    before = node.read_text(encoding="utf-8")
 
     with pytest.raises(MergeError, match="changed since"):
         _resolve(tmp_vault, copy.name, ["b"], token=token)
 
-    assert node.read_text() == before and copy.exists()
+    assert node.read_text(encoding="utf-8") == before and copy.exists()
 
 
 def test_choices_with_the_current_token_are_applied(tmp_vault, as_computer):
     node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("two", "mine"), b=BASE.replace("two", "theirs"))
     token = node_merge.describe(tmp_vault, copy.name)["token"]
     _resolve(tmp_vault, copy.name, ["b"], token=token)
-    assert "theirs" in node.read_text() and not copy.exists()
+    assert "theirs" in node.read_text(encoding="utf-8") and not copy.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -380,13 +380,13 @@ class TestConflictEndpoints:
         response = client.post("/api/conflicts/resolve", headers=self.HEADERS,
                                json={"file": copy.name, "choices": ["b"], "token": listed[0]["token"]})
         assert response.status_code == 200
-        assert "theirs" in node.read_text() and not copy.exists()
+        assert "theirs" in node.read_text(encoding="utf-8") and not copy.exists()
         assert client.get("/api/conflicts").json() == []
 
     def test_a_stale_token_is_a_409_and_changes_nothing(self, client, tmp_vault, as_computer):
         node, copy = diverge(tmp_vault, as_computer, a=BASE.replace("two", "mine"), b=BASE.replace("two", "theirs"))
         token = client.get("/api/conflicts").json()[0]["token"]
-        copy.write_text(copy.read_text().replace("theirs", "other"), newline="\n")
+        copy.write_text(copy.read_text(encoding="utf-8").replace("theirs", "other"), newline="\n", encoding="utf-8")
         response = client.post("/api/conflicts/resolve", headers=self.HEADERS,
                                json={"file": copy.name, "choices": ["b"], "token": token})
         assert response.status_code == 409
@@ -419,7 +419,7 @@ def test_resolve_needs_a_token_for_every_kind(tmp_vault, as_computer):
         node_merge.resolve(tmp_vault, copy.name)
     assert copy.exists()
     token = node_merge.describe(tmp_vault, copy.name)["token"]
-    copy.write_text(copy.read_text().replace("FIVE", "SIX"), newline="\n")              # the files moved on
+    copy.write_text(copy.read_text(encoding="utf-8").replace("FIVE", "SIX"), newline="\n", encoding="utf-8")              # the files moved on
     with pytest.raises(node_merge.MergeError, match="changed since"):
         node_merge.resolve(tmp_vault, copy.name, token=token)
     assert copy.exists()

@@ -286,7 +286,7 @@ def _terminate(proc: subprocess.Popen) -> None:
         return
     except subprocess.TimeoutExpired:  # pragma: no cover - slow shutdown
         pass
-    _signal_group(proc, signal.SIGKILL)
+    _signal_group(proc, getattr(signal, "SIGKILL", signal.SIGTERM))
     try:  # pragma: no cover - slow shutdown
         proc.wait(timeout=10)
     except subprocess.TimeoutExpired:
