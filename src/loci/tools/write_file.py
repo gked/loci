@@ -24,6 +24,7 @@ from typing import Optional
 from pathlib import Path
 
 # Import sibling tools
+from loci.tools import fs_retry
 from loci.tools.uid_generator import generate_uid
 from loci.tools.slug import filename as make_filename
 from loci.tools.vault_init import NON_NODE_DIRS, NOT_CONFIGURED_MESSAGE, load_config
@@ -345,7 +346,7 @@ def write_item(
     # Write file
     content = serialize_frontmatter(frontmatter) + "\n" + body
 
-    file_path.write_text(content, encoding="utf-8", newline="\n")
+    fs_retry.write_utf8(file_path, content)
 
     result = {
         "uid": uid,
@@ -495,7 +496,7 @@ def patch_item(path: str, updates: dict, body: str = None) -> dict:
 
     final_body = body if body is not None else existing_body
     content = serialize_frontmatter(fm) + "\n" + final_body
-    p.write_text(content, encoding="utf-8", newline="\n")
+    fs_retry.write_utf8(p, content)
 
     result = {
         "uid": fm.get("uid"),

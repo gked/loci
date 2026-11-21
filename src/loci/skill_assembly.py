@@ -23,6 +23,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from loci.language import DEFAULT_LANGUAGE
+from loci.tools import fs_retry
 
 SKILLS_DIR = Path(__file__).parent / "skills"
 REFERENCES_DIR = SKILLS_DIR / "references"
@@ -213,5 +214,5 @@ def write_overlay(vault_root: Path, skill: str, content: str, append: bool = Fal
         if existing and not existing.endswith("\n"):
             existing += "\n"
         content = existing + "\n" + content
-    p.write_text(content, encoding="utf-8", newline="\n")
+    fs_retry.write_utf8(p, content)
     return p
