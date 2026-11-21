@@ -41,6 +41,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -296,9 +297,37 @@ def _replace_in_place(dest: Path, text: str) -> bool:
     for child in dest.iterdir():
         if child.name == "SKILL.md" or child.name.startswith(".SKILL.md."):
             continue
-        shutil.rmtree(child, ignore_errors=True) if child.is_dir() and not child.is_symlink() \
-            else child.unlink(missing_ok=True)
+        try:
+            shutil.rmtree(child, ignore_errors=True) if child.is_dir() and not child.is_symlink() \
+                else child.unlink(missing_ok=True)
+        except OSError:
+            pass    # a leftover from an older install, held open (Windows): the next run removes it
     return True
+
+
+# Windows refuses to rename over a file another process or thread has open (an
+# agent reading SKILL.md, or a second install replacing it): PermissionError,
+# "Access is denied". It clears in milliseconds, so wait for it.
+_REPLACE_ATTEMPTS = 15
+_REPLACE_PAUSE_SECONDS = 0.01
+
+
+def _replace_file(src: str, dst: Path) -> None:
+    """os.replace, retried briefly on Windows where the target is momentarily in use.
+
+    Elsewhere a PermissionError is a real refusal and is raised at once. The cost
+    of the fallback: a file that stays locked delays the error by about a second
+    (0.01 s x 1+2+...+14), and a refresh that meets several such files waits that
+    long for each.
+    """
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if sys.platform != "win32" or attempt == _REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(_REPLACE_PAUSE_SECONDS * (attempt + 1))
 
 
 def _write_atomic(path: Path, text: str) -> None:
@@ -306,7 +335,7 @@ def _write_atomic(path: Path, text: str) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
-        os.replace(tmp, path)
+        _replace_file(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)
