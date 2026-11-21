@@ -42,6 +42,19 @@ After the fence.
     assert "## Not a heading" in chunks[0]["text"]
 
 
+def test_split_markdown_sections_splits_a_crlf_body_at_paragraph_boundaries():
+    """A CRLF body (a Windows-written vault, or a history snapshot read without
+    newline translation) must still break between paragraphs, not mid-paragraph."""
+    paragraphs = [f"Paragraph {i} first line.\r\nParagraph {i} second line.\r\n\r\n" for i in range(4)]
+    body = "# Windows\r\n\r\n" + "".join(paragraphs)
+
+    chunks = split_markdown_sections(body, max_chars=60)
+
+    assert len(chunks) > 1
+    assert "".join(chunk["text"] for chunk in chunks) == body
+    assert all(chunk["text"].endswith("\r\n\r\n") for chunk in chunks[:-1])
+
+
 def test_split_markdown_sections_folds_a_blank_preamble_into_the_first_section():
     """A blank opening line must not become a chunk id carrying nothing."""
     body = "\n\n# Heading\n\nReal content.\n"
