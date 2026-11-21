@@ -7,6 +7,8 @@ The read functions (find, related, path, search) are covered by
 test_retrieval.py via the YAML-parametrized suite.
 """
 
+import sys
+
 import networkx as nx
 import pytest
 
@@ -893,3 +895,84 @@ def test_resolve_mentions_hit_shape(mention_graph):
 
 def test_resolve_mentions_when_graph_none(null_graph):
     assert null_graph.resolve_mentions(["Anyone"]) == {"found": [], "missing": ["Anyone"]}
+
+
+# ---------------------------------------------------------------------------
+# staleness: an in-place edit by another process
+# ---------------------------------------------------------------------------
+
+def _first_note(vault):
+    return next(p for p in sorted(vault.glob("*.md")) if not p.name.startswith("._"))
+
+
+def _edit_title_in_place(path, new_title, *, keep_mtime=False):
+    import os
+    before = path.stat()
+    text = path.read_text(encoding="utf-8")
+    old = next(l for l in text.splitlines() if l.startswith("title:"))
+    path.write_text(text.replace(old, f"title: {new_title}"), encoding="utf-8", newline="\n")
+    if keep_mtime:
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    return old
+
+
+def _uid_of(path):
+    return next(l.split(":", 1)[1].strip().strip("'\"") for l in path.read_text(encoding="utf-8").splitlines() if l.startswith("uid:"))
+
+
+def test_an_in_place_edit_by_another_process_is_seen(tmp_vault, monkeypatch):
+    """The MCP server rewrites a note; the UI server's graph must not keep the old
+    title. An in-place write leaves its folder's mtime alone, so only the note's
+    own timestamp can say so."""
+    import os, time
+    monkeypatch.setattr(g, "_graph", None)
+    note = _first_note(tmp_vault)
+    uid = _uid_of(note)
+    g.get(tmp_vault)
+    g.mark_fresh(tmp_vault)
+    assert g.get(tmp_vault).nodes[uid]["title"] != "Edited elsewhere"
+
+    _edit_title_in_place(note, "Edited elsewhere")
+    later = time.time() + 5
+    os.utime(note, (later, later))                       # a clock tick later, whatever the filesystem's resolution
+
+    assert g.get(tmp_vault).nodes[uid]["title"] == "Edited elsewhere"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="on Windows st_ctime is the creation time, which an edit never moves")
+def test_an_edit_that_restores_the_mtime_is_seen_where_ctime_is_a_change_time(tmp_vault, monkeypatch):
+    import time
+    monkeypatch.setattr(g.vault_history, "_ctime_is_change_time", lambda: True)
+    note = _first_note(tmp_vault)
+    uid = _uid_of(note)
+    g.invalidate()
+    g.get(tmp_vault)
+    g.mark_fresh(tmp_vault)
+    time.sleep(0.05)                                     # the edit's ctime must be later than the build's
+
+    _edit_title_in_place(note, "Edited elsewhere", keep_mtime=True)
+
+    assert g.get(tmp_vault).nodes[uid]["title"] == "Edited elsewhere"
+
+
+def test_nothing_changed_means_no_rebuild(tmp_vault, monkeypatch):
+    g.invalidate()
+    first = g.get(tmp_vault)
+    g.mark_fresh(tmp_vault)
+    built = []
+    real = g._build
+    monkeypatch.setattr(g, "_build", lambda root: built.append(1) or real(root))
+    assert g.get(tmp_vault) is first
+    assert built == []
+
+
+def test_an_appledouble_file_does_not_make_the_graph_stale(tmp_vault):
+    import os, time
+    junk = tmp_vault / "._ghost.md"
+    junk.write_bytes(b"\x00\x05\x16\x07")
+    g.invalidate()
+    first = g.get(tmp_vault)
+    g.mark_fresh(tmp_vault)
+    later = time.time() + 5
+    os.utime(junk, (later, later))
+    assert g.get(tmp_vault) is first
