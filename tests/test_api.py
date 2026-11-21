@@ -4,6 +4,8 @@ Tests for api.py: save, delete, patch, check_duplicate, get,
 list_items, read_meta, write_meta.
 """
 
+import json
+
 import yaml
 import pytest
 from pathlib import Path
@@ -422,7 +424,7 @@ def test_get_context_returns_overview_and_chunks_for_large_note(tmp_vault):
     assert result["title"] == "Large note"
     assert result["summary"] == "A note with a long findings section."
     assert "content" not in result
-    assert result["content_hash"]
+    assert result["outline_hash"]
     assert result["chunks"]
     assert all("text" not in chunk for chunk in result["chunks"])
     assert any(chunk["heading_path"] == ["Findings"] for chunk in result["chunks"])
@@ -438,19 +440,131 @@ def test_get_chunk_reads_only_selected_chunk_and_rejects_stale_outline(tmp_vault
     first = next(chunk for chunk in outline["chunks"] if chunk["heading_path"] == ["One"])
 
     result = api.get_chunk(
-        node["uid"], first["id"], outline["content_hash"], max_tokens=25,
+        node["uid"], first["id"], outline["outline_hash"], max_tokens=25,
     )
 
     assert result["heading_path"] == ["One"]
     assert "First section." in result["content"]
     assert "Second section." not in result["content"]
-    with pytest.raises(ValueError, match="changed since"):
-        api.get_chunk(node["uid"], first["id"], "stale-hash", max_tokens=2)
+    with pytest.raises(ValueError, match="stale"):
+        api.get_chunk(node["uid"], first["id"], "stale-hash", max_tokens=25)
+
+
+def test_get_chunk_refuses_an_outline_hash_from_a_different_token_budget(tmp_vault):
+    """Chunk ids are positions in a budget-dependent split, so the same id means
+    different text at a different max_tokens. The hash has to cover the budget,
+    or a mismatched follow-up read returns the wrong section with no error."""
+    body = "# Alpha\n\n" + ("alpha line.\n\n" * 12) + "# Omega\n\nOmega tail.\n"
+    node = api.save(
+        type="document", title="Budget sensitive", body=body,
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    narrow = api.get_context(node["uid"], max_tokens=10)
+    wide = api.get_context(node["uid"], max_tokens=60)
+    # An id both outlines carry, so the refusal is about the budget and not a
+    # missing chunk: at the narrow budget it is a fragment of Alpha, at the wide
+    # one it covers more text.
+    shared_id = "chunk-1"
+
+    assert narrow["outline_hash"] != wide["outline_hash"]
+    assert any(chunk["id"] == shared_id for chunk in narrow["chunks"])
+    assert any(chunk["id"] == shared_id for chunk in wide["chunks"])
+    narrow_chunk = api.get_chunk(node["uid"], shared_id, narrow["outline_hash"], max_tokens=10)
+    wide_chunk = api.get_chunk(node["uid"], shared_id, wide["outline_hash"], max_tokens=60)
+    assert narrow_chunk["content"] != wide_chunk["content"]
+    with pytest.raises(ValueError, match="stale"):
+        api.get_chunk(node["uid"], shared_id, narrow["outline_hash"], max_tokens=60)
+
+
+def test_get_chunk_rejects_an_unknown_chunk_id(tmp_vault):
+    node = api.save(
+        type="document", title="Unknown chunk", body="# A\n\n" + ("text. " * 40),
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    outline = api.get_context(node["uid"], max_tokens=10)
+
+    with pytest.raises(ValueError, match="Unknown chunk id"):
+        api.get_chunk(node["uid"], "chunk-9999", outline["outline_hash"], max_tokens=10)
+
+
+def test_get_context_outline_size_does_not_grow_with_the_note(tmp_vault):
+    """An outline that floods the context defeats the point of the outline: a
+    note with four times the sections must not produce a bigger outline."""
+    def dense(title, sections):
+        body = "".join(
+            f"## Section {i}\n\nBody line for section {i}.\n\n" for i in range(sections)
+        )
+        node = api.save(
+            type="document", title=title, body=body,
+            extra_fields={"status": "draft", "subtype": "note"},
+        )
+        return api.get_context(node["uid"], max_tokens=200)
+
+    small = dense("Dense 300", 300)
+    large = dense("Dense 1200", 1200)
+
+    assert small["mode"] == large["mode"] == "outline"
+    assert large["chunks_total"] > small["chunks_total"] >= 300
+    assert len(json.dumps(large)) <= 4000
+    assert len(json.dumps(large)) <= len(json.dumps(small)) * 1.5
+    assert len(small["chunks"]) < small["chunks_total"]
+    assert small["next_chunk_offset"] == len(small["chunks"])
+
+    second_page = api.get_context(
+        small["uid"], max_tokens=200, chunk_offset=small["next_chunk_offset"],
+    )
+    assert second_page["chunks"][0]["id"] != small["chunks"][0]["id"]
+    assert second_page["chunk_offset"] == small["next_chunk_offset"]
+
+
+def test_get_context_reads_a_historical_version(tmp_vault, monkeypatch):
+    monkeypatch.setenv("LOCI_VAULT_HISTORY", "1")      # off by default in the suite
+    node = api.save(
+        type="document", title="Versioned note", body="# Draft\n\nOriginal text.",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    api.patch(node["uid"], {"status": "active"}, body="# Draft\n\nRewritten text.")
+    commits = api.history(node["uid"])
+    first_commit = commits[-1]["commit"]
+
+    result = api.get_context(node["uid"], max_tokens=1000, commit=first_commit)
+
+    assert result["mode"] == "full"
+    assert "Original text." in result["content"]
+    assert "Rewritten text." not in result["content"]
+
+
+def test_get_context_chunks_a_crlf_body_losslessly_and_within_budget(tmp_vault):
+    """Vaults written on Windows hold CRLF bodies; the chunks still have to
+    rejoin to the body as read and stay inside the budget."""
+    body = "# Windows\r\n\r\n" + "".join(f"Line {i} of the note.\r\n" for i in range(40))
+    _write_raw(
+        tmp_vault, "crlf-note.md",
+        {"uid": "crlf0001", "type": "document", "title": "CRLF note", "subtype": "note"},
+        body,
+    )
+    _, read_body = split_frontmatter(api.get("crlf-note.md"))
+
+    outline = api.get_context("crlf-note.md", max_tokens=40)
+    chunks = [
+        api.get_chunk("crlf-note.md", chunk["id"], outline["outline_hash"], max_tokens=40)
+        for chunk in outline["chunks"]
+    ]
+
+    assert outline["chunks_total"] == len(outline["chunks"])
+    assert "".join(chunk["content"] for chunk in chunks) == read_body
+    assert all(len(chunk["content"]) <= 40 * 4 for chunk in chunks)
 
 
 def test_get_context_rejects_nonpositive_token_limit(tmp_vault):
     with pytest.raises(ValueError, match="positive"):
         api.get_context("missing.md", max_tokens=0)
+
+
+def test_get_context_rejects_a_boolean_token_limit(tmp_vault):
+    """bool is an int in Python: True would otherwise become a 4-character budget."""
+    with pytest.raises(ValueError, match="positive"):
+        api.get_context("missing.md", max_tokens=True)
 
 
 def test_get_appends_asset_path_for_large_asset(tmp_vault):

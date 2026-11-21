@@ -42,6 +42,27 @@ After the fence.
     assert "## Not a heading" in chunks[0]["text"]
 
 
+def test_split_markdown_sections_folds_a_blank_preamble_into_the_first_section():
+    """A blank opening line must not become a chunk id carrying nothing."""
+    body = "\n\n# Heading\n\nReal content.\n"
+
+    chunks = split_markdown_sections(body, max_chars=1000)
+
+    assert len(chunks) == 1
+    assert chunks[0]["heading_path"] == ["Heading"]
+    assert "".join(chunk["text"] for chunk in chunks) == body
+
+
+def test_split_markdown_sections_never_exceeds_max_chars_at_a_newline_boundary():
+    """A newline sitting exactly on the limit must not push a chunk one char over."""
+    body = ("a" * 10) + "\n" + ("b" * 25)
+
+    chunks = split_markdown_sections(body, max_chars=10)
+
+    assert all(len(chunk["text"]) <= 10 for chunk in chunks)
+    assert "".join(chunk["text"] for chunk in chunks) == body
+
+
 def test_split_markdown_sections_subdivides_oversized_heading_content():
     body = """# Notes
 

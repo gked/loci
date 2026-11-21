@@ -512,34 +512,81 @@ def _node_context_text(text: str) -> tuple[dict, str]:
     return frontmatter or {}, body
 
 
-def get_context(path: str, max_tokens: int = 4000, commit: Optional[str] = None) -> dict:
+def _node_chunks(text: str, body: str, max_chars: int) -> list[dict]:
+    """The chunking an outline and a chunk read must agree on."""
+    chunks = split_markdown_sections(body, max_chars)
+    if not chunks:
+        # A node with no body at all (frontmatter only): chunk the file instead,
+        # so the outline still offers something to read.
+        chunks = split_markdown_sections(text, max_chars)
+    return chunks
+
+
+def _outline_hash(text: str, max_chars: int) -> str:
+    """Identify an outline by its text *and* its budget.
+
+    Chunk ids are positions in a split that depends on max_chars, so the same id
+    means different text at a different budget. Folding the budget into the hash
+    is what makes a chunk reference safe: a follow-up read with another
+    max_tokens is refused rather than silently answered with the wrong section.
+    """
+    digest = hashlib.sha256()
+    digest.update(f"{max_chars}\n".encode("utf-8"))
+    digest.update(text.encode("utf-8"))
+    return digest.hexdigest()
+
+
+# Descriptor cost assumed when deciding how many chunks one outline page may
+# carry, and the floor on that page: an outline that lists one chunk at a time
+# is bounded but useless, so a small budget shortens excerpts instead.
+_DESCRIPTOR_CHARS = 240
+_MIN_PAGE_CHUNKS = 8
+
+
+def get_context(
+    path: str,
+    max_tokens: int = 4000,
+    commit: Optional[str] = None,
+    chunk_offset: int = 0,
+) -> dict:
     """Read a node in full when small, or return its summary and chunk outline.
 
     Token counts are approximate (characters divided by four), independent of
-    any particular model tokenizer. Large-node outlines include heading-aware
-    chunks and short excerpts; read selected content with get_chunk().
+    any particular model tokenizer. An outline describes heading-aware chunks
+    with short excerpts; read selected content with get_chunk(), passing back
+    `outline_hash` and the same `max_tokens`.
+
+    The outline is itself paged, so a heading-dense note cannot flood the
+    context it exists to protect: `chunks_total` counts every chunk, and
+    `next_chunk_offset` (None on the last page) asks for the rest.
     """
     max_chars = _context_char_limit(max_tokens)
+    if not isinstance(chunk_offset, int) or isinstance(chunk_offset, bool) or chunk_offset < 0:
+        raise ValueError("chunk_offset must be a non-negative integer")
     text = get(path, commit)
     frontmatter, body = _node_context_text(text)
-    estimated_tokens = (len(text) + 3) // 4
     result = {
         "mode": "full" if len(text) <= max_chars else "outline",
         "uid": frontmatter.get("uid"),
         "title": frontmatter.get("title", ""),
         "summary": frontmatter.get("summary", ""),
         "size_chars": len(text),
-        "estimated_tokens": estimated_tokens,
+        "estimated_tokens": (len(text) + 3) // 4,
         "max_tokens": max_tokens,
     }
     if result["mode"] == "full":
         result["content"] = text
         return result
 
-    chunks = split_markdown_sections(body, max_chars)
-    if not chunks:
-        chunks = split_markdown_sections(text, max_chars)
-    result["content_hash"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    chunks = _node_chunks(text, body, max_chars)
+    page_size = max(_MIN_PAGE_CHUNKS, max_chars // _DESCRIPTOR_CHARS)
+    page = chunks[chunk_offset:chunk_offset + page_size]
+    next_offset = chunk_offset + len(page)
+    excerpt_limit = max(0, min(180, max_chars // page_size))
+    result["outline_hash"] = _outline_hash(text, max_chars)
+    result["chunks_total"] = len(chunks)
+    result["chunk_offset"] = chunk_offset
+    result["next_chunk_offset"] = next_offset if next_offset < len(chunks) else None
     result["chunks"] = [
         {
             "id": chunk["id"],
@@ -547,9 +594,9 @@ def get_context(path: str, max_tokens: int = 4000, commit: Optional[str] = None)
             "part": chunk["part"],
             "parts": chunk["parts"],
             "estimated_tokens": chunk["estimated_tokens"],
-            "excerpt": _chunk_excerpt(chunk["text"]),
+            "excerpt": _chunk_excerpt(chunk["text"], excerpt_limit),
         }
-        for chunk in chunks
+        for chunk in page
     ]
     return result
 
@@ -557,22 +604,26 @@ def get_context(path: str, max_tokens: int = 4000, commit: Optional[str] = None)
 def get_chunk(
     path: str,
     chunk_id: str,
-    content_hash: str,
+    outline_hash: str,
     max_tokens: int = 4000,
     commit: Optional[str] = None,
 ) -> dict:
-    """Read one chunk from an outline, rejecting stale outline references."""
+    """Read one chunk named by an outline, refusing a stale outline reference.
+
+    `outline_hash` covers both the node text and the outline's budget, so a
+    changed node *or* a max_tokens that differs from the outline's is refused —
+    the chunk id would otherwise point at a different section.
+    """
     max_chars = _context_char_limit(max_tokens)
     text = get(path, commit)
-    current_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    if current_hash != content_hash:
-        raise ValueError("Node changed since the outline was created; request a new outline")
+    if _outline_hash(text, max_chars) != outline_hash:
+        raise ValueError(
+            "Outline is stale: the node changed, or max_tokens differs from the "
+            "outline's. Call read_vault_context again and use its outline_hash."
+        )
 
     frontmatter, body = _node_context_text(text)
-    chunks = split_markdown_sections(body, max_chars)
-    if not chunks:
-        chunks = split_markdown_sections(text, max_chars)
-    for chunk in chunks:
+    for chunk in _node_chunks(text, body, max_chars):
         if chunk["id"] == chunk_id:
             return {
                 "chunk_id": chunk_id,

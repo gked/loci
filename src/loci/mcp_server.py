@@ -415,18 +415,31 @@ def read_vault(path: str, commit: str = None) -> str:
 
 @mcp.tool()
 @requires_vault
-def read_vault_context(path: str, max_tokens: int = 4000, commit: str | None = None) -> dict:
+def read_vault_context(
+    path: str,
+    max_tokens: int = 4000,
+    commit: str | None = None,
+    chunk_offset: int = 0,
+) -> dict:
     """Read a node in full if small, otherwise return its overview and chunks.
 
     Returns mode="full" with content when the note fits the approximate budget;
-    otherwise mode="outline" with title, summary, estimated token count, a
-    content hash, and heading-aware chunk descriptors with short excerpts.
+    otherwise mode="outline" with title, summary, estimated token count, an
+    outline_hash, and heading-aware chunk descriptors with short excerpts.
     Token estimates use characters/4 and are not model-specific guarantees.
-    Pass the same max_tokens and content_hash to read_vault_chunk for a selected
-    chunk. Accepts a UID, absolute path, or vault-relative path.
+
+    Read a chunk with read_vault_chunk, passing outline_hash and the SAME
+    max_tokens — the hash covers the budget, so a different one is refused
+    rather than answered with a different section.
+
+    The outline is paged: chunks_total counts every chunk and next_chunk_offset
+    (null on the last page) is the chunk_offset to pass for the rest.
+    Accepts a UID, absolute path, or vault-relative path.
     """
     try:
-        return vault.get_context(path, max_tokens=max_tokens, commit=commit)
+        return vault.get_context(
+            path, max_tokens=max_tokens, commit=commit, chunk_offset=chunk_offset,
+        )
     except (OSError, ValueError, HistoryError) as e:
         return {"error": str(e)}
 
@@ -436,19 +449,20 @@ def read_vault_context(path: str, max_tokens: int = 4000, commit: str | None = N
 def read_vault_chunk(
     path: str,
     chunk_id: str,
-    content_hash: str,
+    outline_hash: str,
     max_tokens: int = 4000,
     commit: str | None = None,
 ) -> dict:
-    """Read one bounded chunk from a read_vault_context outline.
+    """Read one bounded chunk named by a read_vault_context outline.
 
-    Pass the path, chunk id, content hash, and max_tokens from the outline.
-    Returns the chunk text and heading path. If the note changed since the
-    outline was created, returns an error and the outline should be refreshed.
+    Pass the path, chunk id, outline_hash, and the same max_tokens the outline
+    was built with. Returns the chunk text and its heading path. If the note
+    changed, or max_tokens differs from the outline's, this returns an error:
+    call read_vault_context again and use the new outline_hash.
     """
     try:
         return vault.get_chunk(
-            path, chunk_id, content_hash, max_tokens=max_tokens, commit=commit,
+            path, chunk_id, outline_hash, max_tokens=max_tokens, commit=commit,
         )
     except (OSError, ValueError, HistoryError) as e:
         return {"error": str(e)}

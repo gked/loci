@@ -115,6 +115,37 @@ def test_context_tools_are_registered():
     assert {"read_vault_context", "read_vault_chunk"} <= registered
 
 
+def test_context_tools_round_trip_against_a_real_vault(tmp_vault):
+    """The wrapper tests above patch the callee away, so only an end-to-end call
+    catches a mis-ordered or dropped argument at the call site."""
+    node = write_vault(
+        type="document", title="Round trip", body="# One\n\n" + ("first. " * 40) + "\n# Two\n\nsecond.\n",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    outline = server.read_vault_context(node["uid"], max_tokens=20)
+    assert outline["mode"] == "outline"
+    target = next(c for c in outline["chunks"] if c["heading_path"] == ["Two"])
+
+    chunk = server.read_vault_chunk(
+        node["uid"], target["id"], outline["outline_hash"], max_tokens=20,
+    )
+    assert "error" not in chunk
+    assert chunk["heading_path"] == ["Two"]
+    assert "second." in chunk["content"]
+
+    # A budget the outline was not built with must be refused, not answered.
+    mismatched = server.read_vault_chunk(
+        node["uid"], target["id"], outline["outline_hash"], max_tokens=500,
+    )
+    assert "error" in mismatched
+
+
+def test_read_vault_context_reports_a_bad_token_budget_as_an_error(tmp_vault):
+    """ValueError is what get_context raises on its own; the tool must wrap it."""
+    assert "error" in server.read_vault_context("missing.md", max_tokens=0)
+
+
 def test_read_meta_returns_error_string_on_unknown_key(tmp_vault):
     with patch("loci.mcp_server.vault.read_meta", side_effect=ValueError("Unknown meta file")):
         result = read_meta("bad-key")

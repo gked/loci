@@ -37,8 +37,9 @@ Identify which mode fits the user's request, then follow that workflow.
 For a node you need to inspect, call `loci__read_vault_context(path=<uid>, max_tokens=4000)`.
 
 - If `mode="full"`, use its `content` as the node text.
-- If `mode="outline"`, use its title, summary, heading paths, excerpts, and estimated sizes to choose only relevant chunks. Fetch each chosen chunk with `loci__read_vault_chunk(path=<uid>, chunk_id=<id>, content_hash=<hash>, max_tokens=<same limit>)`.
-- Do not fetch every chunk by default. If a chunk read reports that the node changed, request a fresh context outline.
+- If `mode="outline"`, use its title, summary, heading paths, excerpts, and estimated sizes to choose only relevant chunks. Fetch each chosen chunk with `loci__read_vault_chunk(path=<uid>, chunk_id=<id>, outline_hash=<hash>, max_tokens=<same limit>)` — the hash covers the budget, so a different `max_tokens` is refused rather than answered with the wrong section.
+- Do not fetch every chunk by default. If a chunk read reports a stale outline, call `loci__read_vault_context` again and use the new `outline_hash`.
+- The outline is paged. When `next_chunk_offset` is not null there are more chunks than it listed (`chunks_total` is the full count): call `loci__read_vault_context(path=<uid>, max_tokens=<same limit>, chunk_offset=<next_chunk_offset>)` only if what you need is not in the page you have.
 - Token estimates are approximate (characters divided by four), not guarantees for a specific model. Keep the existing eight-node cap and be selective when reading several large nodes.
 
 ---

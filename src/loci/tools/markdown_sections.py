@@ -51,6 +51,15 @@ def _heading_sections(body: str) -> list[tuple[list[str], str]]:
 
     if current:
         sections.append((current_path, "".join(current)))
+
+    # A note that opens with a blank line produces a whitespace-only preamble
+    # section. As its own chunk it is an id that carries nothing and an empty
+    # excerpt, so fold it into the first real section instead — the text is kept
+    # verbatim, so the chunks still rejoin to the original body.
+    if len(sections) > 1 and sections[0][0] == [] and not sections[0][1].strip():
+        preamble = sections.pop(0)[1]
+        path, text = sections[0]
+        sections[0] = (path, preamble + text)
     return sections
 
 
@@ -60,8 +69,11 @@ def _split_text(text: str, max_chars: int) -> list[str]:
         return [text]
 
     # Keep blank-line separators attached to the preceding paragraph so joining
-    # the returned pieces reproduces the input exactly.
-    paragraphs = re.findall(r".*?(?:\n[ \t]*\n|$)", text, flags=re.DOTALL)
+    # the returned pieces reproduces the input exactly. \r is matched explicitly:
+    # a CRLF body (a vault written on Windows, or a history snapshot read without
+    # newline translation) would otherwise look like one unbroken paragraph and
+    # lose paragraph-aware splitting.
+    paragraphs = re.findall(r".*?(?:\r?\n[ \t]*\r?\n|$)", text, flags=re.DOTALL)
     paragraphs = [part for part in paragraphs if part]
     chunks: list[str] = []
     current = ""
@@ -73,8 +85,10 @@ def _split_text(text: str, max_chars: int) -> list[str]:
                 current = ""
             remaining = paragraph
             while len(remaining) > max_chars:
-                cut = remaining.rfind("\n", 0, max_chars + 1)
-                cut = cut + 1 if cut > 0 else max_chars
+                # rfind stops before max_chars, so cut <= max_chars always: a
+                # newline sitting exactly on the limit must not push a chunk over.
+                cut = remaining.rfind("\n", 0, max_chars)
+                cut = cut + 1 if cut >= 0 else max_chars
                 chunks.append(remaining[:cut])
                 remaining = remaining[cut:]
             current = remaining
