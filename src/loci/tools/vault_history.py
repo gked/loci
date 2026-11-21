@@ -569,7 +569,8 @@ def _incoming(
     base_tree = repo.object_store[bases[0]].tree if bases else None
     theirs: dict[bytes, Optional[bytes]] = {}
     for change in tree_changes(repo.object_store, base_tree, repo.object_store[tip].tree):
-        theirs[change.new.path or change.old.path] = change.new.sha
+        # A file the other line deleted has no new side: take it in as a delete.
+        theirs[(change.new or change.old).path] = change.new.sha if change.new else None
     for key in settled:
         theirs.pop(key, None)
     if skip & theirs.keys():
