@@ -27,6 +27,10 @@ PACKAGED_TOKEN = "e2e-packaged-token"
 
 pytestmark = pytest.mark.e2e
 
+# Absolute on the platform under test: "/x" is relative on Windows, where the
+# server would answer 400 before it ever looks for the file.
+MISSING_PATH = "C:/nonexistent/loci-e2e.txt" if sys.platform == "win32" else "/nonexistent/loci-e2e.txt"
+
 
 @pytest.fixture(scope="module")
 def packaged_server(e2e_vault, server_logs) -> str:
@@ -124,16 +128,17 @@ def test_the_page_can_call_open_local(packaged_page):
     means the request got past authorization, which is the whole assertion.
     """
     result = packaged_page.evaluate(
-        """async () => {
+        """async (missing) => {
             const token = document
                 .querySelector('meta[name="loci-token"]')
                 .getAttribute("content");
             const res = await fetch(
-                "/api/open-local?path=" + encodeURIComponent("/nonexistent/loci-e2e.txt"),
+                "/api/open-local?path=" + encodeURIComponent(missing),
                 { method: "POST", headers: { "X-Loci-Token": token } },
             );
             return { status: res.status, detail: (await res.json()).detail };
-        }"""
+        }""",
+        MISSING_PATH,
     )
 
     assert result["status"] == 404, result
