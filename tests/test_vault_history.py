@@ -1768,6 +1768,29 @@ def test_a_file_the_other_computer_deleted_is_part_of_the_merge(tmp_vault, as_co
     assert vault_history.status(tmp_vault).get("error") is None
 
 
+def test_a_delete_is_not_joined_until_it_has_reached_the_vault(tmp_vault, as_computer):
+    a = as_computer("a")
+    alpha = save("Alpha")
+    text = Path(alpha["path"]).read_bytes()              # bytes: a text round trip would turn LF into CRLF on Windows
+    b = as_computer("b")
+    save("Beta")
+    api.delete(alpha["uid"])                             # B deletes Alpha
+    as_computer("a")
+    gone = Path(alpha["path"])
+    gone.write_bytes(text)                               # the sync tool has not removed Alpha on A yet
+
+    save("Gamma")
+
+    assert f"Synced from {b.decode()}" not in subjects(tmp_vault)   # a missing delete is not a revert
+
+    gone.unlink()                                        # now the delete arrives
+    save("Delta")
+
+    merge = next(c for c in commits(tmp_vault) if c.message.decode().startswith("Synced from"))
+    assert merge.parents[1] == branches(tmp_vault)[b]
+    assert rel(tmp_vault, alpha) in files_changed(tmp_vault, merge)
+
+
 def test_a_local_edit_made_while_files_arrive_is_still_an_outside_edit(tmp_vault, as_computer):
     a, b, alpha, beta = sync_in(tmp_vault, as_computer)
     (tmp_vault / "by-hand.md").write_text("typed in Obsidian")
