@@ -17,6 +17,7 @@ import pytest
 
 from loci import clients, skills_install
 from loci.http_server import split_command
+from loci.tools import fs_retry
 
 
 @pytest.fixture
@@ -489,7 +490,7 @@ def test_a_stub_that_stays_in_use_still_raises_after_the_retries(tmp_path, monke
     calls = _busy_replace(monkeypatch, times=10_000)
     with pytest.raises(PermissionError):
         skills_install.install_all(root, client=clients.CLAUDE)
-    assert len(calls) == skills_install._REPLACE_ATTEMPTS      # the bound is the bound
+    assert len(calls) == fs_retry.ATTEMPTS      # the bound is the bound
 
 
 def test_a_permission_error_is_not_retried_off_windows(tmp_path, monkeypatch):

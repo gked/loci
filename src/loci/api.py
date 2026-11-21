@@ -314,7 +314,7 @@ def delete(path: str) -> dict:
     # would leave nothing to restore, so commit its current content first.
     # When history is up to date this is a no-op.
     _before_write(p)
-    p.unlink()
+    fs_retry.unlink(p)      # missing_ok is harmless: the file was found above
     if uid:
         graph.drop_node(uid)
     out = {"deleted": True, "path": str(p)}

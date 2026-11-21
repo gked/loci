@@ -45,9 +45,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from loci import clients as clients_mod
-from loci.tools import fs_retry
 from loci.clients import CLAUDE, Client
 from loci.skill_assembly import split_frontmatter
+from loci.tools import fs_retry
 
 # The skills live beside this module, inside the package. Not a repo path:
 # this resolves to site-packages on an installed copy, which is the point.
@@ -303,11 +303,6 @@ def _replace_in_place(dest: Path, text: str) -> bool:
         except OSError:
             pass    # a leftover from an older install, held open (Windows): the next run removes it
     return True
-
-
-# Windows refuses to rename over a file another process has open; the shared
-# retry (loci.tools.fs_retry) waits for it. Kept as names for the tests.
-_REPLACE_ATTEMPTS = fs_retry.ATTEMPTS
 
 
 def _write_atomic(path: Path, text: str) -> None:

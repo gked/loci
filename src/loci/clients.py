@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from loci.tools import fs_retry
+
 # Same marker skills_install uses to recognise stubs this installer wrote.
 SKILL_NAME_PREFIX = "loci-"
 
@@ -333,8 +335,7 @@ def register_claude_desktop(
         return True, "already registered"
     servers["loci"] = {"command": shutil.which(command) or command, "args": args or []}
     try:
-        with open(path, "w", encoding="utf-8", newline="\n") as f:
-            f.write(json.dumps(config, indent=2))
+        fs_retry.write_utf8(path, json.dumps(config, indent=2))     # the app may hold its own config open
     except OSError as e:
         return False, f"could not write {path}: {e}"
     return True, f"registered ({path}). Restart Claude Desktop."

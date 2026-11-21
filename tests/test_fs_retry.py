@@ -166,3 +166,41 @@ def test_restoring_a_deleted_node_waits_for_a_file_that_is_briefly_open(tmp_vaul
 
     assert len(calls) == 3
     assert "changed" not in path.read_text(encoding="utf-8")
+
+
+def test_writing_a_skill_overlay_waits_for_a_file_that_is_briefly_open(tmp_vault, monkeypatch, no_sleep):
+    on_windows(monkeypatch)
+    calls = busy_times(monkeypatch, Path, "write_text", times=2, only_suffix="loci-save.md")
+
+    api.write_skill("Overlay line that must land.", skill="loci-save")
+
+    assert len(calls) == 3
+    assert "Overlay line that must land." in (tmp_vault / "skills" / "loci-save.md").read_text(encoding="utf-8")
+
+
+def test_deleting_a_note_waits_for_a_file_that_is_briefly_open(tmp_vault, monkeypatch, no_sleep):
+    saved = save("Delete Retry")
+    path = Path(saved["path"])
+    on_windows(monkeypatch)
+    calls = busy_times(monkeypatch, Path, "unlink", times=2, only_suffix="delete-retry.md")
+
+    api.delete(saved["uid"])
+
+    assert len(calls) == 3
+    assert not path.exists()
+
+
+def test_registering_claude_desktop_waits_for_a_config_the_app_has_open(tmp_path, monkeypatch, no_sleep):
+    from loci import clients
+    config = tmp_path / "Claude" / "claude_desktop_config.json"
+    config.parent.mkdir()
+    config.write_text('{"mcpServers": {}}', encoding="utf-8")
+    monkeypatch.setattr(clients, "claude_desktop_config", lambda: config)
+    monkeypatch.setattr(clients.shutil, "which", lambda name: None)
+    on_windows(monkeypatch)
+    calls = busy_times(monkeypatch, Path, "write_text", times=2, only_suffix="claude_desktop_config.json")
+
+    ok, _ = clients.register_claude_desktop()
+
+    assert ok and len(calls) == 3
+    assert "loci" in config.read_text(encoding="utf-8")
