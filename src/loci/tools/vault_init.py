@@ -340,6 +340,23 @@ def prompt_optional(text: str) -> str:
         return ""
 
 
+def _on_windows() -> bool:
+    return sys.platform == "win32"
+
+
+def expand_user_path(raw: str) -> Path:
+    """`Path(raw).expanduser()` for a path a person typed.
+
+    POSIX raises `RuntimeError` for `~nosuchuser/x`, which callers turn into "ask
+    again". Windows does not: `~name` becomes a sibling of the profile folder
+    (`C:\\Users\\name`), so a typo would quietly create a vault in the wrong
+    place. There, anything but `~`, `~/x` or `~\\x` is refused the same way.
+    """
+    if _on_windows() and raw.startswith("~") and len(raw) > 1 and raw[1] not in "/\\":
+        raise RuntimeError(f"cannot expand {raw!r}: only ~ and ~/ are understood on Windows")
+    return Path(raw).expanduser()
+
+
 def prompt_vault_root() -> Path:
     """
     Ask for the vault location. There is deliberately no default.
@@ -367,7 +384,7 @@ def prompt_vault_root() -> Path:
             print("  A vault path is required — there is no default.")
             continue
         try:
-            candidate = Path(raw).expanduser()
+            candidate = expand_user_path(raw)
         except (RuntimeError, KeyError):
             # No such user, or no home directory to expand ~ against.
             print(f"  Could not work out what {raw} expands to. Start from / or ~/.")
@@ -775,7 +792,7 @@ def set_vault_root(path: str, create: bool = True) -> dict:
     if not raw:
         raise ValueError("A vault path is required. Ask the user where the vault should live.")
     try:
-        root = Path(raw).expanduser()
+        root = expand_user_path(raw)
     except (RuntimeError, KeyError):
         raise ValueError(f"Could not work out what {raw} expands to. Ask for a path starting with / or ~/.")
     if not root.is_absolute():

@@ -46,6 +46,7 @@ from loci.tools.relation_registry import RelationRegistry, get_relation_registry
 from loci.tools.scheme_registry import SchemeRegistry, get_scheme_registry, has_asset_issues
 from loci.tools import tag_hygiene
 from loci.tools.node_merge import conflicted_copies, original_name
+from loci.tools.vault_files import is_appledouble
 
 # TODO: derive BASE_STATE_VALUES from ontology.yaml once the loader supports enum extraction
 BASE_STATE_VALUES = {"active", "archived"}
@@ -210,7 +211,7 @@ def lint_vault(vault_root: Path) -> dict:
     copies = conflicted_copies(vault_root)
     # A conflicted copy shares its uid with the file it came from. Linting it as a
     # node would report a duplicate for what is really one problem, reported below.
-    md_files = sorted(f for f in vault_root.glob("*.md") if f not in copies)
+    md_files = sorted(f for f in vault_root.glob("*.md") if f not in copies and not is_appledouble(f))
 
     # Pass 1: collect all uids and detect duplicates; keep the parsed
     # frontmatter for the tag checks, which need every node's tags and the

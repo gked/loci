@@ -1288,3 +1288,48 @@ def test_skill_overlays_are_not_in_user_meta_files():
     for skill in USER_SKILL_OVERLAYS:
         assert f"{skill}-user.md" not in USER_META_FILES
         assert f"{skill}-user.md" not in META_FILES
+
+
+def test_expand_user_path_refuses_another_users_tilde_on_windows(monkeypatch):
+    """Windows' expanduser turns ~name into a sibling of the profile folder
+    instead of failing, so a typo would create a vault in the wrong place."""
+    from loci.tools import vault_init
+    monkeypatch.setattr(vault_init, "_on_windows", lambda: True)
+    for bad in ("~nosuchuser/vault", "~nosuchuser", "~x\\vault", "~C:\\vault"):
+        with pytest.raises(RuntimeError):
+            vault_init.expand_user_path(bad)
+    home = vault_init.Path.home()
+    assert vault_init.expand_user_path("~") == home
+    assert vault_init.expand_user_path("~/vault") == home / "vault"
+    assert vault_init.expand_user_path("/plain/path") == vault_init.Path("/plain/path")
+
+
+def test_expand_user_path_leaves_posix_behaviour_alone(monkeypatch):
+    from loci.tools import vault_init
+    monkeypatch.setattr(vault_init, "_on_windows", lambda: False)
+    assert vault_init.expand_user_path("~/vault") == vault_init.Path.home() / "vault"
+
+
+def test_the_other_typed_path_entry_points_refuse_a_windows_tilde_name(monkeypatch):
+    """scan_directory (a path an agent passes on) and the UI's open-local endpoint
+    expand what a person typed, just as the vault-root prompt does."""
+    from fastapi import HTTPException
+    from loci import http_server
+    from loci.tools import directory_scanner, vault_init
+
+    monkeypatch.setattr(vault_init, "_on_windows", lambda: True)
+    with pytest.raises(RuntimeError):
+        directory_scanner.scan_directory("~nosuchuser/downloads", vault_init.Path("."))
+    with pytest.raises(HTTPException) as exc:
+        http_server._local_path("~nosuchuser/file.pdf")
+    assert exc.value.status_code == 400
+
+
+def test_open_local_answers_400_for_an_unknown_tilde_user_on_any_platform():
+    """POSIX raised RuntimeError here and the endpoint turned it into a 500."""
+    from fastapi import HTTPException
+    from loci import http_server
+
+    with pytest.raises(HTTPException) as exc:
+        http_server._local_path("~definitely-not-a-user-xyz/file.pdf")
+    assert exc.value.status_code == 400

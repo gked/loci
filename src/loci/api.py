@@ -37,6 +37,7 @@ from loci.tools.frontmatter import load_frontmatter, split_frontmatter
 from loci.tools import nx_graph as graph
 from loci.tools import tag_hygiene
 from loci.tools import node_merge, vault_history
+from loci.tools.vault_files import is_appledouble
 from loci.tools.vault_linter import lint_vault as _lint_vault
 from loci.tools import asset_registry as ar
 from loci.tools.resolvers.dispatcher import dispatch_resolve
@@ -547,6 +548,8 @@ def find_unregistered_assets() -> list:
 
     registered: set[str] = set()
     for vf in vault_root.glob("*.md"):
+        if is_appledouble(vf):
+            continue
         try:
             fm, _ = load_frontmatter(vf.read_text(encoding="utf-8"))
             if fm is None:
@@ -1006,8 +1009,8 @@ def list_items(type: str = None) -> dict:
     vault_root = _vault_root()
     result: dict = {}
     for path in sorted(vault_root.glob("*.md")):
-        if node_merge.is_conflicted_copy(path):
-            continue    # a sync tool's copy of a node, not a node
+        if node_merge.is_conflicted_copy(path) or is_appledouble(path):
+            continue    # a sync tool's copy of a node, or macOS's `._` companion: not a node
         fm, _ = load_frontmatter(path.read_text(encoding="utf-8"))
         if fm is None:
             continue

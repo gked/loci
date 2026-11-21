@@ -29,6 +29,7 @@ from loci.tools.vault_init import (
     HOW_TO_CONFIGURE,
     NOT_CONFIGURED_MESSAGE,
     config_path,
+    expand_user_path,
     load_config,
     migrate_legacy_config,
 )
@@ -461,7 +462,12 @@ def _local_path(raw: str) -> Path:
     # make every ~-relative path look absolute and defeat the check, so "~/" is
     # accepted as its own explicit form instead.
     if path_text.startswith("~"):
-        path = Path(path_text).expanduser()
+        try:
+            path = expand_user_path(path_text)
+        except (RuntimeError, KeyError):          # no such user, or Windows `~name`
+            raise HTTPException(
+                status_code=400, detail="Could not resolve the home directory in that path"
+            )
         if not path.is_absolute():
             raise HTTPException(
                 status_code=400, detail="Could not resolve the home directory in that path"

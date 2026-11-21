@@ -89,7 +89,7 @@ _RACE_WAIT_SECONDS = 0.2
 # in the vault, Obsidian's settings folder (workspace.json changes on every
 # click), and the editor and OS litter that Loci writes around.
 _SKIP_DIRS = {".git", ".loci", ".obsidian"}
-_SKIP_FILES = (".DS_Store", "*.tmp", "*.swp", "*~", ".#*")
+_SKIP_FILES = (".DS_Store", "._*", "*.tmp", "*.swp", "*~", ".#*")
 _FILE_MODE = 0o100644
 
 # Finding what changed outside Loci walks every file, so its cost grows with the
