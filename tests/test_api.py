@@ -517,6 +517,137 @@ def test_get_context_outline_size_does_not_grow_with_the_note(tmp_vault):
     assert second_page["chunk_offset"] == small["next_chunk_offset"]
 
 
+@pytest.mark.parametrize("max_tokens", [10, 200, 1000, 4000])
+def test_get_context_outline_honours_the_token_budget_it_was_given(tmp_vault, max_tokens):
+    """The budget has to bound the outline for hostile shapes too — long heading
+    titles and deep nesting, which no excerpt limit touches. A floor applies
+    (the outline always offers a usable page), so that is what is asserted."""
+    long_title = "Heading " * 120               # ~960 chars per heading
+    body = "".join(
+        f"# {long_title} L1 {i}\n\n## {long_title} L2 {i}\n\n### {long_title} L3 {i}\n\n"
+        f"Body text for section {i}.\n\n"
+        for i in range(200)
+    )
+    node = api.save(
+        type="document", title="Hostile headings", body=body,
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    outline = api.get_context(node["uid"], max_tokens=max_tokens)
+
+    assert outline["mode"] == "outline"
+    budget_chars = max_tokens * 4
+    assert len(json.dumps(outline)) <= max(budget_chars, api.OUTLINE_FLOOR_CHARS)
+    # Still usable: a page of chunks, each with a heading path that says where it is.
+    assert outline["chunks"]
+    assert all(chunk["heading_path"] for chunk in outline["chunks"])
+
+
+def test_get_context_rejects_a_chunk_offset_past_the_end(tmp_vault):
+    """An empty page with next_chunk_offset None reads as 'walk finished' while
+    chunks_total says otherwise, so a mis-paged walk must be told, not guessed."""
+    node = api.save(
+        type="document", title="Paged note", body="# A\n\n" + ("text. " * 400),
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    outline = api.get_context(node["uid"], max_tokens=20)
+
+    with pytest.raises(ValueError, match="chunk_offset"):
+        api.get_context(node["uid"], max_tokens=20, chunk_offset=outline["chunks_total"] + 5)
+
+
+def test_get_context_outline_fields_describe_the_node_and_the_request(tmp_vault):
+    """Every descriptor field the skill tells the model to choose chunks by has
+    to actually arrive: excerpts, sizes, part numbering, and the echoed budget."""
+    node = api.save(
+        type="document", title="Described note",
+        body="# Alpha\n\n" + ("Alpha body sentence. " * 30) + "\n# Beta\n\nBeta body.\n",
+        summary="A note with two sections.",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    outline = api.get_context(node["uid"], max_tokens=40)
+
+    assert outline["uid"] == node["uid"]
+    assert outline["max_tokens"] == 40
+    assert outline["size_chars"] == len(api.get(node["uid"]))
+    assert outline["estimated_tokens"] == (outline["size_chars"] + 3) // 4
+    alpha_parts = [c for c in outline["chunks"] if c["heading_path"] == ["Alpha"]]
+    assert len(alpha_parts) > 1, "a long section should be split into parts"
+    assert [c["part"] for c in alpha_parts] == list(range(1, len(alpha_parts) + 1))
+    assert all(c["parts"] == alpha_parts[0]["parts"] for c in alpha_parts)
+    assert all(c["estimated_tokens"] > 0 for c in outline["chunks"])
+    # The excerpt is the selection signal: non-empty, and not just the heading back.
+    first = alpha_parts[0]
+    assert first["excerpt"]
+    assert not first["excerpt"].startswith("# Alpha")
+    assert "Alpha body sentence" in first["excerpt"]
+
+    chunk = api.get_chunk(node["uid"], first["id"], outline["outline_hash"], max_tokens=40)
+    assert chunk["uid"] == node["uid"]
+    assert chunk["title"] == "Described note"
+    assert chunk["summary"] == "A note with two sections."
+    assert (chunk["part"], chunk["parts"]) == (first["part"], first["parts"])
+    assert chunk["estimated_tokens"] == first["estimated_tokens"]
+
+
+def test_get_context_excerpts_shrink_with_the_budget(tmp_vault):
+    """The small-budget bound rests on excerpts shrinking, not on luck."""
+    node = api.save(
+        type="document", title="Excerpt budget",
+        body="".join(f"## S{i}\n\n{'word ' * 80}\n\n" for i in range(400)),
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    tight = api.get_context(node["uid"], max_tokens=10)
+    roomy = api.get_context(node["uid"], max_tokens=4000)
+
+    tight_len = max(len(c["excerpt"]) for c in tight["chunks"])
+    roomy_len = max(len(c["excerpt"]) for c in roomy["chunks"])
+    assert tight_len < roomy_len
+
+
+def test_get_context_pages_to_the_end_without_looping(tmp_vault):
+    """next_chunk_offset must terminate: a model following it walks the note once."""
+    node = api.save(
+        type="document", title="Walkable",
+        body="".join(f"## S{i}\n\nBody {i}.\n\n" for i in range(60)),
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    seen, offset, pages = [], 0, 0
+    while True:
+        page = api.get_context(node["uid"], max_tokens=200, chunk_offset=offset)
+        seen += [c["id"] for c in page["chunks"]]
+        pages += 1
+        assert pages <= page["chunks_total"], "paging did not terminate"
+        if page["next_chunk_offset"] is None:
+            break
+        offset = page["next_chunk_offset"]
+
+    assert pages > 1
+    assert seen == [f"chunk-{i}" for i in range(1, page["chunks_total"] + 1)]
+
+
+def test_get_context_outlines_a_body_less_node(tmp_vault):
+    """A frontmatter-only node still has to offer something readable."""
+    _write_raw(
+        tmp_vault, "bodyless.md",
+        {"uid": "bdls0001", "type": "document", "title": "Body-less", "subtype": "note",
+         "summary": "x " * 300},
+    )
+
+    outline = api.get_context("bodyless.md", max_tokens=10)
+
+    assert outline["mode"] == "outline"
+    assert outline["chunks_total"] >= 1
+    assert outline["chunks"]
+    chunk = api.get_chunk(
+        "bodyless.md", outline["chunks"][0]["id"], outline["outline_hash"], max_tokens=10,
+    )
+    assert chunk["content"]
+
+
 def test_get_context_reads_a_historical_version(tmp_vault, monkeypatch):
     monkeypatch.setenv("LOCI_VAULT_HISTORY", "1")      # off by default in the suite
     node = api.save(

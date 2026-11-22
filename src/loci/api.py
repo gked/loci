@@ -38,7 +38,7 @@ from loci.tools.frontmatter import load_frontmatter, split_frontmatter
 from loci.tools import nx_graph as graph
 from loci.tools import tag_hygiene
 from loci.tools import fs_retry, node_merge, vault_history
-from loci.tools.markdown_sections import split_markdown_sections
+from loci.tools.markdown_sections import estimated_tokens as _estimated_tokens, split_markdown_sections
 from loci.tools.vault_files import is_appledouble
 from loci.tools.vault_linter import lint_vault as _lint_vault
 from loci.tools import asset_registry as ar
@@ -536,11 +536,48 @@ def _outline_hash(text: str, max_chars: int) -> str:
     return digest.hexdigest()
 
 
-# Descriptor cost assumed when deciding how many chunks one outline page may
-# carry, and the floor on that page: an outline that lists one chunk at a time
-# is bounded but useless, so a small budget shortens excerpts instead.
-_DESCRIPTOR_CHARS = 240
+# How an outline page is sized. A descriptor costs its excerpt, its heading
+# path, and about this many characters of ids, numbers and JSON keys — measured
+# at ~85, rounded up so page_size does not over-allocate.
+_DESCRIPTOR_OVERHEAD_CHARS = 110
+# The floor: an outline that lists one chunk at a time, or describes it with
+# nothing, is bounded but useless. Below this the budget cannot be honoured, so
+# the outline spends up to this much and the docstring says so.
 _MIN_PAGE_CHUNKS = 8
+_MIN_HEADING_CHARS = 24
+_MIN_EXCERPT_CHARS = 40
+_MAX_EXCERPT_CHARS = 180
+# Deep nesting multiplies a descriptor's cost, so a path keeps its last levels
+# (the ones that locate the chunk) and elides the rest.
+_MAX_PATH_DEPTH = 3
+OUTLINE_FLOOR_CHARS = _MIN_PAGE_CHUNKS * (
+    _DESCRIPTOR_OVERHEAD_CHARS + _MIN_HEADING_CHARS + _MIN_EXCERPT_CHARS
+) + 600     # + the node's own fields: uid, title, summary, hash, counters
+
+
+def _elide(text: str, limit: int) -> str:
+    """Shorten to limit characters, marking that something was cut."""
+    if limit <= 0:
+        return ""
+    if len(text) <= limit:
+        return text
+    return text[:max(1, limit - 1)].rstrip() + "…"
+
+
+def _outline_heading_path(heading_path: list, limit: int) -> list:
+    """A heading path bounded in both depth and width.
+
+    An unbounded path is the one descriptor field no excerpt limit touches: a
+    note with long titles, or six levels of nesting, otherwise produces an
+    outline many times the budget it was asked for.
+    """
+    path = list(heading_path)
+    if len(path) > _MAX_PATH_DEPTH:
+        path = ["…"] + path[-_MAX_PATH_DEPTH:]
+    if not path:
+        return path
+    share = max(1, limit // len(path))
+    return [_elide(part, share) for part in path]
 
 
 def get_context(
@@ -556,9 +593,12 @@ def get_context(
     with short excerpts; read selected content with get_chunk(), passing back
     `outline_hash` and the same `max_tokens`.
 
-    The outline is itself paged, so a heading-dense note cannot flood the
-    context it exists to protect: `chunks_total` counts every chunk, and
-    `next_chunk_offset` (None on the last page) asks for the rest.
+    The outline is paged and every descriptor is bounded, so a heading-dense
+    note cannot flood the context this exists to protect: `chunks_total` counts
+    every chunk and `next_chunk_offset` (None on the last page) asks for the
+    rest. The outline fits `max_tokens` except for a floor of about
+    OUTLINE_FLOOR_CHARS characters — below that a page would describe its chunks
+    with nothing and be useless, so the floor wins over the budget.
     """
     max_chars = _context_char_limit(max_tokens)
     if not isinstance(chunk_offset, int) or isinstance(chunk_offset, bool) or chunk_offset < 0:
@@ -571,7 +611,7 @@ def get_context(
         "title": frontmatter.get("title", ""),
         "summary": frontmatter.get("summary", ""),
         "size_chars": len(text),
-        "estimated_tokens": (len(text) + 3) // 4,
+        "estimated_tokens": _estimated_tokens(text),
         "max_tokens": max_tokens,
     }
     if result["mode"] == "full":
@@ -579,10 +619,19 @@ def get_context(
         return result
 
     chunks = _node_chunks(text, body, max_chars)
-    page_size = max(_MIN_PAGE_CHUNKS, max_chars // _DESCRIPTOR_CHARS)
+    if chunk_offset and chunk_offset >= len(chunks):
+        raise ValueError(
+            f"chunk_offset {chunk_offset} is past the last chunk "
+            f"({len(chunks)} in total); read the outline from 0 again"
+        )
+    # Split the budget between how many chunks a page lists and how much each
+    # descriptor may say, so neither axis can grow without the other shrinking.
+    page_size = max(_MIN_PAGE_CHUNKS, max_chars // (_DESCRIPTOR_OVERHEAD_CHARS * 2))
+    share = max(0, max_chars // page_size - _DESCRIPTOR_OVERHEAD_CHARS)
+    heading_limit = max(_MIN_HEADING_CHARS, share // 3)
+    excerpt_limit = min(_MAX_EXCERPT_CHARS, max(_MIN_EXCERPT_CHARS, share - heading_limit))
     page = chunks[chunk_offset:chunk_offset + page_size]
     next_offset = chunk_offset + len(page)
-    excerpt_limit = max(0, min(180, max_chars // page_size))
     result["outline_hash"] = _outline_hash(text, max_chars)
     result["chunks_total"] = len(chunks)
     result["chunk_offset"] = chunk_offset
@@ -590,7 +639,7 @@ def get_context(
     result["chunks"] = [
         {
             "id": chunk["id"],
-            "heading_path": chunk["heading_path"],
+            "heading_path": _outline_heading_path(chunk["heading_path"], heading_limit),
             "part": chunk["part"],
             "parts": chunk["parts"],
             "estimated_tokens": chunk["estimated_tokens"],

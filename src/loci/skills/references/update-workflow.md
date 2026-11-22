@@ -47,7 +47,7 @@ old value before setting the new one:
   - 2026-03-22: organization changed from University of Sussex to University of Manchester
   ```
 
-  The body is **not** a frontmatter field. Read it with `loci__read_vault`,
+  The body is **not** a frontmatter field. Read it with `loci__read_vault` (the whole body, deliberately: a patch replaces whole fields, so it needs the exact complete text that a context outline cannot give),
   append the line, and pass the whole result as the separate `body=` argument
   in U4 — never inside `updates`.
 

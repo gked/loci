@@ -141,6 +141,45 @@ def test_context_tools_round_trip_against_a_real_vault(tmp_vault):
     assert "error" in mismatched
 
 
+def test_read_vault_context_forwards_the_page_offset(tmp_vault):
+    """chunk_offset is how a model walks a large note; if the wrapper drops it,
+    every page is page one and the walk never ends."""
+    node = write_vault(
+        type="document", title="Paged through the tool",
+        body="".join(f"## S{i}\n\nBody {i}.\n\n" for i in range(60)),
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    first = server.read_vault_context(node["uid"], max_tokens=200)
+    assert first["next_chunk_offset"] is not None
+    second = server.read_vault_context(
+        node["uid"], max_tokens=200, chunk_offset=first["next_chunk_offset"],
+    )
+
+    assert second["chunk_offset"] == first["next_chunk_offset"]
+    assert second["chunks"][0]["id"] != first["chunks"][0]["id"]
+    assert "error" in server.read_vault_context(
+        node["uid"], max_tokens=200, chunk_offset=first["chunks_total"] + 1,
+    )
+
+
+def test_read_vault_context_forwards_the_commit(tmp_vault, monkeypatch):
+    """The historical read is a separate code path; the wrapper has to pass it on."""
+    monkeypatch.setenv("LOCI_VAULT_HISTORY", "1")      # off by default in the suite
+    node = write_vault(
+        type="document", title="Tool history", body="# Draft\n\nOriginal text.",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    patch_vault(node["uid"], {"status": "active"}, body="# Draft\n\nRewritten text.")
+    first_commit = server.history_vault(node["uid"])["commits"][-1]["commit"]
+
+    result = server.read_vault_context(node["uid"], max_tokens=1000, commit=first_commit)
+
+    assert "error" not in result
+    assert "Original text." in result["content"]
+    assert "Rewritten text." not in result["content"]
+
+
 def test_read_vault_context_reports_a_bad_token_budget_as_an_error(tmp_vault):
     """ValueError is what get_context raises on its own; the tool must wrap it."""
     assert "error" in server.read_vault_context("missing.md", max_tokens=0)

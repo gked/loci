@@ -423,17 +423,31 @@ def read_vault_context(
 ) -> dict:
     """Read a node in full if small, otherwise return its overview and chunks.
 
-    Returns mode="full" with content when the note fits the approximate budget;
-    otherwise mode="outline" with title, summary, estimated token count, an
-    outline_hash, and heading-aware chunk descriptors with short excerpts.
-    Token estimates use characters/4 and are not model-specific guarantees.
+    Check "mode" first: the two shapes differ.
+      mode="full"    — the whole note in "content". The outline fields below are
+                       absent, not null.
+      mode="outline" — title, summary, size_chars, estimated_tokens, max_tokens,
+                       outline_hash, chunks_total, chunk_offset,
+                       next_chunk_offset, and "chunks": a page of descriptors
+                       (id, heading_path, part, parts, estimated_tokens, excerpt).
+                       Choose chunks from the excerpts and heading paths; "content"
+                       is absent.
 
     Read a chunk with read_vault_chunk, passing outline_hash and the SAME
     max_tokens — the hash covers the budget, so a different one is refused
-    rather than answered with a different section.
+    rather than answered with a different section. Use the same max_tokens when
+    paging, too.
 
-    The outline is paged: chunks_total counts every chunk and next_chunk_offset
-    (null on the last page) is the chunk_offset to pass for the rest.
+    Paging: chunks_total counts every chunk; next_chunk_offset (null on the last
+    page) is the chunk_offset for the rest. An offset past the last chunk is an
+    error, not an empty page.
+
+    max_tokens bounds THIS response (chars/4, not a model tokenizer), not the
+    whole walk: each chunk you then read costs up to that much again. A small
+    budget cannot be honoured exactly — an outline always describes a usable
+    page, so it may reach ~2000 characters however small max_tokens is.
+
+    Errors arrive as {"error": "..."}, not as an exception.
     Accepts a UID, absolute path, or vault-relative path.
     """
     try:
@@ -456,9 +470,14 @@ def read_vault_chunk(
     """Read one bounded chunk named by a read_vault_context outline.
 
     Pass the path, chunk id, outline_hash, and the same max_tokens the outline
-    was built with. Returns the chunk text and its heading path. If the note
-    changed, or max_tokens differs from the outline's, this returns an error:
-    call read_vault_context again and use the new outline_hash.
+    was built with — chunk ids are positions in a split that depends on that
+    budget. Returns chunk_id, uid, title, summary, heading_path, part, parts,
+    estimated_tokens and content.
+
+    If the note changed, or max_tokens differs from the outline's, the result is
+    {"error": "..."} naming both causes: call read_vault_context again with the
+    budget you intend to use and read with its new outline_hash. Heading paths in
+    an outline may be shortened for size; the chunk result carries the full one.
     """
     try:
         return vault.get_chunk(

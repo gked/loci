@@ -37,10 +37,11 @@ Identify which mode fits the user's request, then follow that workflow.
 For a node you need to inspect, call `loci__read_vault_context(path=<uid>, max_tokens=4000)`.
 
 - If `mode="full"`, use its `content` as the node text.
-- If `mode="outline"`, use its title, summary, heading paths, excerpts, and estimated sizes to choose only relevant chunks. Fetch each chosen chunk with `loci__read_vault_chunk(path=<uid>, chunk_id=<id>, outline_hash=<hash>, max_tokens=<same limit>)` — the hash covers the budget, so a different `max_tokens` is refused rather than answered with the wrong section.
-- Do not fetch every chunk by default. If a chunk read reports a stale outline, call `loci__read_vault_context` again and use the new `outline_hash`.
-- The outline is paged. When `next_chunk_offset` is not null there are more chunks than it listed (`chunks_total` is the full count): call `loci__read_vault_context(path=<uid>, max_tokens=<same limit>, chunk_offset=<next_chunk_offset>)` only if what you need is not in the page you have.
-- Token estimates are approximate (characters divided by four), not guarantees for a specific model. Keep the existing eight-node cap and be selective when reading several large nodes.
+- If `mode="outline"`, use its title, summary, heading paths, excerpts, and estimated sizes to choose only relevant chunks. Fetch each chosen chunk with `loci__read_vault_chunk(path=<uid>, chunk_id=<id>, outline_hash=<hash>, max_tokens=<same limit>)` — **pass the same `max_tokens` the outline used**: the hash covers the budget, so a different one is refused rather than answered with the wrong section.
+- Do not fetch every chunk by default. A refusal arrives as an `error` field saying the outline is stale (the node changed, or the budget differs): call `loci__read_vault_context` again and use the new `outline_hash`.
+- The outline is paged. When `next_chunk_offset` is not null there are more chunks than it listed (`chunks_total` is the full count): call `loci__read_vault_context(path=<uid>, max_tokens=<same limit>, chunk_offset=<next_chunk_offset>)` only if what you need is not in the page you have. An offset past the last chunk is an error, so page from the value you were given.
+- `max_tokens` bounds one response, not the whole read: every chunk you then fetch costs up to that much again. Token figures are approximate (characters divided by four), not guarantees for a specific model.
+- The per-response read cap still holds: at most 8 **nodes** in one answer, whether you read them in full or through their chunks.
 
 ---
 
@@ -108,7 +109,7 @@ Use when the user wants to explore connections from a node.
    - Read titles and types from the result (no full reads yet).
    - Select the subset most relevant to the user's query based on title, type, and distance.
    - Prefer distance=1 nodes and nodes whose titles are topically close to the query.
-   - Hard cap: read at most 8 nodes in full in a single response.
+   - Hard cap: read at most 8 nodes in a single response, via **Reading node content** above.
 4. Group selected results by distance:
    ```
    Direct connections (distance 1):

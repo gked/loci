@@ -102,8 +102,10 @@ The `loci-query` skill uses the graph tools (`query_neighbors`, `query_related`,
 Node content is read through `read_vault_context`, which returns a small note in
 full and, for a large one, its summary plus a heading-aware chunk outline the
 agent reads from selectively with `read_vault_chunk` — so one long note does not
-crowd out everything else the answer needs. The outline is itself paged, so a
-note with hundreds of headings cannot flood the context either. `read_vault`
+crowd out everything else the answer needs. The outline is paged and each entry
+is kept short, so a note with hundreds of headings does not flood the context
+either — `max_tokens` bounds one response, down to a floor of about 500 tokens
+below which an outline could no longer describe anything useful. `read_vault`
 still returns the whole file when you want it.
 
 ### Library

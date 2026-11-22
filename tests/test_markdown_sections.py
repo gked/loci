@@ -1,3 +1,5 @@
+import pytest
+
 from loci.tools.markdown_sections import split_markdown_sections
 
 
@@ -75,6 +77,80 @@ def test_split_markdown_sections_folds_a_blank_preamble_into_the_first_section()
 
     assert len(chunks) == 1
     assert chunks[0]["heading_path"] == ["Heading"]
+    assert "".join(chunk["text"] for chunk in chunks) == body
+
+
+def test_split_markdown_sections_requires_a_matching_fence_to_close_a_block():
+    """A fence closes only with the same character and at least the same length,
+    so a nested or mismatched fence leaves the block open."""
+    tilde_inside = "# A\n\n```\ncode\n~~~\n# still code\n```\n\nAfter.\n"
+    short_inside = "# A\n\n````\ncode\n```\n# still code\n````\n\nAfter.\n"
+
+    for body in (tilde_inside, short_inside):
+        chunks = split_markdown_sections(body, max_chars=1000)
+        assert len(chunks) == 1, body
+        assert chunks[0]["heading_path"] == ["A"], body
+        assert "".join(chunk["text"] for chunk in chunks) == body
+
+
+def test_split_markdown_sections_rejects_a_nonpositive_limit():
+    with pytest.raises(ValueError, match="positive"):
+        split_markdown_sections("# A\n\nbody\n", max_chars=0)
+
+
+def test_split_markdown_sections_keeps_a_trailing_hash_run_out_of_the_heading():
+    """A closed ATX heading (`## Findings ##`) names 'Findings'; a hash that is
+    part of the title (`# C#`) stays in it."""
+    chunks = split_markdown_sections("## Findings ##\n\nbody\n\n# C#\n\nmore\n", 1000)
+
+    assert [chunk["heading_path"] for chunk in chunks] == [["Findings"], ["C#"]]
+
+
+def test_split_markdown_sections_estimates_tokens_for_every_chunk():
+    chunks = split_markdown_sections("# A\n\n" + ("word " * 100), max_chars=200)
+
+    assert all(chunk["estimated_tokens"] >= 1 for chunk in chunks)
+    assert all(
+        chunk["estimated_tokens"] == -(-len(chunk["text"]) // 4) for chunk in chunks
+    )
+
+
+def test_split_markdown_sections_keeps_a_heading_with_the_text_it_titles():
+    """A cut straight after the heading line would leave an id whose excerpt is
+    empty and whose body is in the next chunk."""
+    body = "# Alpha\n" + ("Alpha body sentence. " * 30)
+
+    chunks = split_markdown_sections(body, max_chars=160)
+
+    assert len(chunks) > 1
+    assert chunks[0]["text"].startswith("# Alpha\n")
+    assert "Alpha body sentence." in chunks[0]["text"]
+    assert all(len(chunk["text"]) <= 160 for chunk in chunks)
+    assert "".join(chunk["text"] for chunk in chunks) == body
+
+
+def test_split_markdown_sections_cuts_an_oversized_paragraph_at_a_line_boundary():
+    """Line-boundary cutting is the fallback that keeps chunks readable; a blind
+    character cut satisfies the size bound too, so pin the boundary itself."""
+    body = "# H\n\n" + "".join(f"line {i} of one long paragraph\n" for i in range(40))
+
+    chunks = split_markdown_sections(body, max_chars=120)
+
+    assert len(chunks) > 1
+    assert "".join(chunk["text"] for chunk in chunks) == body
+    # Every chunk but the last ends exactly at a newline, not mid-line.
+    assert all(chunk["text"].endswith("\n") for chunk in chunks[:-1])
+
+
+def test_split_markdown_sections_does_not_fold_a_preamble_longer_than_the_budget():
+    """Folding a short blank preamble saves an empty id; folding a long one would
+    spend many ids on whitespace and label them with the first real heading."""
+    body = ("\n" * 400) + "# H\n\nreal content\n"
+
+    chunks = split_markdown_sections(body, max_chars=100)
+
+    assert chunks[0]["heading_path"] == []
+    assert any(chunk["heading_path"] == ["H"] for chunk in chunks)
     assert "".join(chunk["text"] for chunk in chunks) == body
 
 

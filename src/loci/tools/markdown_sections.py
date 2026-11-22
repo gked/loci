@@ -2,16 +2,27 @@
 
 from __future__ import annotations
 
-import math
 import re
 
-_ATX_HEADING = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+|$)(.*?)\s*#*\s*$")
+
+def estimated_tokens(text: str) -> int:
+    """A rough, model-independent token estimate: four characters per token.
+
+    One definition for the whole read path, so a node's estimate and its
+    chunks' estimates are the same arithmetic.
+    """
+    return (len(text) + 3) // 4
+
+
+# A closing hash run only ends a heading when whitespace precedes it, so
+# "# C#" is the title C#, while "## Findings ##" is the title Findings.
+_ATX_HEADING = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+|$)(.*?)(?:[ \t]+#+)?[ \t]*$")
 # A fence line: the marker, then whatever follows it. An info string (```js) is
 # legal only on an opening fence, so `rest` is what tells an open from a close.
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 
 
-def _heading_sections(body: str) -> list[tuple[list[str], str]]:
+def _heading_sections(body: str, max_chars: int) -> list[tuple[list[str], str]]:
     """Return contiguous heading sections, ignoring heading-like text in fences."""
     sections: list[tuple[list[str], str]] = []
     heading_stack: list[tuple[int, str]] = []
@@ -65,11 +76,24 @@ def _heading_sections(body: str) -> list[tuple[list[str], str]]:
     # section. As its own chunk it is an id that carries nothing and an empty
     # excerpt, so fold it into the first real section instead — the text is kept
     # verbatim, so the chunks still rejoin to the original body.
-    if len(sections) > 1 and sections[0][0] == [] and not sections[0][1].strip():
+    if (
+        len(sections) > 1
+        and sections[0][0] == []
+        and not sections[0][1].strip()
+        and len(sections[0][1]) <= max_chars      # a longer flood would spend
+    ):                                            # many ids under the wrong heading
         preamble = sections.pop(0)[1]
         path, text = sections[0]
         sections[0] = (path, preamble + text)
     return sections
+
+
+def _is_heading_only(text: str) -> bool:
+    """True when this piece is a heading line and nothing else."""
+    stripped = text.strip()
+    if not stripped or "\n" in stripped:
+        return False
+    return bool(_ATX_HEADING.match(stripped))
 
 
 def _split_text(text: str, max_chars: int) -> list[str]:
@@ -89,15 +113,27 @@ def _split_text(text: str, max_chars: int) -> list[str]:
 
     for paragraph in paragraphs:
         if len(paragraph) > max_chars:
-            if current:
-                chunks.append(current)
-                current = ""
             remaining = paragraph
+            if current:
+                # A heading is its own paragraph, so flushing here would make it
+                # a chunk of its own. Let it ride with the first piece of the
+                # text it titles instead.
+                if _is_heading_only(current):
+                    remaining = current + paragraph
+                else:
+                    chunks.append(current)
+                current = ""
             while len(remaining) > max_chars:
                 # rfind stops before max_chars, so cut <= max_chars always: a
                 # newline sitting exactly on the limit must not push a chunk over.
                 cut = remaining.rfind("\n", 0, max_chars)
                 cut = cut + 1 if cut >= 0 else max_chars
+                # A line-boundary cut right after the section's heading would
+                # leave the heading as a chunk of its own: an id whose excerpt
+                # is empty and whose body sits in the next chunk. Keep the
+                # heading with the text it titles and cut at the limit instead.
+                if _is_heading_only(remaining[:cut]):
+                    cut = max_chars
                 chunks.append(remaining[:cut])
                 remaining = remaining[cut:]
             current = remaining
@@ -125,7 +161,7 @@ def split_markdown_sections(body: str, max_chars: int) -> list[dict]:
         raise ValueError("max_chars must be a positive integer")
 
     chunks: list[dict] = []
-    for heading_path, section_text in _heading_sections(body):
+    for heading_path, section_text in _heading_sections(body, max_chars):
         parts = _split_text(section_text, max_chars)
         for part_number, text in enumerate(parts, start=1):
             chunks.append({
@@ -134,6 +170,6 @@ def split_markdown_sections(body: str, max_chars: int) -> list[dict]:
                 "part": part_number,
                 "parts": len(parts),
                 "text": text,
-                "estimated_tokens": math.ceil(len(text) / 4),
+                "estimated_tokens": estimated_tokens(text),
             })
     return chunks
