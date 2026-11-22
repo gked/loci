@@ -1,6 +1,6 @@
 # Setup
 
-**Platform: macOS only, for now.** Linux runs in CI but is not supported, and Windows is not tested. Agent paths and the Claude Desktop registration assume macOS.
+**Platform: macOS only, for now.** The [support table in the README](../README.md#quick-start) lists what has been tried on Linux and Windows (which Windows, and what passed). On macOS the agent paths and the Claude Desktop registration are the ones below; on Windows the same two commands use the native Hermes and Claude Desktop locations (see step 2 under From PyPI), which have been tried only in the one VM in that table.
 
 Three ways to run Loci. **From PyPI** is the path for using it. A **release wheel** is the same package, downloaded from GitHub instead. **From a checkout** is what developing it needs.
 

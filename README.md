@@ -71,9 +71,18 @@ tells you which parts.
 ## Quick start
 
 **Requirements:** macOS, Python 3.13+ and [uv](https://docs.astral.sh/uv/).
-**Loci supports macOS only for now.** The author uses it on macOS. CI runs the
-tests on Linux, but Linux is not a supported platform, and Windows is not
-tested.
+**Loci supports macOS only for now.** What has been tried elsewhere is below.
+
+| Platform | Status | What has been checked |
+|---|---|---|
+| **macOS** (Apple Silicon) | **Supported** | The author's daily platform: macOS 26. Intel Macs and older macOS versions are untested. |
+| Linux | Not supported | CI runs the unit and browser suites on it. A manual install of the published package on Ubuntu (arm64) also worked. |
+| Windows 11 Pro, 24H2 (build 26100) on ARM64 | **Not supported**, tried in a VM | Run as x64 Python under Windows' emulation, with Claude Code, Claude Desktop and Hermes installed. The full unit suite passed (1,877 tests, 49 skipped on purpose), the browser suite passed 82 of 83 (one failure that came back clean on 8 reruns), and Claude Code, Claude Desktop and Hermes each saved and found a note. Installing on native ARM64 Python fails today, because a dependency (`cryptography`) ships no ARM64 Windows wheel. |
+| Windows 11 on x64 (a real PC), Windows 10, Windows Home or Server | Not tested | No claim either way. |
+
+Nobody runs Windows day to day, so treat it as untested for your machine until it
+is listed as supported. Agents (Claude Code, Claude Desktop, Hermes) are covered per
+platform in [the setup guide](https://github.com/gked/loci/blob/main/docs/setup.md).
 
 **1. Install from PyPI**
 
