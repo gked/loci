@@ -11,6 +11,7 @@ Internal implementation lives in tools/. This module is the public facade.
 
 import contextlib
 import functools
+import hashlib
 import io
 import logging
 import re
@@ -37,6 +38,7 @@ from loci.tools.frontmatter import load_frontmatter, split_frontmatter
 from loci.tools import nx_graph as graph
 from loci.tools import tag_hygiene
 from loci.tools import fs_retry, node_merge, vault_history
+from loci.tools.markdown_sections import estimated_tokens as _estimated_tokens, split_markdown_sections
 from loci.tools.vault_files import is_appledouble
 from loci.tools.vault_linter import lint_vault as _lint_vault
 from loci.tools import asset_registry as ar
@@ -418,7 +420,7 @@ def check_duplicate(type: str, title: str, url: str = None) -> dict:
     return {"duplicate": False}
 
 
-def get(path: str, commit: str = None) -> str:
+def get(path: str, commit: Optional[str] = None) -> str:
     """
     Read a vault file. Accepts an absolute path, a path relative to vault_root,
     or an 8-character hex UID.
@@ -479,6 +481,211 @@ def get(path: str, commit: str = None) -> str:
                 text += f"\n\nasset_content: null\nasset_error: {err_msg}"
 
     return text
+
+
+def _context_char_limit(max_tokens: int) -> int:
+    """Translate a rough token budget into a conservative text-size limit.
+
+    This is a model-independent estimate (four characters per token), not a
+    tokenizer guarantee. It is used only to choose between a full read and an
+    outline, and to keep individual heading chunks bounded.
+    """
+    if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens < 1:
+        raise ValueError("max_tokens must be a positive integer")
+    return max_tokens * 4
+
+
+def _chunk_excerpt(text: str, limit: int = 180) -> str:
+    """Return a compact preview, omitting a leading Markdown heading."""
+    lines = text.strip().splitlines()
+    if lines and re.match(r"^ {0,3}#{1,6}(?:[ \t]+|$)", lines[0]):
+        lines = lines[1:]
+    excerpt = " ".join(" ".join(lines).split())
+    if len(excerpt) > limit:
+        return excerpt[:limit].rstrip() + "…"
+    return excerpt
+
+
+def _node_context_text(text: str) -> tuple[dict, str]:
+    """Return parsed frontmatter and body for a note read or history snapshot."""
+    frontmatter, body = load_frontmatter(text)
+    return frontmatter or {}, body
+
+
+def _node_chunks(text: str, body: str, max_chars: int) -> list[dict]:
+    """The chunking an outline and a chunk read must agree on."""
+    chunks = split_markdown_sections(body, max_chars)
+    if not chunks:
+        # A node with no body at all (frontmatter only): chunk the file instead,
+        # so the outline still offers something to read.
+        chunks = split_markdown_sections(text, max_chars)
+    return chunks
+
+
+def _outline_hash(text: str, max_chars: int) -> str:
+    """Identify an outline by its text *and* its budget.
+
+    Chunk ids are positions in a split that depends on max_chars, so the same id
+    means different text at a different budget. Folding the budget into the hash
+    is what makes a chunk reference safe: a follow-up read with another
+    max_tokens is refused rather than silently answered with the wrong section.
+    """
+    digest = hashlib.sha256()
+    digest.update(f"{max_chars}\n".encode("utf-8"))
+    digest.update(text.encode("utf-8"))
+    return digest.hexdigest()
+
+
+# How an outline page is sized. A descriptor costs its excerpt, its heading
+# path, and about this many characters of ids, numbers and JSON keys — measured
+# at ~85, rounded up so page_size does not over-allocate.
+_DESCRIPTOR_OVERHEAD_CHARS = 110
+# The floor: an outline that lists one chunk at a time, or describes it with
+# nothing, is bounded but useless. Below this the budget cannot be honoured, so
+# the outline spends up to this much and the docstring says so.
+_MIN_PAGE_CHUNKS = 8
+_MIN_HEADING_CHARS = 24
+_MIN_EXCERPT_CHARS = 40
+_MAX_EXCERPT_CHARS = 180
+# Deep nesting multiplies a descriptor's cost, so a path keeps its last levels
+# (the ones that locate the chunk) and elides the rest.
+_MAX_PATH_DEPTH = 3
+OUTLINE_FLOOR_CHARS = _MIN_PAGE_CHUNKS * (
+    _DESCRIPTOR_OVERHEAD_CHARS + _MIN_HEADING_CHARS + _MIN_EXCERPT_CHARS
+) + 600     # + the node's own fields: uid, title, summary, hash, counters
+
+
+def _elide(text: str, limit: int) -> str:
+    """Shorten to limit characters, marking that something was cut."""
+    if limit <= 0:
+        return ""
+    if len(text) <= limit:
+        return text
+    return text[:max(1, limit - 1)].rstrip() + "…"
+
+
+def _outline_heading_path(heading_path: list, limit: int) -> list:
+    """A heading path bounded in both depth and width.
+
+    An unbounded path is the one descriptor field no excerpt limit touches: a
+    note with long titles, or six levels of nesting, otherwise produces an
+    outline many times the budget it was asked for.
+    """
+    path = list(heading_path)
+    if len(path) > _MAX_PATH_DEPTH:
+        path = ["…"] + path[-_MAX_PATH_DEPTH:]
+    if not path:
+        return path
+    share = max(1, limit // len(path))
+    return [_elide(part, share) for part in path]
+
+
+def get_context(
+    path: str,
+    max_tokens: int = 4000,
+    commit: Optional[str] = None,
+    chunk_offset: int = 0,
+) -> dict:
+    """Read a node in full when small, or return its summary and chunk outline.
+
+    Token counts are approximate (characters divided by four), independent of
+    any particular model tokenizer. An outline describes heading-aware chunks
+    with short excerpts; read selected content with get_chunk(), passing back
+    `outline_hash` and the same `max_tokens`.
+
+    The outline is paged and every descriptor is bounded, so a heading-dense
+    note cannot flood the context this exists to protect: `chunks_total` counts
+    every chunk and `next_chunk_offset` (None on the last page) asks for the
+    rest. The outline fits `max_tokens` except for a floor of about
+    OUTLINE_FLOOR_CHARS characters — below that a page would describe its chunks
+    with nothing and be useless, so the floor wins over the budget.
+    """
+    max_chars = _context_char_limit(max_tokens)
+    if not isinstance(chunk_offset, int) or isinstance(chunk_offset, bool) or chunk_offset < 0:
+        raise ValueError("chunk_offset must be a non-negative integer")
+    text = get(path, commit)
+    frontmatter, body = _node_context_text(text)
+    result = {
+        "mode": "full" if len(text) <= max_chars else "outline",
+        "uid": frontmatter.get("uid"),
+        "title": frontmatter.get("title", ""),
+        "summary": frontmatter.get("summary", ""),
+        "size_chars": len(text),
+        "estimated_tokens": _estimated_tokens(text),
+        "max_tokens": max_tokens,
+    }
+    if result["mode"] == "full":
+        result["content"] = text
+        return result
+
+    chunks = _node_chunks(text, body, max_chars)
+    if chunk_offset and chunk_offset >= len(chunks):
+        raise ValueError(
+            f"chunk_offset {chunk_offset} is past the last chunk "
+            f"({len(chunks)} in total); read the outline from 0 again"
+        )
+    # Split the budget between how many chunks a page lists and how much each
+    # descriptor may say, so neither axis can grow without the other shrinking.
+    page_size = max(_MIN_PAGE_CHUNKS, max_chars // (_DESCRIPTOR_OVERHEAD_CHARS * 2))
+    share = max(0, max_chars // page_size - _DESCRIPTOR_OVERHEAD_CHARS)
+    heading_limit = max(_MIN_HEADING_CHARS, share // 3)
+    excerpt_limit = min(_MAX_EXCERPT_CHARS, max(_MIN_EXCERPT_CHARS, share - heading_limit))
+    page = chunks[chunk_offset:chunk_offset + page_size]
+    next_offset = chunk_offset + len(page)
+    result["outline_hash"] = _outline_hash(text, max_chars)
+    result["chunks_total"] = len(chunks)
+    result["chunk_offset"] = chunk_offset
+    result["next_chunk_offset"] = next_offset if next_offset < len(chunks) else None
+    result["chunks"] = [
+        {
+            "id": chunk["id"],
+            "heading_path": _outline_heading_path(chunk["heading_path"], heading_limit),
+            "part": chunk["part"],
+            "parts": chunk["parts"],
+            "estimated_tokens": chunk["estimated_tokens"],
+            "excerpt": _chunk_excerpt(chunk["text"], excerpt_limit),
+        }
+        for chunk in page
+    ]
+    return result
+
+
+def get_chunk(
+    path: str,
+    chunk_id: str,
+    outline_hash: str,
+    max_tokens: int = 4000,
+    commit: Optional[str] = None,
+) -> dict:
+    """Read one chunk named by an outline, refusing a stale outline reference.
+
+    `outline_hash` covers both the node text and the outline's budget, so a
+    changed node *or* a max_tokens that differs from the outline's is refused —
+    the chunk id would otherwise point at a different section.
+    """
+    max_chars = _context_char_limit(max_tokens)
+    text = get(path, commit)
+    if _outline_hash(text, max_chars) != outline_hash:
+        raise ValueError(
+            "Outline is stale: the node changed, or max_tokens differs from the "
+            "outline's. Call read_vault_context again and use its outline_hash."
+        )
+
+    frontmatter, body = _node_context_text(text)
+    for chunk in _node_chunks(text, body, max_chars):
+        if chunk["id"] == chunk_id:
+            return {
+                "chunk_id": chunk_id,
+                "uid": frontmatter.get("uid"),
+                "title": frontmatter.get("title", ""),
+                "summary": frontmatter.get("summary", ""),
+                "heading_path": chunk["heading_path"],
+                "part": chunk["part"],
+                "parts": chunk["parts"],
+                "estimated_tokens": chunk["estimated_tokens"],
+                "content": chunk["text"],
+            }
+    raise ValueError(f"Unknown chunk id for this node: {chunk_id}")
 
 
 def resolve_asset(uid: str, format: str = None) -> dict:

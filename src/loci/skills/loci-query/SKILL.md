@@ -32,6 +32,19 @@ Identify which mode fits the user's request, then follow that workflow.
 
 ---
 
+### Reading node content
+
+For a node you need to inspect, call `loci__read_vault_context(path=<uid>, max_tokens=4000)`.
+
+- If `mode="full"`, use its `content` as the node text.
+- If `mode="outline"`, use its title, summary, heading paths, excerpts, and estimated sizes to choose only relevant chunks. Fetch each chosen chunk with `loci__read_vault_chunk(path=<uid>, chunk_id=<id>, outline_hash=<hash>, max_tokens=<same limit>)` — **pass the same `max_tokens` the outline used**: the hash covers the budget, so a different one is refused rather than answered with the wrong section.
+- Do not fetch every chunk by default. A refusal arrives as an `error` field saying the outline is stale (the node changed, or the budget differs): call `loci__read_vault_context` again and use the new `outline_hash`.
+- The outline is paged. When `next_chunk_offset` is not null there are more chunks than it listed (`chunks_total` is the full count): call `loci__read_vault_context(path=<uid>, max_tokens=<same limit>, chunk_offset=<next_chunk_offset>)` only if what you need is not in the page you have. An offset past the last chunk is an error, so page from the value you were given.
+- `max_tokens` bounds one response, not the whole read: every chunk you then fetch costs up to that much again. Token figures are approximate (characters divided by four), not guarantees for a specific model.
+- The per-response read cap still holds: at most 8 **nodes** in one answer, whether you read them in full or through their chunks.
+
+---
+
 ### Mode 1 — Lookup: "what do I know about X?"
 
 Use when the user names a specific topic, person, project, or concept.
@@ -40,9 +53,9 @@ Use when the user names a specific topic, person, project, or concept.
    searches only active nodes; pass `state="archived"` to search archived content or
    `state=None` to search everything.
 2. If multiple results: present the list and ask which one (or "all of them").
-3. For each target node: call `loci__read_vault(path=<path>)` to read the full content.
+3. For each target node, follow **Reading node content** above to read it in full or fetch relevant chunks.
 4. Call `loci__query_neighbors(uid=<uid>)` to surface direct connections with their relation types and directions.
-5. Present: the node content, then a "Connected to:" section listing neighbors with type, relation type, and direction (in/out).
+5. Present the node content, then a "Connected to:" section listing neighbors with type, relation type, and direction (in/out).
 
 **If the target node is type `topic`:** topics are graph hubs, so automatically continue into Mode 3 (neighborhood) without waiting to be asked — call `loci__query_related(uid=<uid>, depth=2)` and present the full neighborhood grouped by distance. The user's intent when looking up a topic is almost always "show me everything under this concept."
 
@@ -96,7 +109,7 @@ Use when the user wants to explore connections from a node.
    - Read titles and types from the result (no full reads yet).
    - Select the subset most relevant to the user's query based on title, type, and distance.
    - Prefer distance=1 nodes and nodes whose titles are topically close to the query.
-   - Hard cap: read at most 8 nodes in full in a single response.
+   - Hard cap: read at most 8 nodes in a single response, via **Reading node content** above.
 4. Group selected results by distance:
    ```
    Direct connections (distance 1):
@@ -254,5 +267,5 @@ Every query ends here, whichever mode ran.
 
 - **Never invent content.** Only report what is in vault files.
 - **UIDs are stable identifiers.** Always pass the uid (not the title) to graph tools.
-- **Read before summarizing.** Do not summarize from the graph node attributes alone — always call `loci__read_vault` for the full content.
+- **Read before summarizing.** Do not summarize from the graph node attributes alone — read the node's content first via **Reading node content** above (`loci__read_vault_context`, plus `loci__read_vault_chunk` for the chunks you need).
 - **Signal low confidence, not high.** Do not add confidence labels to every claim. Only flag when a synthesis draws primarily from distance=2 nodes or from summaries alone without full reads — add a single closing line such as: "Note: some of this is inferred from loosely connected nodes — worth verifying by reading the source files."

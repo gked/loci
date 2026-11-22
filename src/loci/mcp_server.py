@@ -415,6 +415,80 @@ def read_vault(path: str, commit: str = None) -> str:
 
 @mcp.tool()
 @requires_vault
+def read_vault_context(
+    path: str,
+    max_tokens: int = 4000,
+    commit: str | None = None,
+    chunk_offset: int = 0,
+) -> dict:
+    """Read a node in full if small, otherwise return its overview and chunks.
+
+    Check "mode" first: the two shapes differ.
+      mode="full"    — the whole note in "content". The outline fields below are
+                       absent, not null.
+      mode="outline" — title, summary, size_chars, estimated_tokens, max_tokens,
+                       outline_hash, chunks_total, chunk_offset,
+                       next_chunk_offset, and "chunks": a page of descriptors
+                       (id, heading_path, part, parts, estimated_tokens, excerpt).
+                       Choose chunks from the excerpts and heading paths; "content"
+                       is absent.
+
+    Read a chunk with read_vault_chunk, passing outline_hash and the SAME
+    max_tokens — the hash covers the budget, so a different one is refused
+    rather than answered with a different section. Use the same max_tokens when
+    paging, too.
+
+    Paging: chunks_total counts every chunk; next_chunk_offset (null on the last
+    page) is the chunk_offset for the rest. An offset past the last chunk is an
+    error, not an empty page.
+
+    max_tokens bounds THIS response (chars/4, not a model tokenizer), not the
+    whole walk: each chunk you then read costs up to that much again. A small
+    budget cannot be honoured exactly — an outline always describes a usable
+    page, so it may reach ~2000 characters however small max_tokens is.
+
+    Errors arrive as {"error": "..."}, not as an exception.
+    Accepts a UID, absolute path, or vault-relative path.
+    """
+    try:
+        return vault.get_context(
+            path, max_tokens=max_tokens, commit=commit, chunk_offset=chunk_offset,
+        )
+    except (OSError, ValueError, HistoryError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+@requires_vault
+def read_vault_chunk(
+    path: str,
+    chunk_id: str,
+    outline_hash: str,
+    max_tokens: int = 4000,
+    commit: str | None = None,
+) -> dict:
+    """Read one bounded chunk named by a read_vault_context outline.
+
+    Pass the path, chunk id, outline_hash, and the same max_tokens the outline
+    was built with — chunk ids are positions in a split that depends on that
+    budget. Returns chunk_id, uid, title, summary, heading_path, part, parts,
+    estimated_tokens and content.
+
+    If the note changed, or max_tokens differs from the outline's, the result is
+    {"error": "..."} naming both causes: call read_vault_context again with the
+    budget you intend to use and read with its new outline_hash. Heading paths in
+    an outline may be shortened for size; the chunk result carries the full one.
+    """
+    try:
+        return vault.get_chunk(
+            path, chunk_id, outline_hash, max_tokens=max_tokens, commit=commit,
+        )
+    except (OSError, ValueError, HistoryError) as e:
+        return {"error": str(e)}
+
+
+@mcp.tool()
+@requires_vault
 def history_vault(path: str, limit: int = 20) -> dict:
     """
     List the commits that changed a node, newest first:

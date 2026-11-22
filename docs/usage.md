@@ -99,6 +99,15 @@ How are these two vault notes related?
 
 The `loci-query` skill uses the graph tools (`query_neighbors`, `query_related`, `query_path`, `find_nodes`, `search_vault`, `query_recent`, `query_insights`) rather than grepping files.
 
+Node content is read through `read_vault_context`, which returns a small note in
+full and, for a large one, its summary plus a heading-aware chunk outline the
+agent reads from selectively with `read_vault_chunk` — so one long note does not
+crowd out everything else the answer needs. The outline is paged and each entry
+is kept short, so a note with hundreds of headings does not flood the context
+either — `max_tokens` bounds one response, down to a floor of about 500 tokens
+below which an outline could no longer describe anything useful. `read_vault`
+still returns the whole file when you want it.
+
 ### Library
 
 Track your ebook library as a knowledge graph. Books are saved as `asset` nodes with `subtype: book`; each time you read one, a `log` node (tagged `reading`) captures your notes, highlights, and rating, separately per reading, so re-reads are tracked independently.

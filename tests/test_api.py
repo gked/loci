@@ -4,6 +4,8 @@ Tests for api.py: save, delete, patch, check_duplicate, get,
 list_items, read_meta, write_meta.
 """
 
+import json
+
 import yaml
 import pytest
 from pathlib import Path
@@ -392,6 +394,339 @@ def test_get_by_uid(tmp_vault):
 def test_get_by_uid_unknown_raises(tmp_vault):
     with pytest.raises(FileNotFoundError):
         api.get("deadbeef")
+
+
+def test_get_context_returns_full_note_below_token_limit(tmp_vault):
+    node = api.save(
+        type="document", title="Small note", body="# Purpose\n\nA short note.",
+        summary="A concise summary.", extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    result = api.get_context(node["uid"], max_tokens=1000)
+
+    assert result["mode"] == "full"
+    assert result["title"] == "Small note"
+    assert result["summary"] == "A concise summary."
+    assert "A short note." in result["content"]
+    assert result["estimated_tokens"] > 0
+
+
+def test_get_context_returns_overview_and_chunks_for_large_note(tmp_vault):
+    node = api.save(
+        type="document", title="Large note", body="# Findings\n\n" + ("Evidence. " * 30),
+        summary="A note with a long findings section.",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    result = api.get_context(node["uid"], max_tokens=5)
+
+    assert result["mode"] == "outline"
+    assert result["title"] == "Large note"
+    assert result["summary"] == "A note with a long findings section."
+    assert "content" not in result
+    assert result["outline_hash"]
+    assert result["chunks"]
+    assert all("text" not in chunk for chunk in result["chunks"])
+    assert any(chunk["heading_path"] == ["Findings"] for chunk in result["chunks"])
+
+
+def test_get_chunk_reads_only_selected_chunk_and_rejects_stale_outline(tmp_vault):
+    node = api.save(
+        type="document", title="Chunked note",
+        body="# One\n\nFirst section.\n\n# Two\n\nSecond section.",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    outline = api.get_context(node["uid"], max_tokens=25)
+    first = next(chunk for chunk in outline["chunks"] if chunk["heading_path"] == ["One"])
+
+    result = api.get_chunk(
+        node["uid"], first["id"], outline["outline_hash"], max_tokens=25,
+    )
+
+    assert result["heading_path"] == ["One"]
+    assert "First section." in result["content"]
+    assert "Second section." not in result["content"]
+    with pytest.raises(ValueError, match="stale"):
+        api.get_chunk(node["uid"], first["id"], "stale-hash", max_tokens=25)
+
+
+def test_get_chunk_refuses_an_outline_hash_from_a_different_token_budget(tmp_vault):
+    """Chunk ids are positions in a budget-dependent split, so the same id means
+    different text at a different max_tokens. The hash has to cover the budget,
+    or a mismatched follow-up read returns the wrong section with no error."""
+    body = "# Alpha\n\n" + ("alpha line.\n\n" * 12) + "# Omega\n\nOmega tail.\n"
+    node = api.save(
+        type="document", title="Budget sensitive", body=body,
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    narrow = api.get_context(node["uid"], max_tokens=10)
+    wide = api.get_context(node["uid"], max_tokens=60)
+    # An id both outlines carry, so the refusal is about the budget and not a
+    # missing chunk: at the narrow budget it is a fragment of Alpha, at the wide
+    # one it covers more text.
+    shared_id = "chunk-1"
+
+    assert narrow["outline_hash"] != wide["outline_hash"]
+    assert any(chunk["id"] == shared_id for chunk in narrow["chunks"])
+    assert any(chunk["id"] == shared_id for chunk in wide["chunks"])
+    narrow_chunk = api.get_chunk(node["uid"], shared_id, narrow["outline_hash"], max_tokens=10)
+    wide_chunk = api.get_chunk(node["uid"], shared_id, wide["outline_hash"], max_tokens=60)
+    assert narrow_chunk["content"] != wide_chunk["content"]
+    with pytest.raises(ValueError, match="stale"):
+        api.get_chunk(node["uid"], shared_id, narrow["outline_hash"], max_tokens=60)
+
+
+def test_get_chunk_rejects_an_unknown_chunk_id(tmp_vault):
+    node = api.save(
+        type="document", title="Unknown chunk", body="# A\n\n" + ("text. " * 40),
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    outline = api.get_context(node["uid"], max_tokens=10)
+
+    with pytest.raises(ValueError, match="Unknown chunk id"):
+        api.get_chunk(node["uid"], "chunk-9999", outline["outline_hash"], max_tokens=10)
+
+
+def test_get_context_outline_size_does_not_grow_with_the_note(tmp_vault):
+    """An outline that floods the context defeats the point of the outline: a
+    note with four times the sections must not produce a bigger outline."""
+    def dense(title, sections):
+        body = "".join(
+            f"## Section {i}\n\nBody line for section {i}.\n\n" for i in range(sections)
+        )
+        node = api.save(
+            type="document", title=title, body=body,
+            extra_fields={"status": "draft", "subtype": "note"},
+        )
+        return api.get_context(node["uid"], max_tokens=200)
+
+    small = dense("Dense 300", 300)
+    large = dense("Dense 1200", 1200)
+
+    assert small["mode"] == large["mode"] == "outline"
+    assert large["chunks_total"] > small["chunks_total"] >= 300
+    assert len(json.dumps(large)) <= 4000
+    assert len(json.dumps(large)) <= len(json.dumps(small)) * 1.5
+    assert len(small["chunks"]) < small["chunks_total"]
+    assert small["next_chunk_offset"] == len(small["chunks"])
+
+    second_page = api.get_context(
+        small["uid"], max_tokens=200, chunk_offset=small["next_chunk_offset"],
+    )
+    assert second_page["chunks"][0]["id"] != small["chunks"][0]["id"]
+    assert second_page["chunk_offset"] == small["next_chunk_offset"]
+
+
+@pytest.mark.parametrize("max_tokens", [10, 200, 1000, 4000])
+def test_get_context_outline_honours_the_token_budget_it_was_given(tmp_vault, max_tokens):
+    """The budget has to bound the outline for hostile shapes too — long heading
+    titles and deep nesting, which no excerpt limit touches. A floor applies
+    (the outline always offers a usable page), so that is what is asserted."""
+    long_title = "Heading " * 120               # ~960 chars per heading
+    body = "".join(
+        f"# {long_title} L1 {i}\n\n## {long_title} L2 {i}\n\n### {long_title} L3 {i}\n\n"
+        f"Body text for section {i}.\n\n"
+        for i in range(200)
+    )
+    node = api.save(
+        type="document", title="Hostile headings", body=body,
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    outline = api.get_context(node["uid"], max_tokens=max_tokens)
+
+    assert outline["mode"] == "outline"
+    budget_chars = max_tokens * 4
+    assert len(json.dumps(outline)) <= max(budget_chars, api.OUTLINE_FLOOR_CHARS)
+    # Still usable: a page of chunks, each with a heading path that says where it is.
+    assert outline["chunks"]
+    assert all(chunk["heading_path"] for chunk in outline["chunks"])
+
+
+def test_get_context_rejects_a_chunk_offset_past_the_end(tmp_vault):
+    """An empty page with next_chunk_offset None reads as 'walk finished' while
+    chunks_total says otherwise, so a mis-paged walk must be told, not guessed."""
+    node = api.save(
+        type="document", title="Paged note", body="# A\n\n" + ("text. " * 400),
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    outline = api.get_context(node["uid"], max_tokens=20)
+
+    with pytest.raises(ValueError, match="chunk_offset"):
+        api.get_context(node["uid"], max_tokens=20, chunk_offset=outline["chunks_total"] + 5)
+
+
+def test_get_context_outline_fields_describe_the_node_and_the_request(tmp_vault):
+    """Every descriptor field the skill tells the model to choose chunks by has
+    to actually arrive: excerpts, sizes, part numbering, and the echoed budget."""
+    node = api.save(
+        type="document", title="Described note",
+        body="# Alpha\n\n" + ("Alpha body sentence. " * 30) + "\n# Beta\n\nBeta body.\n",
+        summary="A note with two sections.",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    outline = api.get_context(node["uid"], max_tokens=40)
+
+    assert outline["uid"] == node["uid"]
+    assert outline["max_tokens"] == 40
+    assert outline["size_chars"] == len(api.get(node["uid"]))
+    assert outline["estimated_tokens"] == (outline["size_chars"] + 3) // 4
+    alpha_parts = [c for c in outline["chunks"] if c["heading_path"] == ["Alpha"]]
+    assert len(alpha_parts) > 1, "a long section should be split into parts"
+    assert [c["part"] for c in alpha_parts] == list(range(1, len(alpha_parts) + 1))
+    assert all(c["parts"] == alpha_parts[0]["parts"] for c in alpha_parts)
+    assert all(c["estimated_tokens"] > 0 for c in outline["chunks"])
+    # The excerpt is the selection signal: non-empty, and not just the heading back.
+    first = alpha_parts[0]
+    assert first["excerpt"]
+    assert not first["excerpt"].startswith("# Alpha")
+    assert "Alpha body sentence" in first["excerpt"]
+
+    chunk = api.get_chunk(node["uid"], first["id"], outline["outline_hash"], max_tokens=40)
+    assert chunk["uid"] == node["uid"]
+    assert chunk["title"] == "Described note"
+    assert chunk["summary"] == "A note with two sections."
+    assert (chunk["part"], chunk["parts"]) == (first["part"], first["parts"])
+    assert chunk["estimated_tokens"] == first["estimated_tokens"]
+
+
+def test_get_context_excerpts_shrink_with_the_budget(tmp_vault):
+    """The small-budget bound rests on excerpts shrinking, not on luck."""
+    node = api.save(
+        type="document", title="Excerpt budget",
+        body="".join(f"## S{i}\n\n{'word ' * 80}\n\n" for i in range(400)),
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    # 200 tokens means 800-char chunks: big enough that the excerpt limit, not
+    # the chunk, is what keeps a descriptor small.
+    tight = api.get_context(node["uid"], max_tokens=200)
+    roomy = api.get_context(node["uid"], max_tokens=4000)
+
+    tight_len = max(len(c["excerpt"]) for c in tight["chunks"])
+    roomy_len = max(len(c["excerpt"]) for c in roomy["chunks"])
+    assert tight_len < roomy_len
+    # The floor is what a tight budget is allowed to spend, not the full excerpt.
+    assert tight_len <= api._MIN_EXCERPT_CHARS + 1       # +1 for the ellipsis
+    assert roomy_len <= api._MAX_EXCERPT_CHARS
+
+
+def test_get_context_reads_a_note_at_exactly_the_budget_in_full(tmp_vault):
+    """The one decision this tool exists to make, pinned at its boundary."""
+    node = api.save(
+        type="document", title="Boundary", body="# B\n\nbody.\n",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    size = len(api.get(node["uid"]))
+
+    assert api.get_context(node["uid"], max_tokens=size // 4 + 1)["mode"] == "full"
+    exact = api.get_context(node["uid"], max_tokens=-(-size // 4))
+    assert exact["mode"] == "full", "a note that exactly fits the budget is not an outline"
+    assert api.get_context(node["uid"], max_tokens=(size - 1) // 4)["mode"] == "outline"
+
+
+@pytest.mark.parametrize("bad_offset", [-1, True, 1.5, "2"])
+def test_get_context_rejects_a_chunk_offset_that_is_not_a_count(tmp_vault, bad_offset):
+    """bool is an int in Python: True would silently become offset 1."""
+    node = api.save(
+        type="document", title="Offset guard", body="# A\n\n" + ("text. " * 200),
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    with pytest.raises(ValueError, match="chunk_offset"):
+        api.get_context(node["uid"], max_tokens=20, chunk_offset=bad_offset)
+
+
+def test_get_context_pages_to_the_end_without_looping(tmp_vault):
+    """next_chunk_offset must terminate: a model following it walks the note once."""
+    node = api.save(
+        type="document", title="Walkable",
+        body="".join(f"## S{i}\n\nBody {i}.\n\n" for i in range(60)),
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    seen, offset, pages = [], 0, 0
+    while True:
+        page = api.get_context(node["uid"], max_tokens=200, chunk_offset=offset)
+        seen += [c["id"] for c in page["chunks"]]
+        pages += 1
+        assert pages <= page["chunks_total"], "paging did not terminate"
+        if page["next_chunk_offset"] is None:
+            break
+        offset = page["next_chunk_offset"]
+
+    assert pages > 1
+    assert seen == [f"chunk-{i}" for i in range(1, page["chunks_total"] + 1)]
+
+
+def test_get_context_outlines_a_body_less_node(tmp_vault):
+    """A frontmatter-only node still has to offer something readable."""
+    _write_raw(
+        tmp_vault, "bodyless.md",
+        {"uid": "bdls0001", "type": "document", "title": "Body-less", "subtype": "note",
+         "summary": "x " * 300},
+    )
+
+    outline = api.get_context("bodyless.md", max_tokens=10)
+
+    assert outline["mode"] == "outline"
+    assert outline["chunks_total"] >= 1
+    assert outline["chunks"]
+    chunk = api.get_chunk(
+        "bodyless.md", outline["chunks"][0]["id"], outline["outline_hash"], max_tokens=10,
+    )
+    assert chunk["content"]
+
+
+def test_get_context_reads_a_historical_version(tmp_vault, monkeypatch):
+    monkeypatch.setenv("LOCI_VAULT_HISTORY", "1")      # off by default in the suite
+    node = api.save(
+        type="document", title="Versioned note", body="# Draft\n\nOriginal text.",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    api.patch(node["uid"], {"status": "active"}, body="# Draft\n\nRewritten text.")
+    commits = api.history(node["uid"])
+    first_commit = commits[-1]["commit"]
+
+    result = api.get_context(node["uid"], max_tokens=1000, commit=first_commit)
+
+    assert result["mode"] == "full"
+    assert "Original text." in result["content"]
+    assert "Rewritten text." not in result["content"]
+
+
+def test_get_context_chunks_a_crlf_body_losslessly_and_within_budget(tmp_vault):
+    """Vaults written on Windows hold CRLF bodies; the chunks still have to
+    rejoin to the body as read and stay inside the budget."""
+    body = "# Windows\r\n\r\n" + "".join(f"Line {i} of the note.\r\n" for i in range(40))
+    _write_raw(
+        tmp_vault, "crlf-note.md",
+        {"uid": "crlf0001", "type": "document", "title": "CRLF note", "subtype": "note"},
+        body,
+    )
+    _, read_body = split_frontmatter(api.get("crlf-note.md"))
+
+    outline = api.get_context("crlf-note.md", max_tokens=40)
+    chunks = [
+        api.get_chunk("crlf-note.md", chunk["id"], outline["outline_hash"], max_tokens=40)
+        for chunk in outline["chunks"]
+    ]
+
+    assert outline["chunks_total"] == len(outline["chunks"])
+    assert "".join(chunk["content"] for chunk in chunks) == read_body
+    assert all(len(chunk["content"]) <= 40 * 4 for chunk in chunks)
+
+
+def test_get_context_rejects_nonpositive_token_limit(tmp_vault):
+    with pytest.raises(ValueError, match="positive"):
+        api.get_context("missing.md", max_tokens=0)
+
+
+def test_get_context_rejects_a_boolean_token_limit(tmp_vault):
+    """bool is an int in Python: True would otherwise become a 4-character budget."""
+    with pytest.raises(ValueError, match="positive"):
+        api.get_context("missing.md", max_tokens=True)
 
 
 def test_get_appends_asset_path_for_large_asset(tmp_vault):

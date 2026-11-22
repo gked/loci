@@ -98,6 +98,93 @@ def test_read_vault_returns_error_string_on_missing_file(tmp_vault):
     assert "no file" in result
 
 
+def test_read_vault_context_wraps_read_errors(tmp_vault):
+    with patch("loci.mcp_server.vault.get_context", side_effect=FileNotFoundError("missing node")):
+        result = server.read_vault_context("/ghost.md")
+    assert result == {"error": "missing node"}
+
+
+def test_read_vault_chunk_wraps_stale_outline_errors(tmp_vault):
+    with patch("loci.mcp_server.vault.get_chunk", side_effect=ValueError("stale outline")):
+        result = server.read_vault_chunk("/note.md", "chunk-1", "hash")
+    assert result == {"error": "stale outline"}
+
+
+def test_context_tools_are_registered():
+    registered = set(server.mcp._tool_manager._tools)
+    assert {"read_vault_context", "read_vault_chunk"} <= registered
+
+
+def test_context_tools_round_trip_against_a_real_vault(tmp_vault):
+    """The wrapper tests above patch the callee away, so only an end-to-end call
+    catches a mis-ordered or dropped argument at the call site."""
+    node = write_vault(
+        type="document", title="Round trip", body="# One\n\n" + ("first. " * 40) + "\n# Two\n\nsecond.\n",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    outline = server.read_vault_context(node["uid"], max_tokens=20)
+    assert outline["mode"] == "outline"
+    target = next(c for c in outline["chunks"] if c["heading_path"] == ["Two"])
+
+    chunk = server.read_vault_chunk(
+        node["uid"], target["id"], outline["outline_hash"], max_tokens=20,
+    )
+    assert "error" not in chunk
+    assert chunk["heading_path"] == ["Two"]
+    assert "second." in chunk["content"]
+
+    # A budget the outline was not built with must be refused, not answered.
+    mismatched = server.read_vault_chunk(
+        node["uid"], target["id"], outline["outline_hash"], max_tokens=500,
+    )
+    assert "error" in mismatched
+
+
+def test_read_vault_context_forwards_the_page_offset(tmp_vault):
+    """chunk_offset is how a model walks a large note; if the wrapper drops it,
+    every page is page one and the walk never ends."""
+    node = write_vault(
+        type="document", title="Paged through the tool",
+        body="".join(f"## S{i}\n\nBody {i}.\n\n" for i in range(60)),
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    first = server.read_vault_context(node["uid"], max_tokens=200)
+    assert first["next_chunk_offset"] is not None
+    second = server.read_vault_context(
+        node["uid"], max_tokens=200, chunk_offset=first["next_chunk_offset"],
+    )
+
+    assert second["chunk_offset"] == first["next_chunk_offset"]
+    assert second["chunks"][0]["id"] != first["chunks"][0]["id"]
+    assert "error" in server.read_vault_context(
+        node["uid"], max_tokens=200, chunk_offset=first["chunks_total"] + 1,
+    )
+
+
+def test_read_vault_context_forwards_the_commit(tmp_vault, monkeypatch):
+    """The historical read is a separate code path; the wrapper has to pass it on."""
+    monkeypatch.setenv("LOCI_VAULT_HISTORY", "1")      # off by default in the suite
+    node = write_vault(
+        type="document", title="Tool history", body="# Draft\n\nOriginal text.",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    patch_vault(node["uid"], {"status": "active"}, body="# Draft\n\nRewritten text.")
+    first_commit = server.history_vault(node["uid"])["commits"][-1]["commit"]
+
+    result = server.read_vault_context(node["uid"], max_tokens=1000, commit=first_commit)
+
+    assert "error" not in result
+    assert "Original text." in result["content"]
+    assert "Rewritten text." not in result["content"]
+
+
+def test_read_vault_context_reports_a_bad_token_budget_as_an_error(tmp_vault):
+    """ValueError is what get_context raises on its own; the tool must wrap it."""
+    assert "error" in server.read_vault_context("missing.md", max_tokens=0)
+
+
 def test_read_meta_returns_error_string_on_unknown_key(tmp_vault):
     with patch("loci.mcp_server.vault.read_meta", side_effect=ValueError("Unknown meta file")):
         result = read_meta("bad-key")
