@@ -16,11 +16,12 @@ def test_a_pytest_run_leaves_no_temp_config_folder_behind(tmp_path):
     scratch = tmp_path / "tmp"
     scratch.mkdir()
     env = {**os.environ, "TMPDIR": str(scratch), "TEMP": str(scratch), "TMP": str(scratch)}
-    env.pop("LOCI_CONFIG", None)
 
+    # --collect-only is enough: conftest makes the folder at import time, so the
+    # leak (or its absence) does not depend on any test running or passing.
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", "tests/test_text_encoding.py", "tests/test_appledouble_files.py",
-         "-q", "--no-header", "-p", "no:cacheprovider"],
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", str(Path(__file__)),
+         "-p", "no:cacheprovider"],
         cwd=REPO_ROOT, env=env, capture_output=True, text=True, timeout=300,
     )
 
