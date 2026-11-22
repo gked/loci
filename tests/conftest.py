@@ -3,6 +3,7 @@ tests/conftest.py
 Shared fixtures for the Loci test suite.
 """
 
+import atexit
 import os
 import shutil
 import tempfile
@@ -21,9 +22,17 @@ FIXTURE_VAULT = Path(__file__).parent / "fixtures" / "vault"
 # test_vault_init.py guards this line: it captures LOCI_CONFIG at *its* import,
 # which happens after this and before the isolated_config fixture below, so
 # deleting the assignment fails the suite rather than silently migrating.
-os.environ["LOCI_CONFIG"] = str(
-    Path(tempfile.mkdtemp(prefix="loci-test-config-")) / "config.yml"
-)
+#
+# The folder holding it is removed when pytest exits: mkdtemp never cleans up, and
+# every run left one behind. The e2e servers that inherit the variable are stopped
+# before the session ends.
+# Cost of the fallback: ignore_errors=True means a file still held open at exit
+# (expected on Windows, if an e2e server has not quite stopped; not tested there)
+# is skipped silently and the folder stays. A kill (SIGTERM/SIGKILL) skips atexit
+# too. Leftovers are near-empty folders, harmless to delete by hand.
+_CONFIG_DIR = Path(tempfile.mkdtemp(prefix="loci-test-config-"))
+os.environ["LOCI_CONFIG"] = str(_CONFIG_DIR / "config.yml")
+atexit.register(shutil.rmtree, _CONFIG_DIR, ignore_errors=True)
 
 from loci.tools import nx_graph as _nx_graph  # noqa: E402  (must follow the LOCI_CONFIG assignment above)
 from loci.tools.type_registry import reset_registry as _reset_type_registry  # noqa: E402
