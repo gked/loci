@@ -24,12 +24,12 @@ FIXTURE_VAULT = Path(__file__).parent / "fixtures" / "vault"
 # deleting the assignment fails the suite rather than silently migrating.
 #
 # The folder holding it is removed when pytest exits: mkdtemp never cleans up, and
-# every run left one behind (711 of them in one developer's temp folder). The e2e
-# servers that inherit the variable are stopped before the session ends.
+# every run left one behind. The e2e servers that inherit the variable are stopped
+# before the session ends.
 # Cost of the fallback: ignore_errors=True means a file still held open at exit
-# (on Windows, an e2e server that has not quite stopped) is skipped silently and
-# the folder stays; a kill (SIGTERM/SIGKILL) skips atexit too. Leftovers are
-# near-empty folders, harmless to delete by hand.
+# (expected on Windows, if an e2e server has not quite stopped; not tested there)
+# is skipped silently and the folder stays. A kill (SIGTERM/SIGKILL) skips atexit
+# too. Leftovers are near-empty folders, harmless to delete by hand.
 _CONFIG_DIR = Path(tempfile.mkdtemp(prefix="loci-test-config-"))
 os.environ["LOCI_CONFIG"] = str(_CONFIG_DIR / "config.yml")
 atexit.register(shutil.rmtree, _CONFIG_DIR, ignore_errors=True)
