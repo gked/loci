@@ -599,12 +599,43 @@ def test_get_context_excerpts_shrink_with_the_budget(tmp_vault):
         extra_fields={"status": "draft", "subtype": "note"},
     )
 
-    tight = api.get_context(node["uid"], max_tokens=10)
+    # 200 tokens means 800-char chunks: big enough that the excerpt limit, not
+    # the chunk, is what keeps a descriptor small.
+    tight = api.get_context(node["uid"], max_tokens=200)
     roomy = api.get_context(node["uid"], max_tokens=4000)
 
     tight_len = max(len(c["excerpt"]) for c in tight["chunks"])
     roomy_len = max(len(c["excerpt"]) for c in roomy["chunks"])
     assert tight_len < roomy_len
+    # The floor is what a tight budget is allowed to spend, not the full excerpt.
+    assert tight_len <= api._MIN_EXCERPT_CHARS + 1       # +1 for the ellipsis
+    assert roomy_len <= api._MAX_EXCERPT_CHARS
+
+
+def test_get_context_reads_a_note_at_exactly_the_budget_in_full(tmp_vault):
+    """The one decision this tool exists to make, pinned at its boundary."""
+    node = api.save(
+        type="document", title="Boundary", body="# B\n\nbody.\n",
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+    size = len(api.get(node["uid"]))
+
+    assert api.get_context(node["uid"], max_tokens=size // 4 + 1)["mode"] == "full"
+    exact = api.get_context(node["uid"], max_tokens=-(-size // 4))
+    assert exact["mode"] == "full", "a note that exactly fits the budget is not an outline"
+    assert api.get_context(node["uid"], max_tokens=(size - 1) // 4)["mode"] == "outline"
+
+
+@pytest.mark.parametrize("bad_offset", [-1, True, 1.5, "2"])
+def test_get_context_rejects_a_chunk_offset_that_is_not_a_count(tmp_vault, bad_offset):
+    """bool is an int in Python: True would silently become offset 1."""
+    node = api.save(
+        type="document", title="Offset guard", body="# A\n\n" + ("text. " * 200),
+        extra_fields={"status": "draft", "subtype": "note"},
+    )
+
+    with pytest.raises(ValueError, match="chunk_offset"):
+        api.get_context(node["uid"], max_tokens=20, chunk_offset=bad_offset)
 
 
 def test_get_context_pages_to_the_end_without_looping(tmp_vault):
