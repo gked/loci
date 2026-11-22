@@ -42,6 +42,18 @@ After the fence.
     assert "## Not a heading" in chunks[0]["text"]
 
 
+def test_split_markdown_sections_ignores_a_closing_fence_with_an_info_string():
+    """An info string is only legal on an opening fence, so ```js does not close
+    a block — a heading-like line after it is still code, not a section."""
+    body = "# Real\n\n```\ncode line\n```js\n# inside the code block\nmore code\n```\n\nAfter.\n"
+
+    chunks = split_markdown_sections(body, max_chars=1000)
+
+    assert len(chunks) == 1
+    assert chunks[0]["heading_path"] == ["Real"]
+    assert "".join(chunk["text"] for chunk in chunks) == body
+
+
 def test_split_markdown_sections_splits_a_crlf_body_at_paragraph_boundaries():
     """A CRLF body (a Windows-written vault, or a history snapshot read without
     newline translation) must still break between paragraphs, not mid-paragraph."""

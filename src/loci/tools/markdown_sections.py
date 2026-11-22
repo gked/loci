@@ -6,7 +6,9 @@ import math
 import re
 
 _ATX_HEADING = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+|$)(.*?)\s*#*\s*$")
-_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+# A fence line: the marker, then whatever follows it. An info string (```js) is
+# legal only on an opening fence, so `rest` is what tells an open from a close.
+_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 
 
 def _heading_sections(body: str) -> list[tuple[list[str], str]]:
@@ -19,11 +21,18 @@ def _heading_sections(body: str) -> list[tuple[list[str], str]]:
     fence_length = 0
 
     for line in body.splitlines(keepends=True):
-        fence_match = _FENCE.match(line)
+        fence_match = _FENCE.match(line.rstrip("\r\n"))
         if fence_char:
             if fence_match:
-                marker = fence_match.group(1)
-                if marker[0] == fence_char and len(marker) >= fence_length:
+                marker, rest = fence_match.group(1), fence_match.group(2)
+                # A closing fence carries nothing but the marker: ```js inside a
+                # block is still code, so a heading-like line after it is too.
+                closes = (
+                    marker[0] == fence_char
+                    and len(marker) >= fence_length
+                    and not rest.strip()
+                )
+                if closes:
                     fence_char = ""
                     fence_length = 0
             current.append(line)
