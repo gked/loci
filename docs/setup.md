@@ -1,6 +1,6 @@
 # Setup
 
-**Platform: macOS only, for now.** Linux runs in CI but is not supported, and Windows is not tested. Agent paths and the Claude Desktop registration assume macOS.
+**Platform: macOS, and Windows 11 Pro 24H2 (build 26100) on ARM64 with x64 Python.** See the [support table in the README](../README.md#quick-start) for what was checked and what is untested. Linux runs in CI but is not supported. On Windows, install with `uv tool install --python cpython-3.13-windows-x86_64 loci-vault`; the agent locations are in step 2 below.
 
 Three ways to run Loci. **From PyPI** is the path for using it. A **release wheel** is the same package, downloaded from GitHub instead. **From a checkout** is what developing it needs.
 
@@ -59,7 +59,7 @@ exists and neither `claude` nor `hermes` is on PATH. `--target claude` installs
 anyway. `loci register` also adds Loci to Claude Desktop's config on macOS and Windows when
 Claude Desktop is installed, and leaves an existing `loci` entry alone.
 
-On Windows the same two commands look in Hermes's native home,
+On Windows (the configuration in the support table) the same two commands look in Hermes's native home,
 `%LOCALAPPDATA%\hermes` (or `$HERMES_HOME`), and in `%APPDATA%\Claude` for Claude Desktop.
 
 What lands in `~/.claude/skills/` is a stub per skill — its name and trigger

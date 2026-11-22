@@ -70,10 +70,18 @@ tells you which parts.
 
 ## Quick start
 
-**Requirements:** macOS, Python 3.13+ and [uv](https://docs.astral.sh/uv/).
-**Loci supports macOS only for now.** The author uses it on macOS. CI runs the
-tests on Linux, but Linux is not a supported platform, and Windows is not
-tested.
+**Requirements:** Python 3.13+ and [uv](https://docs.astral.sh/uv/), on one of the
+supported systems below.
+
+| Platform | Status | Notes |
+|---|---|---|
+| **macOS** (Apple Silicon) | **Supported** | The author's daily platform: macOS 26. Intel Macs and older macOS versions are untested. |
+| **Windows 11 Pro 24H2** (build 26100), ARM64, with **x64 Python** | **Supported** | Install with `uv tool install --python cpython-3.13-windows-x86_64 loci-vault`. Checked in a VM: the full unit suite passed (1,877 tests, 49 skipped on purpose), the browser suite passed 82 of 83 (the one failure was a timing flake under load that passed 8 of 8 reruns), and Claude Code, Claude Desktop and Hermes each saved a note and found it again. Python for native ARM64 Windows does not install yet, because `cryptography` ships no ARM64 Windows wheel. There is no Windows CI, so this is a tested configuration, not a guarantee for every Windows machine. |
+| Other Windows (Windows 11 on x64 hardware, Windows 10, Home or Server editions) | Not tested | No claim either way. |
+| Linux | Not supported | CI runs the unit and browser suites on it. A manual install of the published package on Ubuntu (arm64) also worked. |
+
+Agents (Claude Code, Claude Desktop, Hermes) are covered per platform in
+[the setup guide](https://github.com/gked/loci/blob/main/docs/setup.md).
 
 **1. Install from PyPI**
 
@@ -144,7 +152,7 @@ Loci is a standard MCP server. Any agent that supports MCP can use it.
 | Agent | Status |
 |---|---|
 | Claude Code | Fully supported and tested. The steps above install everything. |
-| Claude Desktop (macOS) | Supported. `loci register` (or the checkout setup, `uv run setup.py`) registers it. |
+| Claude Desktop (macOS, Windows) | Supported. `loci register` (or the checkout setup, `uv run setup.py`) registers it. |
 | Hermes | Supported. `loci register --target hermes` and `loci skills --target hermes`. |
 | DeepSeek Harness and other agents | Untested. Manual setup, or ask the agent to set itself up. [Steps](https://github.com/gked/loci/blob/main/docs/setup.md#other-agents-deepseek-harness-and-others). |
 | Codex and other MCP clients | Expected to work. Not tested. Do the steps below. |

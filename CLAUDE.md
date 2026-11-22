@@ -70,8 +70,11 @@ separate processes — see the docstring in `src/loci/__init__.py` for why.
 
 ## Operating systems
 
-macOS is supported. Linux is tested in CI and not a supported platform. Windows is
-not tested: never claim it works.
+macOS (Apple Silicon) is supported. Windows is supported in exactly one configuration:
+Windows 11 Pro 24H2 (build 26100), ARM64, with x64 Python, checked in a VM (see the
+README's support table). There is no Windows CI, so a change can break it unseen:
+never widen the claim to other Windows versions or editions. Linux is tested in CI
+and not a supported platform.
 
 **For every change, ask whether it behaves the same on macOS, Linux and Windows.**
 These are the usual places it does not: file locking (`fcntl` is POSIX only), file
