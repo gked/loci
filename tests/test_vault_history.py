@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -1816,6 +1817,73 @@ def test_a_file_edited_here_and_deleted_there_keeps_the_edit_and_joins_the_line(
     tree_paths = {c.new.path.decode() for c in tree_changes(repo(tmp_vault).object_store, None, head.tree)}
     assert rel(tmp_vault, alpha) in tree_paths
     assert vault_history.status(tmp_vault).get("error") is None
+
+
+# A synced name can arrive in another Unicode form: "é" as one character (NFC) or
+# as "e" plus an accent (NFD). It is the same file, so it is not a change.
+NFC_NAME = unicodedata.normalize("NFC", "café-note.md")
+NFD_NAME = unicodedata.normalize("NFD", "café-note.md")
+
+
+def take_name_on_disk(tmp_vault, saved, name):
+    """Rename a saved note on disk and record the move, so the history holds `name`."""
+    target = tmp_vault / name
+    Path(saved["path"]).rename(target)
+    vault_history.snapshot_outside(tmp_vault)
+    return target
+
+
+def other_line_with_spelling(tmp_vault, old, new, branch=b"refs/heads/c-bbbbbbbb"):
+    """Another computer's line: this computer's tip plus one commit that holds the
+    file `old` under the name `new` (the same bytes, spelled in another form)."""
+    r = repo(tmp_vault)
+    head, entries = vault_history._head(r)
+    moved = {(new.encode() if k == old.encode() else k): v for k, v in entries.items()}
+    made = vault_history._commit(r, head, moved, {}, "Renamed on the other computer", "other <o@x>")
+    r.refs[branch] = made[0].id
+    return branch
+
+
+def test_a_name_in_another_unicode_form_is_not_a_change(tmp_vault, as_computer):
+    as_computer("a")
+    saved = save("Alpha")
+    on_disk = take_name_on_disk(tmp_vault, saved, NFC_NAME)
+    before = subjects(tmp_vault)
+    on_disk.rename(tmp_vault / NFD_NAME)                     # the sync tool respells the name
+    if NFD_NAME not in os.listdir(tmp_vault):
+        pytest.skip("this file system keeps one form of a name")
+
+    assert vault_history.snapshot_outside(tmp_vault) is None
+    assert subjects(tmp_vault) == before                     # no "Renamed" and no outside edit
+
+
+def test_a_line_that_spells_a_name_in_another_form_is_still_joined(tmp_vault, as_computer):
+    a = as_computer("a")
+    saved = save("Alpha")
+    take_name_on_disk(tmp_vault, saved, NFC_NAME)
+    other = other_line_with_spelling(tmp_vault, NFC_NAME, NFD_NAME)
+
+    save("Gamma")
+
+    merge = next(c for c in commits(tmp_vault) if c.message.decode().startswith("Synced from"))
+    assert merge.parents[1] == branches(tmp_vault)[other.split(b"/")[-1]]
+    assert vault_history.OUTSIDE_MESSAGE not in subjects(tmp_vault)[:2]
+    assert vault_history.status(tmp_vault).get("error") is None
+
+
+def test_the_name_on_disk_is_found_where_the_file_system_tells_the_forms_apart(tmp_path, monkeypatch):
+    """Linux and Windows open "é" and "e" plus an accent as two names. macOS opens
+    either, so this test makes every other system's rule: a name exists only when
+    a folder listing holds it exactly."""
+    (tmp_path / "folder").mkdir()
+    (tmp_path / "folder" / NFD_NAME).write_text("x")
+    monkeypatch.setattr(Path, "exists", lambda self: self.name in os.listdir(self.parent))
+    key = ("folder/" + NFC_NAME).encode()
+
+    found = vault_history._disk_key(tmp_path, key)
+
+    assert found == ("folder/" + NFD_NAME).encode()
+    assert vault_history._disk_key(tmp_path, b"folder/other.md") == b"folder/other.md"
 
 
 def test_a_local_edit_made_while_files_arrive_is_still_an_outside_edit(tmp_vault, as_computer):

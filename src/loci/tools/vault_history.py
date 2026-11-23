@@ -48,6 +48,7 @@ import re
 import sys
 import threading
 import time
+import unicodedata
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -345,6 +346,63 @@ def _key(rel: Path) -> bytes:
     return rel.as_posix().encode("utf-8", "surrogateescape")
 
 
+def _canon(key: bytes) -> bytes:
+    """A path key in one Unicode form (NFC). A name such as "é" can be one
+    character or "e" plus an accent mark (NFD), and a sync tool or a file system
+    may change one into the other. Both spell one file, so keys are compared in
+    this form. A key that is not valid UTF-8 is left as it is."""
+    try:
+        text = key.decode("utf-8")
+    except UnicodeDecodeError:
+        return key
+    return unicodedata.normalize("NFC", text).encode("utf-8")
+
+
+def _aligner(entries):
+    """A function that gives a key the spelling `entries` already holds for the
+    same file, so a name that changed only in Unicode form is neither a rename nor
+    a clash. A key with no match keeps its own spelling."""
+    held: dict[bytes, bytes] = {}
+    for key in entries:
+        held.setdefault(_canon(key), key)
+
+    def align(key: bytes) -> bytes:
+        return key if key in entries else held.get(_canon(key), key)
+    return align
+
+
+def _disk_key(vault_root: Path, *keys: bytes) -> bytes:
+    """The spelling of a key that exists on disk. The first of `keys` that exists
+    as written wins; failing that each folder and the file name are matched in
+    NFC against the folder listing (macOS finds either form by itself, Linux and
+    Windows do not). When nothing matches, the first key comes back. The match
+    costs one folder listing per path part, and only when the name as written is
+    not there."""
+    for key in keys:
+        if (vault_root / os.fsdecode(key)).exists():
+            return key
+    here = vault_root
+    found: list[bytes] = []
+    for part in keys[0].split(b"/"):
+        want = _canon(part)
+        match = None
+        try:
+            names = [os.fsencode(n) for n in os.listdir(here)]
+        except OSError:
+            return keys[0]
+        for name in names:
+            if name == part:
+                match = name
+                break
+            if match is None and _canon(name) == want:
+                match = name
+        if match is None:
+            return keys[0]
+        found.append(match)
+        here = here / os.fsdecode(match)
+    return b"/".join(found)
+
+
 def _relative(vault_root: Path, paths: Iterable[Path | str]) -> list[bytes]:
     """Repository keys for paths inside the vault. A path outside it, inside
     the store or a user's `.git`, or one history never records, is dropped."""
@@ -438,19 +496,35 @@ def _differences(
     cache for files that have not moved. `skip` leaves keys out. `walked` is a
     _scan() the caller already made, so a retry does not walk the vault again."""
     root = str(vault_root.resolve())
+    # A name on disk can be spelled in another Unicode form than the commit holds
+    # (a sync tool changed it). Keys here carry the commit's spelling, so such a
+    # name is the same file and no change; `where` has the name to read from disk.
+    align = _aligner(entries)
+    skip = frozenset(align(k) for k in skip)
+    where: dict[bytes, bytes] = {}
     if only is None:
-        on_disk = walked if walked is not None else _scan(vault_root)
+        on_disk = {}
+        for disk, sig in (walked if walked is not None else _scan(vault_root)).items():
+            key = align(disk)
+            if key in on_disk and (where[key] == key or disk != key):
+                continue    # two spellings of one name: the exact one, else the first
+            on_disk[key] = sig
+            where[key] = disk
         candidates = set(on_disk) | set(entries)
         for gone in [k for (r, k) in _stat_cache if r == root and k not in on_disk]:
             del _stat_cache[(root, gone)]
     else:
-        candidates = set(only)
+        candidates = set()
         on_disk = {}
-        for key in candidates:
-            path = vault_root / os.fsdecode(key)
+        for given in only:
+            key = align(given)
+            candidates.add(key)
+            disk = _disk_key(vault_root, key, given)
+            path = vault_root / os.fsdecode(disk)
             if path.is_file() and not path.is_symlink():
                 st = path.stat()
                 on_disk[key] = _signature(st)
+                where[key] = disk
 
     changes: dict[bytes, Optional[Blob]] = {}
     for key in candidates - skip:
@@ -473,7 +547,7 @@ def _differences(
         ):
             continue
         try:
-            blob = Blob.from_string((vault_root / os.fsdecode(key)).read_bytes())
+            blob = Blob.from_string((vault_root / os.fsdecode(where.get(key, key))).read_bytes())
         except FileNotFoundError:
             if key in entries:
                 changes[key] = None
@@ -570,16 +644,25 @@ def _incoming(
     holds the merge result, not their blob, and that is not a missing change."""
     bases = find_merge_base(repo, [head, tip])
     base_tree = repo.object_store[bases[0]].tree if bases else None
+    # That line may spell a name in another Unicode form than this one does. Its
+    # keys get this line's spelling, so a respelled name is the same file (a
+    # delete plus an add of it is no change), not a clash.
+    align = _aligner(entries)
+    skip = frozenset(align(k) for k in skip)
+    changes = list(tree_changes(repo.object_store, base_tree, repo.object_store[tip].tree))
     theirs: dict[bytes, Optional[bytes]] = {}
     deleted: dict[bytes, bytes] = {}    # key -> the blob the other line deleted
-    for change in tree_changes(repo.object_store, base_tree, repo.object_store[tip].tree):
-        # A file the other line deleted has no new side: take it in as a delete.
-        key = (change.new or change.old).path
-        theirs[key] = change.new.sha if change.new else None
-        if not change.new:
-            deleted[key] = change.old.sha
+    for change in changes:
+        if change.new:
+            theirs[align(change.new.path)] = change.new.sha
+    for change in changes:
+        if not change.new:      # a file the other line deleted has no new side: a delete
+            key = align(change.old.path)
+            if key not in theirs:
+                theirs[key] = None
+                deleted[key] = change.old.sha
     for key in settled:
-        theirs.pop(key, None)
+        theirs.pop(align(key), None)
     if skip & theirs.keys():
         return None
     on_disk = _differences(vault_root, entries, only=theirs.keys())
