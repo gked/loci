@@ -361,7 +361,10 @@ def _canon(key: bytes) -> bytes:
 def _aligner(entries):
     """A function that gives a key the spelling `entries` already holds for the
     same file, so a name that changed only in Unicode form is neither a rename nor
-    a clash. A key with no match keeps its own spelling."""
+    a clash. A key with no match keeps its own spelling. Two files whose names
+    differ only in Unicode form count as one file: on a system that keeps them
+    apart (Linux) only the spelling the commit holds is recorded, and the other
+    is not."""
     held: dict[bytes, bytes] = {}
     for key in entries:
         held.setdefault(_canon(key), key)
@@ -493,7 +496,8 @@ def _differences(
     file that is new or changed, key -> None for one that is gone. `only` limits
     the comparison to those keys and always reads them from disk (the write that
     just happened); otherwise it covers the whole vault and trusts the stat
-    cache for files that have not moved. `skip` leaves keys out. `walked` is a
+    cache for files that have not moved. Names that differ only in Unicode form
+    are one file here (see `_aligner`). `skip` leaves keys out. `walked` is a
     _scan() the caller already made, so a retry does not walk the vault again."""
     root = str(vault_root.resolve())
     # A name on disk can be spelled in another Unicode form than the commit holds
@@ -652,11 +656,17 @@ def _incoming(
     changes = list(tree_changes(repo.object_store, base_tree, repo.object_store[tip].tree))
     theirs: dict[bytes, Optional[bytes]] = {}
     deleted: dict[bytes, bytes] = {}    # key -> the blob the other line deleted
+    # A name respelled with no change to the file is a delete plus an add of one
+    # blob. It is no change at all, whatever this line did to the file since: left
+    # in, this line's edit would differ from that blob and block the join for good.
+    gone = {_canon(c.old.path): c.old.sha for c in changes if not c.new}
+    respelled = {_canon(c.new.path) for c in changes if c.new and gone.get(_canon(c.new.path)) == c.new.sha}
     for change in changes:
-        if change.new:
+        if change.new and _canon(change.new.path) not in respelled:
             theirs[align(change.new.path)] = change.new.sha
     for change in changes:
-        if not change.new:      # a file the other line deleted has no new side: a delete
+        if not change.new and _canon(change.old.path) not in respelled:
+            # A file the other line deleted has no new side: a delete.
             key = align(change.old.path)
             if key not in theirs:
                 theirs[key] = None

@@ -1886,6 +1886,32 @@ def test_the_name_on_disk_is_found_where_the_file_system_tells_the_forms_apart(t
     assert vault_history._disk_key(tmp_path, b"folder/other.md") == b"folder/other.md"
 
 
+def test_a_respelled_name_is_joined_although_this_computer_edited_the_file(tmp_vault, as_computer):
+    as_computer("a")
+    saved = save("Alpha")
+    on_disk = take_name_on_disk(tmp_vault, saved, NFC_NAME)
+    other_line_with_spelling(tmp_vault, NFC_NAME, NFD_NAME)      # B only respells the name
+    on_disk.write_bytes(on_disk.read_bytes() + b"\nedited on A\n")   # A edits the note
+
+    save("Gamma")
+    save("Delta")
+
+    assert any(s.startswith("Synced from") for s in subjects(tmp_vault))
+    assert vault_history.status(tmp_vault).get("error") is None
+
+
+def test_two_names_that_differ_only_in_unicode_form_are_one_file(tmp_vault):
+    nfc, nfd = NFC_NAME.encode(), NFD_NAME.encode()
+    (tmp_vault / NFC_NAME).write_text("new text")
+    blob = vault_history.Blob.from_string(b"old text")
+    entries = {nfc: (0o100644, blob.id)}
+    walked = {nfc: (1, 8, 1), nfd: (1, 8, 1)}                    # both names are on disk, as on Linux
+
+    changes = vault_history._differences(tmp_vault, entries, walked=walked)
+
+    assert list(changes) == [nfc]                                # one change, under the commit's spelling
+
+
 def test_a_local_edit_made_while_files_arrive_is_still_an_outside_edit(tmp_vault, as_computer):
     a, b, alpha, beta = sync_in(tmp_vault, as_computer)
     (tmp_vault / "by-hand.md").write_text("typed in Obsidian")
