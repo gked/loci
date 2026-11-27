@@ -191,22 +191,23 @@ title, present candidates grouped by type, and patch the topic with the confirme
 
 ### 🔒 Step 4 — Confirm and write
 
-Call `loci__read_meta(file="config")` for `vault_root` and show the intended location:
+**Preferred: `loci__propose_save`** (same fields as `loci__write_vault`; writes nothing). On
+`review: "shown"` the user sees the node with Edit and Save buttons and their click is the
+confirmation: say it is ready, then stop. Do not call `loci__write_vault` yourself. A message
+follows when they save, or ask you to update an existing node instead; continue from Wrap-up
+and trust what it says they edited over your draft. Fix any `errors` it returns first. On
+`review: "unsupported"`, or if the tool is missing, confirm in chat:
 
+Call `loci__read_meta(file="config")` for `vault_root` and show the intended location:
 ```
 Save to: <vault_root>/<generated-filename>
 Proceed? [yes / no / change location]
 ```
-
 Do not write until the user confirms. Then call `loci__write_vault` with all assembled fields.
 
-`write_vault` checks for duplicates itself. If it returns `duplicate: true`, nothing was
-written — the result names the existing node. Ask:
-```
-A similar item already exists: <name>
-Save as a new item, or update the existing one?
-```
-"New" → call `loci__write_vault` again with `allow_duplicate=true`. "Update" → switch to the
+`write_vault` checks for duplicates itself. On `duplicate: true` nothing was written and the
+result names the existing node; ask "A similar item already exists: <name> — save as a new item,
+or update it?". "New" → `loci__write_vault` again with `allow_duplicate=true`. "Update" → the
 update workflow (below) for that node.
 
 ---

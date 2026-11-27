@@ -31,7 +31,10 @@ from loci.tools.write_file import (
     patch_item as _patch_item,
     check_duplicate as _check_duplicate,
     find_uid,
+    validate_required_fields,
+    UID_RE,
 )
+from loci.tools.scheme_registry import get_scheme_registry, has_asset_issues
 from loci.tools.type_registry import get_registry
 from loci.tools.relation_registry import get_relation_registry
 from loci.tools.frontmatter import load_frontmatter, split_frontmatter
@@ -253,6 +256,114 @@ def save(
         _record(f"Add {type}: {title} ({result['uid']})", result["path"], into=result)
         graph.mark_fresh(_vault_root())
     return result
+
+
+def propose_save(
+    type: str,
+    title: str,
+    body: str,
+    tags: list = None,
+    domains: list = None,
+    summary: str = None,
+    author: str = "self",
+    relations: list = None,
+    references: list = None,
+    extra_fields: dict = None,
+) -> dict:
+    """
+    Check a draft node and describe it, without writing anything. Returns
+    {draft, relations, duplicate, errors, warnings, tag_warnings?}.
+
+    `draft` is the fields as `save` would take them, ready to send back
+    unchanged. `relations` adds the title of what each one points at, and
+    `missing: True` for a target that is not in the vault. `duplicate` is the
+    refusal `save` would give, or None. `errors` is everything `save` would
+    refuse the draft for: the same gates, run in the same order, so the user
+    sees the problem before the click rather than after it. This check is
+    advisory — `save` runs the gates again and stays the authority.
+    """
+    root = _vault_root()
+    errors: list[str] = []
+    warnings: list[str] = []
+    extra = dict(extra_fields or {})
+
+    # 'body' is not a frontmatter field; write_item reroutes it, so the draft says where it lands.
+    if "body" in extra:
+        misrouted = extra.pop("body")
+        if body:
+            warnings.append("'body' was passed inside extra_fields; the body argument won.")
+        else:
+            body = misrouted or ""
+            warnings.append("'body' was passed inside extra_fields; it was used as the body.")
+
+    if not (title or "").strip():
+        errors.append("The title is empty.")
+
+    registry = get_registry(root)
+    known_type = type in registry.type_names()
+    if not known_type:
+        errors.append(f"Unknown type '{type}'. Must be one of: {sorted(registry.type_names())}")
+    else:
+        errors += validate_required_fields(registry.get(type), extra, subtype=extra.get("subtype"))
+
+    relation_registry = get_relation_registry(root)
+    for rel in relations or []:
+        rel_type = rel.get("type")
+        if rel_type and not relation_registry.is_valid(rel_type):
+            errors.append(
+                f"Unknown relation type '{rel_type}'. "
+                f"Call read_meta(file='relation-dictionary') to see valid types."
+            )
+
+    asset_issues = has_asset_issues(extra.get("has_asset"), get_scheme_registry(root))
+    errors += [m for severity, _, m in asset_issues if severity == "error"]
+    warnings += [m for severity, _, m in asset_issues if severity == "warning"]
+
+    given_uid = extra.get("uid")
+    if given_uid:
+        if not UID_RE.fullmatch(str(given_uid)):
+            errors.append(f"uid '{given_uid}' is not a valid uid (8 lowercase hex characters).")
+        elif find_uid(root, str(given_uid)) is not None:
+            errors.append(f"uid '{given_uid}' already belongs to a node in the vault.")
+
+    duplicate = None
+    if known_type and (title or "").strip():
+        duplicate = _refuse_duplicate(title, extra.get("source_url"), "write_vault")
+
+    # Titles for the relation targets. A graph that cannot be read leaves them unknown
+    # rather than failing the draft: the title is a courtesy, not a gate.
+    try:
+        known = graph.get(root).nodes
+    except Exception:
+        known = None
+    resolved = []
+    for rel in relations or []:
+        uid = str(rel.get("uid", ""))
+        attrs = known.get(uid) if known is not None else None
+        resolved.append({
+            "uid": uid,
+            "type": rel.get("type"),
+            "title": (attrs or {}).get("title") or None,
+            "node_type": (attrs or {}).get("type") or None,
+            "missing": bool(known is not None and attrs is None),
+        })
+
+    out = {
+        "draft": {
+            "type": type, "title": title, "body": body or "", "tags": tags or [],
+            "domains": domains or [], "summary": summary, "author": author,
+            "relations": relations or [], "references": references or [],
+            "extra_fields": extra,
+        },
+        "relations": resolved,
+        "duplicate": duplicate,
+        "errors": errors,
+        "warnings": warnings,
+    }
+    # The same advice save gives after a write, given before it: a tag that names a node, or
+    # repeats the type, belongs somewhere else. There is no uid yet, so nothing is excluded.
+    _attach_tag_warnings(out, _name_index(bool(tags)), tags, type, extra.get("subtype"), "", relations)
+    return out
 
 
 def _name_index(wanted: bool = True) -> dict | None:

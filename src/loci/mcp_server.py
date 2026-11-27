@@ -34,17 +34,18 @@ import io as _io
 import os
 import sys
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import yaml
 
 from loci import api as vault
 from loci.console import use_utf8_output
+from loci.mcp_apps import NODE_VIEW_URI, UI_EXTENSION, UI_MIME, node_view_html
 from loci.tools import nx_graph as graph
 from loci.tools.node_merge import MergeError
 from loci.tools.vault_history import HistoryError
 from loci.tools import asset_registry as ar
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from loci.tools.vault_init import (
     VaultNotReady,
     ensure_ready,
@@ -324,6 +325,95 @@ def write_vault(
         )
     except HistoryError as e:
         return {"error": str(e)}
+
+
+def _client_supports_apps(ctx) -> bool:
+    """
+    True when the connected client declared the MCP Apps extension and can render
+    `text/html;profile=mcp-app`. Anything unreadable is False: a host that cannot
+    be shown to render must get the text flow, never a card it cannot display.
+
+    The 1.x SDK has no helper for this and its ClientCapabilities has no
+    `extensions` field, but it keeps unknown fields (`extra="allow"`), which is
+    where a host's declaration lands.
+    """
+    try:
+        extensions = (ctx.session.client_params.capabilities.model_extra or {}).get("extensions") or {}
+        return UI_MIME in ((extensions.get(UI_EXTENSION) or {}).get("mimeTypes") or [])
+    except Exception:
+        return False
+
+
+@mcp.resource(
+    NODE_VIEW_URI,
+    name="Node view",
+    description="Interactive card for a node: shows it, lets the user edit it and save it.",
+    mime_type=UI_MIME,
+)
+def node_view() -> str:
+    return node_view_html()
+
+
+_REVIEW_SHOWN = (
+    "The user is looking at this draft in a review card with Edit and Save buttons. "
+    "Nothing has been written. Do not call write_vault: the user saves, or edits first, with "
+    "the button, and a message will arrive when they do. Say in one line that the draft is "
+    "ready to review, then stop and wait."
+)
+_REVIEW_SHOWN_WITH_ERRORS = (
+    "The draft has problems, listed in `errors` and shown on the review card, so Save is "
+    "disabled. Nothing has been written. Fix them by calling propose_save again with corrected "
+    "fields (ask the user if a fix needs their intent), or let the user edit the card."
+)
+_REVIEW_UNSUPPORTED = (
+    "This client cannot show the review card. Nothing has been written. Show the draft to the "
+    "user in chat (title, type, summary, tags, relations, body), ask them to confirm, then call "
+    "write_vault with the fields in `draft` (allow_duplicate=true only if they chose to save a "
+    "duplicate). If `errors` is not empty, fix those first."
+)
+
+
+@mcp.tool(meta={"ui": {"resourceUri": NODE_VIEW_URI}})
+@requires_vault
+def propose_save(
+    type: str,
+    title: str,
+    body: str,
+    tags: list[str] = None,
+    domains: list[str] = None,
+    summary: str = None,
+    author: str = "self",
+    relations: list[dict] = None,
+    references: list[dict] = None,
+    extra_fields: dict = None,
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """
+    Show the user a draft node for review before it is saved. Writes nothing.
+
+    Takes the same fields as write_vault. Clients that can render it open a card
+    showing the node as it will be stored, with Edit and Save buttons; the user
+    saves (or edits, then saves) there, and a message tells you what happened.
+    Other clients get `review: "unsupported"` and the draft, and the save goes
+    through chat and write_vault as before.
+
+    Returns {review: "shown" | "unsupported", message, draft, relations,
+    duplicate, errors, warnings, tag_warnings?}. `message` says what to do next.
+    `errors` are what write_vault would refuse the draft for; `duplicate` is the
+    existing node it would collide with. The check is advisory: write_vault runs
+    the same gates when the user clicks Save.
+    """
+    out = vault.propose_save(
+        type=type, title=title, body=body, tags=tags, domains=domains, summary=summary,
+        author=author, relations=relations, references=references, extra_fields=extra_fields,
+    )
+    if _client_supports_apps(ctx):
+        out["review"] = "shown"
+        out["message"] = _REVIEW_SHOWN_WITH_ERRORS if out["errors"] else _REVIEW_SHOWN
+    else:
+        out["review"] = "unsupported"
+        out["message"] = _REVIEW_UNSUPPORTED
+    return out
 
 
 @mcp.tool()

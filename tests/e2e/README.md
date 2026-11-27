@@ -189,6 +189,40 @@ use `get_by_role` / `get_by_placeholder` instead — no testid needed.
 - **Writes.** The HTTP API is read-only (`CORSMiddleware` allows GET only), so
   there is no create/edit flow to test from the browser.
 
+## `test_save_review_view.py` is not the web app
+
+It tests the MCP App card (`src/loci/mcp_apps/node_view.html`, shown by the
+`propose_save` tool inside Claude Desktop), not `app/`. It needs no vite build,
+no uvicorn and no `node_modules`: the module shadows `base_url` and launches its
+own Chromium, so it also runs under `make test-e2e` on a machine without Node.
+
+A fake host in the test page stands in for Claude Desktop. It answers the
+view's `ui/initialize`, hands it the result of a **real** `propose_save`, and
+forwards every `tools/call` to the **real** FastMCP server over an in-memory
+session, against a temp copy of the fixture vault (`tmp_vault`). So a save here
+writes a file, and a refusal is `write_vault`'s own. The iframe has the same
+restrictive CSP a host applies (`connect-src 'none'`).
+
+What it cannot prove: whether Claude Desktop asks permission for each
+`tools/call` the view makes, whether it shows `ui/message` text to the user, and
+how the card looks in the real iframe. Check those by hand when the view or the
+host changes.
+
+| Testid | Where | Extra attributes |
+|---|---|---|
+| `node-view` | `node_view.html` | `data-status` (`waiting`, `draft`, `saving`, `saved`, `handoff`) |
+| `nv-title`, `nv-summary`, `nv-body`, `nv-type`, `nv-badge` | `node_view.html` | the read-only card |
+| `nv-tag` | `node_view.html` | one per tag |
+| `nv-relation` | `node_view.html` | `data-uid`, `data-off` (the user left it out) |
+| `nv-relation-toggle` | `node_view.html` | leaves a relation out of the save, or keeps it |
+| `nv-edit`, `nv-preview`, `nv-reset`, `nv-save` | `node_view.html` | toolbar buttons; `nv-save` is disabled while the draft has errors or an unanswered duplicate |
+| `nv-title-input`, `nv-summary-input`, `nv-tags-input`, `nv-body-input` | `node_view.html` | the edit form |
+| `nv-errors`, `nv-warnings`, `nv-problem` | `node_view.html` | what `propose_save` or `write_vault` reported |
+| `nv-duplicate`, `nv-dup-new`, `nv-dup-update` | `node_view.html` | the similar-node choice |
+| `nv-saved`, `nv-not-notified`, `nv-handoff` | `node_view.html` | the outcome: written; written but the host refused the message; handed back to the assistant |
+
+**When you add a testid to the view, add it to this table.**
+
 ## `test_packaged_ui.py` runs its own server
 
 Every other spec drives the developer layout: `vite preview` for the UI,
