@@ -367,12 +367,13 @@ _REVIEW_SHOWN_DUPLICATE = (
     "already exists (`duplicate`) and lets them choose: save a new node anyway, or have you "
     "update the existing one. Nothing has been written. Do not ask about the duplicate in chat "
     "and do not call write_vault. Say the draft is ready to review, then stop and wait; a "
-    "message will arrive with their choice."
+    "message will arrive with their choice. If they reply in chat instead and you propose again, "
+    "tell them the earlier card is out of date and not to click it."
 )
 _REVIEW_SHOWN_WITH_ERRORS = (
     "The draft has problems, listed in `errors` and shown on the card, so Save is disabled. "
-    "Nothing has been written. The card cannot fix type, subtype, relation, uid or has_asset "
-    "problems (only an empty title, summary, tags or body): correct the fields yourself and call "
+    "Nothing has been written. Do not call write_vault. The card can fix only an empty title; "
+    "for type, subtype, relation, uid or has_asset problems correct the fields yourself and call "
     "propose_save once more. Retry at most once: if errors remain, show them to the user in chat "
     "and ask what to change; never invent a value for a required field. If you propose again, "
     "tell the user the earlier card is out of date and not to click it."
@@ -381,7 +382,8 @@ _REVIEW_UNSUPPORTED = (
     "This client cannot show the review card. Nothing has been written. Show the draft to the "
     "user in chat (title, type, summary, tags, relations, body), ask them to confirm, then call "
     "write_vault with the fields in `draft` (allow_duplicate=true only if they chose to save a "
-    "duplicate). If `errors` is not empty, fix those first."
+    "duplicate). If `errors` is not empty, fix them once first; if any remain, show them to the "
+    "user and ask what to change."
 )
 
 
@@ -405,7 +407,8 @@ def propose_save(
 
     Takes the same fields as write_vault. Clients that can render it open a card
     showing the node as it will be stored, with Edit and Save buttons; the user
-    saves (or edits, then saves) there, and a message tells you what happened.
+    saves (or edits, then saves) there, and a message normally tells you what happened (if the
+    user says they saved and none arrived, read the node back to check).
     Other clients get `review: "unsupported"` and the draft, and the save goes
     through chat and write_vault as before. When review is "shown", do not call
     write_vault yourself: stop and wait for the message that follows the click.

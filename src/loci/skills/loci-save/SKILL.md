@@ -197,7 +197,7 @@ stop. Never call `loci__write_vault` yourself, and leave a duplicate to the card
 follows when the user saves or asks to update an existing node; it states what they changed, so
 trust it over your draft and `loci__read_vault` the node if you need its body. If they answer in
 chat instead, treat that as feedback: revise and call `loci__propose_save` once more, or drop the
-draft. Fix any `errors` first. On `review: "unsupported"`, or if the tool is missing, confirm in chat:
+draft. Fix any `errors` once; if they remain, show them in chat. If you propose again, say the earlier card is out of date. On `review: "unsupported"`, or if the tool is missing, confirm in chat:
 
 Call `loci__read_meta(file="config")` for `vault_root` and show the intended location:
 ```

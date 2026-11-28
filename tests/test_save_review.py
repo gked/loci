@@ -467,5 +467,19 @@ def test_the_messages_tell_the_model_what_to_say_about_a_stale_card_and_how_ofte
 def test_the_save_skill_tells_the_model_to_stop_at_the_card_and_what_to_do_after():
     text = api.read_skill("loci-save")
     step = text[text.index("loci__propose_save"):]
-    for phrase in ('review: "shown"', "stop", "Never call `loci__write_vault` yourself", "read_vault", "feedback", "once more", "unsupported"):
+    for phrase in ('review: "shown"', "stop", "Never call `loci__write_vault` yourself", "read_vault", "feedback", "once more", "unsupported", "once;", "out of date"):
         assert phrase in step, phrase
+
+
+def test_every_shown_message_that_can_be_followed_by_a_new_proposal_warns_about_the_old_card():
+    for text in (server._REVIEW_SHOWN, server._REVIEW_SHOWN_DUPLICATE, server._REVIEW_SHOWN_WITH_ERRORS):
+        assert "out of date" in text
+    assert "Do not call write_vault" in server._REVIEW_SHOWN_WITH_ERRORS
+    assert "once" in server._REVIEW_UNSUPPORTED and "ask what to change" in server._REVIEW_UNSUPPORTED
+
+
+def test_a_draft_that_is_a_duplicate_and_invalid_gets_the_errors_message(tmp_vault, monkeypatch):
+    monkeypatch.setattr(server, "_client_supports_apps", lambda ctx: True)
+    out = _call("propose_save", {**GOOD, "title": "Central Hub Topic", "extra_fields": {}}).structuredContent
+    assert out["message"] == server._REVIEW_SHOWN_WITH_ERRORS
+    assert out["duplicate"]["uid"] == "hub00001" and "message" not in out["duplicate"]

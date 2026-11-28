@@ -219,7 +219,7 @@ host changes.
 | `nv-title-input`, `nv-summary-input`, `nv-tags-input`, `nv-body-input` | `node_view.html` | the edit form |
 | `nv-errors`, `nv-warnings`, `nv-problem` | `node_view.html` | what `propose_save` or `write_vault` reported |
 | `nv-duplicate`, `nv-dup-new`, `nv-dup-update` | `node_view.html` | the similar-node choice |
-| `nv-saved`, `nv-not-notified`, `nv-quiet`, `nv-handoff` | `node_view.html` | the outcome: written; written but the host refused the message; written and only the quiet context fallback took the message (the assistant will not react until the user writes); handed back to the assistant |
+| `nv-saved`, `nv-not-notified`, `nv-unconfirmed`, `nv-quiet`, `nv-handoff` | `node_view.html` | the outcome: written; written but the host refused the message; written but the host has not confirmed the message arrived; written and only the quiet context fallback took the message (the assistant will not react until the user writes); handed back to the assistant |
 
 **When you add a testid to the view, add it to this table.**
 
