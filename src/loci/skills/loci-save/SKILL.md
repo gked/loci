@@ -192,11 +192,12 @@ title, present candidates grouped by type, and patch the topic with the confirme
 ### 🔒 Step 4 — Confirm and write
 
 **Preferred: `loci__propose_save`** (same fields as `loci__write_vault`; writes nothing). On
-`review: "shown"` the user sees the node with Edit and Save buttons and their click is the
-confirmation: say it is ready, then stop. Do not call `loci__write_vault` yourself. A message
-follows when they save, or ask you to update an existing node instead; continue from Wrap-up
-and trust what it says they edited over your draft. Fix any `errors` it returns first. On
-`review: "unsupported"`, or if the tool is missing, confirm in chat:
+`review: "shown"` the card (Edit and Save buttons) is the confirmation: say the draft is ready and
+stop. Never call `loci__write_vault` yourself, and leave a duplicate to the card. A message
+follows when the user saves or asks to update an existing node; it states what they changed, so
+trust it over your draft and `loci__read_vault` the node if you need its body. If they answer in
+chat instead, treat that as feedback: revise and call `loci__propose_save` once more, or drop the
+draft. Fix any `errors` first. On `review: "unsupported"`, or if the tool is missing, confirm in chat:
 
 Call `loci__read_meta(file="config")` for `vault_root` and show the intended location:
 ```
@@ -225,7 +226,6 @@ you from this source? Available fields: [list]". Confirm, then
 ### Wrap-up
 
 Every save ends here, whichever path it took.
-
 1. Report the result in this shape:
    ```
    Saved: <full_path>

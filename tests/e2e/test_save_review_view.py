@@ -20,6 +20,7 @@ so a view that quietly depends on the network fails here as it would there.
 import asyncio
 import concurrent.futures
 import json
+import time
 import re
 
 import pytest
@@ -42,25 +43,44 @@ DRAFT = dict(
 HOST_PAGE = """<!doctype html><meta charset=utf-8>
 <body style="margin:0;background:#262624"><iframe id="v" sandbox="allow-scripts" csp="__CSP__"
   style="width:760px;border:0;display:block;height:120px"></iframe>
+<iframe id="evil" sandbox="allow-scripts" style="display:none"></iframe>
 <script>
 const VIEW = __VIEW__, ARGS = __ARGS__;
-window.messages = []; window.links = []; window.protocol = [];
+// What the tests read and steer. `override[tool]` answers a tools/call instead of the real server
+// (return a promise that never settles to play a host that hangs). `refuse` is true to decline
+// every message from the view, or "message" to decline only ui/message and keep ui/update-model-context.
+window.messages = []; window.links = []; window.protocol = []; window.calls = []; window.responses = [];
+window.override = {}; window.refuse = false; window.messageDelay = 0; window.lastResult = null;
 const f = document.getElementById("v"); f.srcdoc = VIEW;
 const reply = (id, result) => f.contentWindow.postMessage({jsonrpc: "2.0", id, result}, "*");
 const note = (method, params) => f.contentWindow.postMessage({jsonrpc: "2.0", method, params}, "*");
+window.deliver = (r) => note("ui/notifications/tool-result", r);
+window.askView = (id, method) => f.contentWindow.postMessage({jsonrpc: "2.0", id, method}, "*");
+window.forge = (id, method) => {          // a message from a window that is not the host
+  const e = document.getElementById("evil");
+  e.srcdoc = "<script>window.parent.frames[0].postMessage({jsonrpc:'2.0',id:" + id + ",method:'" + method + "'},'*')<\\/script>";
+};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 window.addEventListener("message", async (e) => {
   if (e.source !== f.contentWindow) return;
   const d = e.data; window.protocol.push(d.method || "response");
+  if (!d.method) { window.responses.push(d); return; }
   if (d.method === "ui/initialize") {
     reply(d.id, {protocolVersion: "2026-01-26", hostCapabilities: {}, hostInfo: {name: "fake", version: "0"}, hostContext: {theme: "dark"}});
   } else if (d.method === "ui/notifications/initialized") {
-    const r = await window.mcp_call("propose_save", ARGS);
-    note("ui/notifications/tool-result", r);
+    window.lastResult = await window.mcp_call("propose_save", ARGS);
+    window.deliver(window.lastResult);
   } else if (d.method === "tools/call") {
-    reply(d.id, await window.mcp_call(d.params.name, d.params.arguments || {}));
+    const name = d.params.name, args = d.params.arguments || {};
+    window.calls.push({name, arguments: args});
+    const fake = window.override[name];
+    reply(d.id, fake ? await fake(args) : await window.mcp_call(name, args));
   } else if (d.method === "ui/message" || d.method === "ui/update-model-context") {
-    if (window.refuse) { f.contentWindow.postMessage({jsonrpc: "2.0", id: d.id, error: {code: -32000, message: "denied"}}, "*"); return; }
-    window.messages.push(d.params); reply(d.id, {});
+    if (window.messageDelay) await sleep(window.messageDelay);
+    if (window.refuse === true || (window.refuse === "message" && d.method === "ui/message")) {
+      f.contentWindow.postMessage({jsonrpc: "2.0", id: d.id, error: {code: -32000, message: "denied"}}, "*"); return;
+    }
+    window.messages.push({method: d.method, ...d.params}); reply(d.id, {});
   } else if (d.method === "ui/open-link") {
     window.links.push(d.params.url); reply(d.id, {});
   } else if (d.method === "ui/notifications/size-changed") {
@@ -211,10 +231,10 @@ def test_preview_renders_the_edit_and_reset_restores_the_proposal(card, tmp_vaul
     expect(view.locator("[data-testid=nv-body] h1")).to_have_text("Changed")
     view.locator("[data-testid=nv-reset]").click()
     expect(view.locator("[data-testid=nv-body] h2")).to_have_text("Why")
-    expect(view.locator("[data-testid=nv-reset]")).to_have_count(0)
+    expect(view.locator("[data-testid=nv-reset]")).to_be_disabled()      # nothing left to undo
 
 
-def test_a_relation_the_user_leaves_out_is_not_saved(card, tmp_vault):
+def test_a_relation_the_user_leaves_out_is_not_saved(card, tmp_vault, page):
     view = card()
     view.locator("[data-testid=nv-relation-toggle]").click()
     expect(view.locator("[data-testid=nv-relation]")).to_have_attribute("data-off", "true")
@@ -222,6 +242,7 @@ def test_a_relation_the_user_leaves_out_is_not_saved(card, tmp_vault):
     expect(view.locator("[data-testid=nv-saved]")).to_be_visible()
     [(fm, _)] = _nodes(tmp_vault, DRAFT["title"])
     assert not fm.get("relations")
+    assert "relations kept: none | left out: about -> hub00001" in _messages(page)[0]["content"]["text"]
 
 
 def test_cmd_enter_saves(card, tmp_vault):
@@ -288,6 +309,7 @@ def test_note_content_cannot_inject_markup_or_script(card, tmp_vault, page):
     expect(view.locator("[data-testid=nv-title]")).to_have_text("<i>hostile</i> title")
     assert page.frame_locator("#v").locator("html").evaluate("() => window.pwned === undefined")
     assert body.locator("a[href^='javascript']").count() == 0
+    assert body.locator("a", has_text="bad").count() == 0             # not a link at all, just text
     body.locator("a", has_text="good").click()
     assert page.evaluate("window.links") == ["https://example.com/page"]
     assert "bad" in body.inner_text()
@@ -338,3 +360,278 @@ def test_the_view_speaks_only_the_documented_protocol(card, page):
     seen = set(page.evaluate("window.protocol"))
     assert {"ui/initialize", "ui/notifications/initialized"} <= seen
     assert all(m == "response" or m.startswith(("ui/", "tools/")) for m in seen), seen
+
+
+# ---------------------------------------------------------------------------
+# found in review
+# ---------------------------------------------------------------------------
+
+def _writes(page):
+    return [c for c in page.evaluate("window.calls") if c["name"] == "write_vault"]
+
+
+def test_what_is_sent_to_write_vault_is_the_whole_card(card, tmp_vault, page):
+    view = card(domains=["technology-engineering"], author="alice",
+                references=[{"url": "https://example.com", "title": "Ex", "source_type": "article"}])
+    view.locator("[data-testid=nv-title]").click()
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-saved]")).to_be_visible()
+    [call] = _writes(page)
+    args = call["arguments"]
+    assert args["title"] == DRAFT["title"] and args["summary"] == DRAFT["summary"]
+    assert args["domains"] == ["technology-engineering"] and args["author"] == "alice"
+    assert args["references"] == [{"url": "https://example.com", "title": "Ex", "source_type": "article"}]
+    assert args["tags"] == ["review-card"] and args["extra_fields"] == DRAFT["extra_fields"]
+
+
+def test_the_title_is_trimmed_and_a_blank_one_cannot_be_saved(card, tmp_vault, page):
+    view = card()
+    view.locator("[data-testid=nv-edit]").click()
+    title = view.locator("[data-testid=nv-title-input]")
+    title.fill("   ")
+    title.blur()
+    expect(view.locator("[data-testid=nv-save]")).to_be_disabled()
+    view.locator("body").press("Control+Enter")
+    assert _writes(page) == []
+    title.fill("  Padded title  ")
+    title.blur()
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-saved]")).to_be_visible()
+    assert _writes(page)[0]["arguments"]["title"] == "Padded title"
+
+
+def test_cmd_enter_does_nothing_while_the_draft_has_errors(card, tmp_vault, page):
+    view = card(extra_fields={})
+    view.locator("[data-testid=nv-title]").click()
+    view.locator("body").press("Control+Enter")
+    view.locator("body").press("Meta+Enter")
+    assert _writes(page) == []
+
+
+def test_tags_split_on_spaces_as_well_as_commas(card, tmp_vault):
+    view = card()
+    view.locator("[data-testid=nv-edit]").click()
+    view.locator("[data-testid=nv-tags-input]").fill("a b, c")
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-saved]")).to_be_visible()
+    [(fm, _)] = _nodes(tmp_vault, DRAFT["title"])
+    assert fm["tags"] == ["a", "b", "c"]
+
+
+def test_leaving_out_a_relation_counts_as_an_edit_and_reset_brings_it_back(card, tmp_vault, page):
+    view = card()
+    toggle, rel, reset = (view.locator(f"[data-testid={t}]") for t in ("nv-relation-toggle", "nv-relation", "nv-reset"))
+    expect(reset).to_be_disabled()
+    toggle.click()
+    expect(rel).to_have_attribute("data-off", "true")
+    expect(reset).to_be_enabled()
+    toggle.click()                                                   # the same button puts it back
+    expect(rel).to_have_attribute("data-off", "false")
+    toggle.click()
+    reset.click()
+    expect(rel).to_have_attribute("data-off", "false")
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-saved]")).to_be_visible()
+    assert _writes(page)[0]["arguments"]["relations"] == [{"uid": "hub00001", "type": "about"}]
+
+
+def test_reset_is_there_as_soon_as_the_text_changes(card):
+    view = card()
+    view.locator("[data-testid=nv-edit]").click()
+    expect(view.locator("[data-testid=nv-reset]")).to_be_disabled()
+    view.locator("[data-testid=nv-body-input]").fill("changed")
+    expect(view.locator("[data-testid=nv-reset]")).to_be_enabled()
+
+
+def test_a_relation_to_a_node_that_is_not_there_says_so(card):
+    view = card(relations=[{"uid": "nosuchid", "type": "about"}])
+    expect(view.locator("[data-testid=nv-relation]")).to_contain_text("not in the vault")
+
+
+def test_removing_the_bad_relation_clears_its_error_and_enables_save(card, tmp_vault):
+    view = card(relations=[{"uid": "hub00001", "type": "bogus-rel"}])
+    expect(view.locator("[data-testid=nv-errors]")).to_be_visible()
+    expect(view.locator("[data-testid=nv-save]")).to_be_disabled()
+    view.locator("[data-testid=nv-relation-toggle]").click()
+    expect(view.locator("[data-testid=nv-errors]")).to_have_count(0)
+    expect(view.locator("[data-testid=nv-save]")).to_be_enabled()
+
+
+def test_filling_in_an_empty_title_clears_its_error(card, tmp_vault):
+    view = card(title="")
+    expect(view.locator("[data-testid=nv-errors]")).to_contain_text("title")
+    view.locator("[data-testid=nv-edit]").click()
+    view.locator("[data-testid=nv-title-input]").fill("Now it has one")
+    view.locator("[data-testid=nv-tags-input]").click()
+    expect(view.locator("[data-testid=nv-errors]")).to_have_count(0)
+    expect(view.locator("[data-testid=nv-save]")).to_be_enabled()
+
+
+def test_warnings_and_tag_warnings_are_listed(card):
+    view = card(tags=["document"])
+    expect(view.locator("[data-testid=nv-warnings]")).to_contain_text("document")
+
+
+def test_a_second_tool_result_cannot_reset_a_saved_card(card, tmp_vault, page):
+    view = card()
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-saved]")).to_be_visible()
+    page.evaluate("window.deliver(window.lastResult)")               # a host may deliver it again
+    page.wait_for_timeout(300)
+    expect(view.locator("[data-testid=nv-saved]")).to_be_visible()
+    expect(view.locator("[data-testid=nv-save]")).to_have_count(0)
+    assert len(_nodes(tmp_vault, DRAFT["title"])) == 1
+
+
+def test_a_tool_result_without_a_draft_does_not_replace_the_card(card, page):
+    view = card()
+    page.evaluate("window.deliver({structuredContent: {}})")
+    page.wait_for_timeout(200)
+    expect(view.locator("[data-testid=nv-title]")).to_have_text(DRAFT["title"])
+
+
+def test_save_anyway_does_not_carry_over_to_a_different_title(card, tmp_vault, page):
+    """The choice was about one title. A new title that collides with another node asks again."""
+    view = card(title="Central Hub Topic")
+    view.locator("[data-testid=nv-dup-new]").click()
+    expect(view.locator("[data-testid=nv-save]")).to_have_text("Save anyway")
+    view.locator("[data-testid=nv-edit]").click()
+    view.locator("[data-testid=nv-title-input]").fill("Distributed Systems Overview")
+    view.locator("[data-testid=nv-tags-input]").click()
+    expect(view.locator("[data-testid=nv-duplicate]")).to_be_visible()
+    expect(view.locator("[data-testid=nv-save]")).to_be_disabled()
+    assert _writes(page) == []
+
+
+def test_the_duplicate_choice_is_asked_again_when_write_vault_finds_one(card, tmp_vault, page):
+    view = card(title="Central Hub Topic")
+    view.locator("[data-testid=nv-dup-new]").click()
+    page.evaluate("""window.override.write_vault = async () => ({content: [{type: "text", text: "{}"}],
+        structuredContent: {duplicate: true, uid: "hub00001", path: "x.md", name: "Central Hub Topic"}})""")
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-duplicate]")).to_be_visible()
+    expect(view.locator("[data-testid=nv-save]")).to_have_text("Save")      # the earlier choice is spent
+
+
+@pytest.mark.parametrize("answer, shown", [
+    ('{errors: ["boom"]}', "[data-testid=nv-errors]"),
+    ('{error: "disk full"}', "[data-testid=nv-problem]"),
+    ("{}", "[data-testid=nv-problem]"),
+])
+def test_an_answer_that_is_not_a_save_is_shown_and_the_card_stays_a_draft(card, page, answer, shown):
+    view = card()
+    page.evaluate("window.override.write_vault = async () => ({structuredContent: %s})" % answer)
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator(shown)).to_be_visible()
+    expect(view.locator("[data-testid=nv-saved]")).to_have_count(0)
+    expect(view.locator("[data-testid=node-view]")).to_have_attribute("data-status", "draft")
+
+
+def test_a_bare_error_warns_that_the_node_may_already_be_written(card, page):
+    view = card()
+    page.evaluate('window.override.write_vault = async () => ({structuredContent: {error: "history failed"}})')
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-problem]")).to_contain_text("history failed")
+    expect(view.locator("[data-testid=nv-problem]")).to_contain_text("check the vault")
+
+
+def test_a_tool_error_from_the_host_is_shown(card, page):
+    view = card()
+    page.evaluate('window.override.write_vault = async () => ({isError: true, content: [{type: "text", text: "nope"}]})')
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-problem]")).to_contain_text("nope")
+
+
+def test_a_host_that_never_answers_does_not_leave_the_card_saving_forever(card, page):
+    view = card()
+    page.evaluate("void (window.override.write_vault = () => new Promise(() => {}))")
+    next(f for f in page.frames if f != page.main_frame and f.name != "evil").evaluate("HOST_TIMEOUT_MS = 300")
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-problem]")).to_contain_text("may or may not have been saved", timeout=5000)
+    expect(view.locator("[data-testid=nv-save]")).to_be_enabled()
+
+
+def test_the_handoff_is_sent_once_however_often_it_is_clicked(card, page):
+    view = card(title="Central Hub Topic")
+    page.evaluate("window.messageDelay = 400")
+    button = view.locator("[data-testid=nv-dup-update]")
+    button.click()
+    button.click(force=True)
+    expect(view.locator("[data-testid=nv-handoff]")).to_be_visible(timeout=5000)
+    assert len(page.evaluate("window.messages")) == 1
+
+
+def test_the_handoff_carries_the_edited_draft(card, page):
+    view = card(title="Central Hub Topic")
+    view.locator("[data-testid=nv-edit]").click()
+    view.locator("[data-testid=nv-body-input]").fill("My rewritten body.")
+    view.locator("[data-testid=nv-summary-input]").fill("My summary.")
+    view.locator("[data-testid=nv-tags-input]").fill("mine")
+    view.locator("[data-testid=nv-dup-update]").click()
+    text = _messages(page)[0]["content"]["text"]
+    assert "My rewritten body." in text and "My summary." in text and "mine" in text
+
+
+def test_when_the_message_is_refused_the_model_context_still_carries_the_save(card, tmp_vault, page):
+    view = card()
+    page.evaluate('window.refuse = "message"')
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-saved]")).to_be_visible()
+    expect(view.locator("[data-testid=nv-not-notified]")).to_have_count(0)
+    assert page.evaluate("window.messages.map((m) => m.method)") == ["ui/update-model-context"]
+
+
+def test_the_saved_message_carries_the_warnings_the_save_returned(card, page):
+    view = card()
+    page.evaluate("""window.override.write_vault = async () => ({structuredContent:
+        {uid: "abcd1234", path: "p.md", tag_warnings: ["tag x is a node"], body_warnings: ["long line"]}})""")
+    view.locator("[data-testid=nv-save]").click()
+    text = _messages(page)[0]["content"]["text"]
+    assert "tag warnings: tag x is a node" in text and "body warnings: long line" in text
+
+
+def test_the_card_goes_back_to_reading_after_an_edited_save(card, tmp_vault):
+    view = card()
+    view.locator("[data-testid=nv-edit]").click()
+    view.locator("[data-testid=nv-body-input]").fill("edited")
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-saved]")).to_be_visible()
+    expect(view.locator("[data-testid=nv-body-input]")).to_have_count(0)
+    expect(view.locator("[data-testid=nv-body]")).to_contain_text("edited")
+
+
+def test_the_card_answers_the_hosts_ping_and_teardown(card, page):
+    card()
+    page.evaluate("window.askView(901, 'ping'); window.askView(902, 'ui/resource-teardown')")
+    page.wait_for_function("window.responses.filter((r) => r.id === 901 || r.id === 902).length === 2")
+
+
+def test_a_message_that_is_not_from_the_host_is_ignored(card, page):
+    card()
+    page.evaluate("window.forge(903, 'ping')")
+    page.wait_for_timeout(500)
+    assert not [r for r in page.evaluate("window.responses") if r.get("id") == 903]
+
+
+def test_a_flood_of_quote_marks_still_renders_something(card, page):
+    view = card(body=">" * 3000 + " deep")
+    expect(view.locator("[data-testid=nv-body]")).to_contain_text("deep")
+    expect(view.locator("[data-testid=nv-save]")).to_be_enabled()
+    assert card.errors == []
+
+
+def test_markdown_links_with_parentheses_keep_their_whole_address(card, page):
+    view = card(body="[wiki](https://en.wikipedia.org/wiki/Foo_(bar)) and [tip](https://example.com/a 'title')")
+    body = view.locator("[data-testid=nv-body]")
+    body.locator("a", has_text="wiki").click()
+    body.locator("a", has_text="tip").click()
+    page.wait_for_function("window.links.length === 2")
+    assert page.evaluate("window.links") == ["https://en.wikipedia.org/wiki/Foo_(bar)", "https://example.com/a"]
+
+
+def test_a_huge_unclosed_bracket_run_does_not_freeze_the_card(card):
+    """Each "[" looked for its "]" through the whole rest of the line: about 5 s for this body."""
+    started = time.monotonic()
+    view = card(body="[" * 100000)
+    expect(view.locator("[data-testid=nv-body]")).to_be_visible()
+    assert time.monotonic() - started < 3

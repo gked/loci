@@ -19,5 +19,5 @@ _NODE_VIEW = Path(__file__).with_name("node_view.html")
 
 
 def node_view_html() -> str:
-    """The node view, read on every call so an edit shows without a restart of the tests."""
+    """The node view, read on every call, so an edit shows without restarting the server."""
     return _NODE_VIEW.read_text(encoding="utf-8")

@@ -358,12 +358,20 @@ _REVIEW_SHOWN = (
     "The user is looking at this draft in a review card with Edit and Save buttons. "
     "Nothing has been written. Do not call write_vault: the user saves, or edits first, with "
     "the button, and a message will arrive when they do. Say in one line that the draft is "
-    "ready to review, then stop and wait."
+    "ready to review, then stop and wait. If they reply in chat instead, treat it as feedback."
+)
+_REVIEW_SHOWN_DUPLICATE = (
+    "The user is looking at this draft in a review card, and the card says a similar node "
+    "already exists (`duplicate`) and lets them choose: save a new node anyway, or have you "
+    "update the existing one. Nothing has been written. Do not ask about the duplicate in chat "
+    "and do not call write_vault. Say the draft is ready to review, then stop and wait; a "
+    "message will arrive with their choice."
 )
 _REVIEW_SHOWN_WITH_ERRORS = (
-    "The draft has problems, listed in `errors` and shown on the review card, so Save is "
-    "disabled. Nothing has been written. Fix them by calling propose_save again with corrected "
-    "fields (ask the user if a fix needs their intent), or let the user edit the card."
+    "The draft has problems, listed in `errors` and shown on the card, so Save is disabled. "
+    "Nothing has been written. The card cannot fix type, subtype or relation problems: correct "
+    "the fields yourself (ask the user only if the fix needs their intent) and call "
+    "propose_save once more with the corrected draft."
 )
 _REVIEW_UNSUPPORTED = (
     "This client cannot show the review card. Nothing has been written. Show the draft to the "
@@ -395,7 +403,8 @@ def propose_save(
     showing the node as it will be stored, with Edit and Save buttons; the user
     saves (or edits, then saves) there, and a message tells you what happened.
     Other clients get `review: "unsupported"` and the draft, and the save goes
-    through chat and write_vault as before.
+    through chat and write_vault as before. When review is "shown", do not call
+    write_vault yourself: stop and wait for the message that follows the click.
 
     Returns {review: "shown" | "unsupported", message, draft, relations,
     duplicate, errors, warnings, tag_warnings?}. `message` says what to do next.
@@ -409,7 +418,15 @@ def propose_save(
     )
     if _client_supports_apps(ctx):
         out["review"] = "shown"
-        out["message"] = _REVIEW_SHOWN_WITH_ERRORS if out["errors"] else _REVIEW_SHOWN
+        out["message"] = (
+            _REVIEW_SHOWN_WITH_ERRORS if out["errors"]
+            else _REVIEW_SHOWN_DUPLICATE if out["duplicate"]
+            else _REVIEW_SHOWN
+        )
+        if out["duplicate"]:
+            # The card offers this choice itself; the generic "ask the user whether to update"
+            # in the gate's own message would send the model to ask it a second time in chat.
+            out["duplicate"] = {k: v for k, v in out["duplicate"].items() if k != "message"}
     else:
         out["review"] = "unsupported"
         out["message"] = _REVIEW_UNSUPPORTED

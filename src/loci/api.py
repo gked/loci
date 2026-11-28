@@ -304,7 +304,10 @@ def propose_save(
     if not known_type:
         errors.append(f"Unknown type '{type}'. Must be one of: {sorted(registry.type_names())}")
     else:
-        errors += validate_required_fields(registry.get(type), extra, subtype=extra.get("subtype"))
+        try:
+            errors += validate_required_fields(registry.get(type), extra, subtype=extra.get("subtype"))
+        except Exception as exc:        # e.g. an unhashable subtype: a draft the card should show, not a tool failure
+            errors.append(f"The fields could not be checked: {exc}")
 
     relation_registry = get_relation_registry(root)
     for rel in relations or []:
@@ -348,13 +351,15 @@ def propose_save(
             "missing": bool(known is not None and attrs is None),
         })
 
+    # Only what is set: write_vault declares `summary: str = None`, so an explicit null fails its
+    # schema, and the draft is documented as ready to send back unchanged.
+    draft = {"type": type, "title": title, "body": body or "", "author": author}
+    for key, value in (("tags", tags), ("domains", domains), ("summary", summary),
+                       ("relations", relations), ("references", references), ("extra_fields", extra)):
+        if value:
+            draft[key] = value
     out = {
-        "draft": {
-            "type": type, "title": title, "body": body or "", "tags": tags or [],
-            "domains": domains or [], "summary": summary, "author": author,
-            "relations": relations or [], "references": references or [],
-            "extra_fields": extra,
-        },
+        "draft": draft,
         "relations": resolved,
         "duplicate": duplicate,
         "errors": errors,

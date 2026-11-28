@@ -10,6 +10,7 @@ refuse the draft for is reported here first, so the user sees it before the
 click rather than after.
 """
 import asyncio
+import re
 import threading
 from types import SimpleNamespace
 
@@ -319,3 +320,127 @@ def test_the_view_makes_no_network_requests():
     html = node_view_html()
     for needle in ("http://", "https://", "fetch(", "XMLHttpRequest", "WebSocket", "<script src", "@import"):
         assert needle not in html, needle
+
+
+# ---------------------------------------------------------------------------
+# found in review: each of these was a defect or an unpinned behaviour
+# ---------------------------------------------------------------------------
+
+def test_the_draft_leaves_out_what_is_unset_so_it_validates_against_write_vault(tmp_vault):
+    """write_vault declares `summary: str = None`; an explicit null fails its schema, so a
+    draft with no summary used to be rejected on the way back."""
+    draft = api.propose_save(type="document", title="No summary", body="b",
+                             extra_fields={"subtype": "note", "status": "evergreen"})["draft"]
+    assert "summary" not in draft and "tags" not in draft and "relations" not in draft
+    assert None not in draft.values()
+
+
+@pytest.mark.parametrize("fields", [
+    dict(type="document", title="Round trip, bare", body="b", extra_fields={"subtype": "note", "status": "evergreen"}),
+    dict(GOOD, title="Round trip, full", domains=["technology-engineering"], author="alice",
+         relations=[{"uid": "hub00001", "type": "about"}],
+         references=[{"url": "https://example.com", "title": "Ex", "source_type": "article"}]),
+])
+def test_the_draft_goes_back_through_write_vault_unchanged(tmp_vault, fields):
+    """The whole point of echoing it: through the MCP schema, not just the Python call."""
+    draft = _call("propose_save", fields).structuredContent["draft"]
+    written = _call("write_vault", draft)
+    assert not written.isError, written.content
+    assert json_of(written).get("uid")
+
+
+def json_of(result):
+    import json
+    return result.structuredContent or json.loads(result.content[0].text)
+
+
+def test_the_draft_echoes_a_custom_author(tmp_vault):
+    assert api.propose_save(**GOOD, author="alice")["draft"]["author"] == "alice"
+
+
+def test_a_check_that_raises_becomes_an_error_the_card_can_show(tmp_vault):
+    result = api.propose_save(**{**GOOD, "extra_fields": {"subtype": ["a"], "status": "evergreen"}})
+    assert result["errors"] and result["draft"]["title"] == GOOD["title"]
+
+
+def test_a_malformed_uid_is_an_error(tmp_vault):
+    r = api.propose_save(**{**GOOD, "extra_fields": {**GOOD["extra_fields"], "uid": "XYZ"}})
+    assert any("not a valid uid" in e for e in r["errors"])
+
+
+def test_a_taken_uid_is_an_error(tmp_vault):
+    from loci.tools.frontmatter import load_frontmatter
+    taken = next(
+        str(fm["uid"]) for p in tmp_vault.glob("*.md")
+        for fm in [load_frontmatter(p.read_text(encoding="utf-8"))[0] or {}]
+        if re.fullmatch(r"[0-9a-f]{8}", str(fm.get("uid", "")))
+    )
+    r = api.propose_save(**{**GOOD, "extra_fields": {**GOOD["extra_fields"], "uid": taken}})
+    assert any("already belongs" in e for e in r["errors"])
+
+
+def test_has_asset_problems_are_reported_both_ways(tmp_vault):
+    bad = api.propose_save(**{**GOOD, "extra_fields": {**GOOD["extra_fields"], "has_asset": [{"scheme": "nope", "path": "x"}]}})
+    assert any("has_asset" in e for e in bad["errors"])
+    soft = api.propose_save(**{**GOOD, "extra_fields": {**GOOD["extra_fields"], "has_asset": "nonsense://x"}})
+    assert soft["errors"] == [] and any("has_asset" in w for w in soft["warnings"])
+
+
+def test_body_inside_extra_fields_is_rerouted_like_write_item_does(tmp_vault):
+    used = api.propose_save(**{**GOOD, "body": "", "extra_fields": {**GOOD["extra_fields"], "body": "from extra"}})
+    assert used["draft"]["body"] == "from extra"
+    assert "body" not in used["draft"]["extra_fields"]
+    assert any("used as the body" in w for w in used["warnings"])
+    kept = api.propose_save(**{**GOOD, "body": "argument", "extra_fields": {**GOOD["extra_fields"], "body": "extra"}})
+    assert kept["draft"]["body"] == "argument" and "body" not in kept["draft"]["extra_fields"]
+    assert any("argument won" in w for w in kept["warnings"])
+
+
+def test_a_duplicate_source_url_is_reported_under_a_different_title(tmp_vault):
+    first = api.save(type="bookmark", title="First bookmark", body="x",
+                     extra_fields={"source_url": "https://example.com/a", "site_name": "ex", "subtype": "link"})
+    if not first.get("uid"):
+        pytest.skip(f"fixture rules changed: {first}")
+    r = api.propose_save(type="bookmark", title="A different title", body="y",
+                         extra_fields={"source_url": "https://example.com/a", "site_name": "ex", "subtype": "link"})
+    assert r["duplicate"] and r["duplicate"]["uid"] == first["uid"]
+
+
+def test_an_unknown_type_never_looks_up_a_duplicate(tmp_vault):
+    r = api.propose_save(**{**GOOD, "type": "no-such-type", "title": "Central Hub Topic"})
+    assert r["duplicate"] is None and r["errors"]
+
+
+def test_an_unreadable_graph_does_not_call_relations_missing(tmp_vault, monkeypatch):
+    def boom(root):
+        raise RuntimeError("graph is broken")
+    monkeypatch.setattr(api.graph, "get", boom)
+    rel = api.propose_save(**GOOD, relations=[{"uid": "hub00001", "type": "about"}])["relations"][0]
+    assert rel["missing"] is False and rel["title"] is None
+
+
+def test_tag_advice_knows_the_subtype_and_the_relations(tmp_vault):
+    assert api.propose_save(**{**GOOD, "tags": ["note"]})["tag_warnings"], "a tag repeating the subtype"
+    bare = api.propose_save(**{**GOOD, "tags": ["central-hub-topic"]})["tag_warnings"][0]
+    linked = api.propose_save(**{**GOOD, "tags": ["central-hub-topic"],
+                                 "relations": [{"uid": "hub00001", "type": "about"}]})["tag_warnings"][0]
+    assert "relation" in bare and "already links" in linked
+
+
+def test_each_review_state_gets_its_own_instruction(tmp_vault, monkeypatch):
+    monkeypatch.setattr(server, "_client_supports_apps", lambda ctx: True)
+    clean = _call("propose_save", GOOD).structuredContent
+    dup = _call("propose_save", {**GOOD, "title": "Central Hub Topic"}).structuredContent
+    bad = _call("propose_save", {**GOOD, "extra_fields": {}}).structuredContent
+    assert clean["message"] == server._REVIEW_SHOWN
+    assert dup["message"] == server._REVIEW_SHOWN_DUPLICATE and "do not ask about the duplicate" in dup["message"].lower()
+    assert bad["message"] == server._REVIEW_SHOWN_WITH_ERRORS and "once more" in bad["message"]
+    # the gate's own advice ("ask the user whether to update...") would send the model to ask again in chat
+    assert dup["duplicate"]["uid"] == "hub00001" and "message" not in dup["duplicate"]
+    monkeypatch.setattr(server, "_client_supports_apps", lambda ctx: False)
+    out = _call("propose_save", GOOD).structuredContent
+    assert out["message"] == server._REVIEW_UNSUPPORTED and "do not call write_vault" not in out["message"].lower()
+
+
+def test_the_tool_description_says_to_stop_when_the_card_is_shown():
+    assert "do not call" in _tools()["propose_save"].description.lower()
