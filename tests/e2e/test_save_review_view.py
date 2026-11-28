@@ -1117,6 +1117,7 @@ def test_a_late_save_during_a_hand_off_is_reported_not_adopted(card, tmp_vault, 
     expect(view.locator("[data-testid=nv-problem]")).to_be_visible(timeout=5000)
     view.locator("[data-testid=nv-save]").click()                   # refused as a duplicate: the banner is back
     expect(view.locator("[data-testid=nv-duplicate]")).to_be_visible(timeout=5000)
+    _shorten_timeout(page, 8000)                                     # the hand-off waits for the host
     page.evaluate("window.messageDelay = 3000")                      # still sending when the first answer lands
     view.locator("[data-testid=nv-dup-update]").click()
     expect(view.locator("[data-testid=node-view]")).to_have_attribute("inert", "")
