@@ -86,6 +86,28 @@ ontology, classifies the type, generates frontmatter, suggests entity links,
 and writes the file. [Teach the agent once](#teach-the-agent-once) and you can
 drop the "loci".
 
+### Reviewing a save before it is written
+
+In a client that renders MCP Apps (Claude Desktop is the first target), the agent
+calls `propose_save` instead of asking you to confirm in chat. It shows the node
+as it will be stored — title, type, summary, tags, the relations it will link,
+the body rendered as markdown — with **Edit** and **Save** buttons. Nothing is
+written until you click Save, and what you saved is what goes in, edits
+included. **Edit** changes the title, summary, tags and body; a relation can be
+left out with its ×. The relations, type and other fields are fixed on the card,
+so to change one of those, ask the agent for a new draft.
+
+If a similar node exists, the card says so and offers *save as a new node
+anyway* or *update the existing node instead*. If the draft would be refused
+(a missing required field, an unknown relation type), the card lists why and
+Save stays off. A save is a recorded change in [vault history](#vault-history),
+so it can be undone like any other.
+
+Other agents, and any client that does not render MCP Apps, get the draft as
+text and the confirmation happens in chat, as before. The card is a thin
+layer over `write_vault`: it runs the same checks as a save through chat. If the
+assistant does not react after you click Save, tell it in the chat that you saved.
+
 ### Querying
 
 Same rule when reading back:

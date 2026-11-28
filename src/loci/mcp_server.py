@@ -34,17 +34,19 @@ import io as _io
 import os
 import sys
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import yaml
 
 from loci import api as vault
 from loci.console import use_utf8_output
+from loci.mcp_apps import NODE_VIEW_URI, UI_EXTENSION, UI_MIME, node_view_html
 from loci.tools import nx_graph as graph
 from loci.tools.node_merge import MergeError
 from loci.tools.vault_history import HistoryError
 from loci.tools import asset_registry as ar
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
+from mcp.types import ToolAnnotations
 from loci.tools.vault_init import (
     VaultNotReady,
     ensure_ready,
@@ -324,6 +326,120 @@ def write_vault(
         )
     except HistoryError as e:
         return {"error": str(e)}
+
+
+def _client_supports_apps(ctx) -> bool:
+    """
+    True when the connected client declared the MCP Apps extension and can render
+    `text/html;profile=mcp-app`. Anything unreadable is False: a host that cannot
+    be shown to render must get the text flow, never a card it cannot display.
+
+    The 1.x SDK has no helper for this and its ClientCapabilities has no
+    `extensions` field, but it keeps unknown fields (`extra="allow"`), which is
+    where a host's declaration lands.
+    """
+    try:
+        extensions = (ctx.session.client_params.capabilities.model_extra or {}).get("extensions") or {}
+        return UI_MIME in ((extensions.get(UI_EXTENSION) or {}).get("mimeTypes") or [])
+    except Exception:
+        return False
+
+
+@mcp.resource(
+    NODE_VIEW_URI,
+    name="Node view",
+    description="Interactive card for a node: shows it, lets the user edit it and save it.",
+    mime_type=UI_MIME,
+)
+def node_view() -> str:
+    return node_view_html()
+
+
+_REVIEW_SHOWN = (
+    "The user is looking at this draft in a review card with Edit and Save buttons. "
+    "Nothing has been written. Do not call write_vault: the user saves, or edits first, with "
+    "the button, and a message will arrive when they do. Say in one line that the draft is "
+    "ready to review, then stop and wait. If they reply in chat instead, treat it as feedback; "
+    "if you then propose again, tell them the earlier card is out of date and not to click it."
+)
+_REVIEW_SHOWN_DUPLICATE = (
+    "The user is looking at this draft in a review card, and the card says a similar node "
+    "already exists (`duplicate`) and lets them choose: save a new node anyway, or have you "
+    "update the existing one. Nothing has been written. Do not ask about the duplicate in chat "
+    "and do not call write_vault. Say the draft is ready to review, then stop and wait; a "
+    "message will arrive with their choice. If they reply in chat instead and you propose again, "
+    "tell them the earlier card is out of date and not to click it."
+)
+_REVIEW_SHOWN_WITH_ERRORS = (
+    "The draft has problems, listed in `errors` and shown on the card, so Save is disabled. "
+    "Nothing has been written. Do not call write_vault. On the card the user can fix an empty "
+    "title or remove a relation with its x; if the title is empty, supply one. For anything else "
+    "(type, subtype, a relation's type, uid, has_asset) correct the fields yourself and call "
+    "propose_save once more. Retry at most once: if errors remain, show them to the user in chat "
+    "and ask what to change; never invent a value for a required field. If you propose again, "
+    "tell the user the earlier card is out of date and not to click it."
+)
+_REVIEW_UNSUPPORTED = (
+    "This client cannot show the review card. Nothing has been written. Show the draft to the "
+    "user in chat (title, type, summary, tags, relations, body), ask them to confirm, then call "
+    "write_vault with the fields in `draft` (allow_duplicate=true only if they chose to save a "
+    "duplicate). If `errors` is not empty, fix them once first; if any remain, show them to the "
+    "user and ask what to change. Mention any `warnings` too."
+)
+
+
+@mcp.tool(meta={"ui": {"resourceUri": NODE_VIEW_URI}}, annotations=ToolAnnotations(readOnlyHint=True))
+@requires_vault
+def propose_save(
+    type: str,
+    title: str,
+    body: str,
+    tags: list[str] = None,
+    domains: list[str] = None,
+    summary: str = None,
+    author: str = "self",
+    relations: list[dict] = None,
+    references: list[dict] = None,
+    extra_fields: dict = None,
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """
+    Show the user a draft node for review before it is saved. Writes nothing.
+
+    Takes the same fields as write_vault. Clients that can render it open a card
+    showing the node as it will be stored, with Edit and Save buttons; the user
+    saves (or edits, then saves) there, and a message normally tells you what happened (if the
+    user says they saved and none arrived, read the node back to check).
+    Other clients get `review: "unsupported"` and the draft, and the save goes
+    through chat and write_vault as before. When review is "shown", do not call
+    write_vault yourself: stop and wait for the message that follows the click.
+
+    Returns {review: "shown" | "unsupported", message, draft, relations,
+    duplicate, errors, warnings, tag_warnings?}. `message` says what to do next.
+    `errors` are problems to fix before saving (everything write_vault would
+    refuse, plus a blank title); `duplicate` is the existing node it would
+    collide with; `warnings` includes relation targets that are not in the
+    vault. The check is advisory: write_vault runs its own gates on Save.
+    """
+    out = vault.propose_save(
+        type=type, title=title, body=body, tags=tags, domains=domains, summary=summary,
+        author=author, relations=relations, references=references, extra_fields=extra_fields,
+    )
+    if _client_supports_apps(ctx):
+        out["review"] = "shown"
+        out["message"] = (
+            _REVIEW_SHOWN_WITH_ERRORS if out["errors"]
+            else _REVIEW_SHOWN_DUPLICATE if out["duplicate"]
+            else _REVIEW_SHOWN
+        )
+        if out["duplicate"]:
+            # The card offers this choice itself; the generic "ask the user whether to update"
+            # in the gate's own message would send the model to ask it a second time in chat.
+            out["duplicate"] = {k: v for k, v in out["duplicate"].items() if k != "message"}
+    else:
+        out["review"] = "unsupported"
+        out["message"] = _REVIEW_UNSUPPORTED
+    return out
 
 
 @mcp.tool()

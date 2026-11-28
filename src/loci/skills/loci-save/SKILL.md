@@ -191,22 +191,24 @@ title, present candidates grouped by type, and patch the topic with the confirme
 
 ### 🔒 Step 4 — Confirm and write
 
-Call `loci__read_meta(file="config")` for `vault_root` and show the intended location:
+**Preferred: `loci__propose_save`** (same fields as `loci__write_vault`; writes nothing). On
+`review: "shown"` the card (Edit and Save buttons) is the confirmation: say the draft is ready and
+stop. Never call `loci__write_vault` yourself, and leave a duplicate to the card. A message
+follows when the user saves or asks to update an existing node; it states what they changed, so
+trust it over your draft and `loci__read_vault` the node if you need its body. If they answer in
+chat instead, treat that as feedback: revise and call `loci__propose_save` again, or drop the
+draft. Fix any `errors` once; if they remain, show them in chat. If you propose again, say the earlier card is out of date and not to click it. A message about "a save that went through after all" means that node is already written: report it. On `review: "unsupported"`, or if the tool is missing, confirm in chat:
 
+Call `loci__read_meta(file="config")` for `vault_root` and show the intended location:
 ```
 Save to: <vault_root>/<generated-filename>
 Proceed? [yes / no / change location]
 ```
-
 Do not write until the user confirms. Then call `loci__write_vault` with all assembled fields.
 
-`write_vault` checks for duplicates itself. If it returns `duplicate: true`, nothing was
-written — the result names the existing node. Ask:
-```
-A similar item already exists: <name>
-Save as a new item, or update the existing one?
-```
-"New" → call `loci__write_vault` again with `allow_duplicate=true`. "Update" → switch to the
+`write_vault` checks for duplicates itself. On `duplicate: true` nothing was written and the
+result names the existing node; ask "A similar item already exists: <name> — save as a new item,
+or update it?". "New" → `loci__write_vault` again with `allow_duplicate=true`. "Update" → the
 update workflow (below) for that node.
 
 ---
@@ -224,7 +226,6 @@ you from this source? Available fields: [list]". Confirm, then
 ### Wrap-up
 
 Every save ends here, whichever path it took.
-
 1. Report the result in this shape:
    ```
    Saved: <full_path>
