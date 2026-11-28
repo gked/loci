@@ -47,7 +47,7 @@ const VIEW = __VIEW__, ARGS = __ARGS__;
 // What the tests read and steer. `override[tool]` answers a tools/call instead of the real server
 // (return a promise that never settles to play a host that hangs). `refuse` is true to decline
 // every message from the view, or "message" to decline only ui/message and keep ui/update-model-context.
-window.messages = []; window.links = []; window.protocol = []; window.calls = []; window.responses = [];
+window.messages = []; window.links = []; window.protocol = []; window.calls = []; window.responses = []; window.replied = [];
 window.override = {}; window.refuse = false; window.messageDelay = 0; window.lastResult = null;
 const f = document.getElementById("v"); f.srcdoc = VIEW;
 const reply = (id, result) => f.contentWindow.postMessage({jsonrpc: "2.0", id, result}, "*");
@@ -74,6 +74,7 @@ window.addEventListener("message", async (e) => {
     window.calls.push({name, arguments: args});
     const fake = window.override[name];
     reply(d.id, fake ? await fake(args) : await window.mcp_call(name, args));
+    window.replied.push(name);              // after the reply is posted: a test can wait for it, then ping
   } else if (d.method === "ui/message" || d.method === "ui/update-model-context") {
     if (window.messageDelay) await sleep(window.messageDelay);
     if (window.refuse === true || (window.refuse === "message" && d.method === "ui/message")) {
@@ -370,6 +371,12 @@ def _settled(page):
     n = page.evaluate("window.responses.length")
     page.evaluate("window.askView(990 + window.responses.length, 'ping')")
     page.wait_for_function("window.responses.length > %d" % n)
+
+
+def _replied(page, name, n=1):
+    """The host has posted its n-th answer to a `name` call, and the view has handled it."""
+    page.wait_for_function("window.replied.filter((x) => x === %r).length >= %d" % (name, n))
+    _settled(page)
 
 
 def _view_frame(page):
@@ -680,8 +687,7 @@ def test_reset_discards_a_check_still_in_flight(card, page):
     view.locator("[data-testid=nv-title-input]").click()
     page.wait_for_function("window.calls.some((c) => c.name === 'propose_save')")
     view.locator("[data-testid=nv-reset]").click()
-    page.wait_for_function("window.answered")                        # the stale answer has been given...
-    _settled(page)                                                   # ...and the view has handled it
+    _replied(page, "propose_save")                                   # the stale answer is given and handled
     expect(view.locator("[data-testid=nv-errors]")).to_have_count(0)
     expect(view.locator("[data-testid=nv-save]")).to_be_enabled()
 
@@ -834,8 +840,7 @@ def test_a_late_answer_is_for_the_card_that_asked_not_the_one_on_screen_now(card
              "draft": {**other["structuredContent"]["draft"], "title": "Totally different note"}}}
     page.evaluate("(r) => window.deliver(r)", other)
     expect(view.locator("[data-testid=nv-title]")).to_have_text("Totally different note")
-    page.wait_for_function("window.lateDone")
-    _settled(page)
+    _replied(page, "write_vault")
     expect(view.locator("[data-testid=nv-saved]")).to_have_count(0)                       # not this card's save
     expect(view.locator("[data-testid=node-view]")).to_have_attribute("data-status", "draft")
     text = _messages(page)[0]["content"]["text"]                                          # but the assistant is told
@@ -870,8 +875,7 @@ def test_a_late_answer_after_a_save_that_worked_changes_nothing(card, page):
     expect(view.locator("[data-testid=nv-problem]")).to_be_visible(timeout=5000)
     view.locator("[data-testid=nv-save]").click()
     expect(view.locator("[data-testid=nv-saved]")).to_contain_text("bbbbbbb2")
-    page.wait_for_function("window.lateDone")
-    _settled(page)
+    _replied(page, "write_vault", 2)
     expect(view.locator("[data-testid=nv-saved]")).to_contain_text("bbbbbbb2")
     assert len(page.evaluate("window.messages")) == 1
 
@@ -995,7 +999,6 @@ def test_a_check_that_answers_after_the_save_does_not_undo_it(card, tmp_vault, p
     page.wait_for_function("window.calls.some((c) => c.name === 'propose_save')")
     view.locator("[data-testid=nv-save]").click()
     expect(view.locator("[data-testid=nv-saved]")).to_be_visible()
-    page.wait_for_function("window.answered")
-    _settled(page)
+    _replied(page, "propose_save")
     expect(view.locator("[data-testid=nv-errors]")).to_have_count(0)
     expect(view.locator("[data-testid=nv-saved]")).to_be_visible()
