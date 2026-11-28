@@ -399,8 +399,7 @@ def test_body_inside_extra_fields_is_rerouted_like_write_item_does(tmp_vault):
 def test_a_duplicate_source_url_is_reported_under_a_different_title(tmp_vault):
     first = api.save(type="bookmark", title="First bookmark", body="x",
                      extra_fields={"source_url": "https://example.com/a", "site_name": "ex", "subtype": "link"})
-    if not first.get("uid"):
-        pytest.skip(f"fixture rules changed: {first}")
+    assert first.get("uid"), first
     r = api.propose_save(type="bookmark", title="A different title", body="y",
                          extra_fields={"source_url": "https://example.com/a", "site_name": "ex", "subtype": "link"})
     assert r["duplicate"] and r["duplicate"]["uid"] == first["uid"]
@@ -444,3 +443,29 @@ def test_each_review_state_gets_its_own_instruction(tmp_vault, monkeypatch):
 
 def test_the_tool_description_says_to_stop_when_the_card_is_shown():
     assert "do not call" in _tools()["propose_save"].description.lower()
+
+
+def test_an_empty_summary_is_kept_because_save_would_store_it(tmp_vault):
+    assert api.propose_save(**{**GOOD, "summary": ""})["draft"]["summary"] == ""
+
+
+def test_a_relation_to_a_node_that_is_not_there_is_a_warning_the_model_sees(tmp_vault):
+    out = api.propose_save(**GOOD, relations=[{"uid": "nosuchid", "type": "about"}])
+    assert out["errors"] == [] and any("nosuchid" in w for w in out["warnings"])
+
+
+def test_propose_save_is_marked_read_only_so_a_host_need_not_ask_per_call():
+    assert _tools()["propose_save"].annotations.readOnlyHint is True
+
+
+def test_the_messages_tell_the_model_what_to_say_about_a_stale_card_and_how_often_to_retry():
+    assert "out of date" in server._REVIEW_SHOWN
+    assert "at most once" in server._REVIEW_SHOWN_WITH_ERRORS and "never invent" in server._REVIEW_SHOWN_WITH_ERRORS
+    assert "out of date" in server._REVIEW_SHOWN_WITH_ERRORS
+
+
+def test_the_save_skill_tells_the_model_to_stop_at_the_card_and_what_to_do_after():
+    text = api.read_skill("loci-save")
+    step = text[text.index("loci__propose_save"):]
+    for phrase in ('review: "shown"', "stop", "Never call `loci__write_vault` yourself", "read_vault", "feedback", "once more", "unsupported"):
+        assert phrase in step, phrase

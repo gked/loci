@@ -277,10 +277,11 @@ def propose_save(
     `draft` is the fields as `save` would take them, ready to send back
     unchanged. `relations` adds the title of what each one points at, and
     `missing: True` for a target that is not in the vault. `duplicate` is the
-    refusal `save` would give, or None. `errors` is everything `save` would
-    refuse the draft for: the same gates, run in the same order, so the user
-    sees the problem before the click rather than after it. This check is
-    advisory — `save` runs the gates again and stays the authority.
+    refusal `save` would give, or None. `errors` holds what `save` would refuse
+    the draft for, and a few things it would not (a blank title), found before
+    the click rather than after it; it runs the checks together instead of
+    stopping at the first. This check is advisory — `save` runs its own gates
+    again and stays the authority.
     """
     root = _vault_root()
     errors: list[str] = []
@@ -350,14 +351,18 @@ def propose_save(
             "node_type": (attrs or {}).get("type") or None,
             "missing": bool(known is not None and attrs is None),
         })
+        if resolved[-1]["missing"]:
+            warnings.append(f"Relation target '{uid}' is not in the vault; the link would point at nothing.")
 
     # Only what is set: write_vault declares `summary: str = None`, so an explicit null fails its
     # schema, and the draft is documented as ready to send back unchanged.
     draft = {"type": type, "title": title, "body": body or "", "author": author}
-    for key, value in (("tags", tags), ("domains", domains), ("summary", summary),
-                       ("relations", relations), ("references", references), ("extra_fields", extra)):
+    for key, value in (("tags", tags), ("domains", domains), ("relations", relations),
+                       ("references", references), ("extra_fields", extra)):
         if value:
             draft[key] = value
+    if summary is not None:             # an empty summary is a choice, and save stores it as given
+        draft["summary"] = summary
     out = {
         "draft": draft,
         "relations": resolved,

@@ -105,8 +105,8 @@ so it can be undone like any other.
 
 Other agents, and any client that does not render MCP Apps, get the draft as
 text and the confirmation happens in chat, as before. The card is view-only
-chrome over `write_vault`: it runs the same checks, so a save through the card
-and a save through chat cannot differ.
+chrome over `write_vault`: it runs the same checks as a save through chat. If the
+assistant does not react after you click Save, tell it in the chat that you saved.
 
 ### Querying
 

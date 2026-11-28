@@ -46,6 +46,7 @@ from loci.tools.node_merge import MergeError
 from loci.tools.vault_history import HistoryError
 from loci.tools import asset_registry as ar
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.types import ToolAnnotations
 from loci.tools.vault_init import (
     VaultNotReady,
     ensure_ready,
@@ -358,7 +359,8 @@ _REVIEW_SHOWN = (
     "The user is looking at this draft in a review card with Edit and Save buttons. "
     "Nothing has been written. Do not call write_vault: the user saves, or edits first, with "
     "the button, and a message will arrive when they do. Say in one line that the draft is "
-    "ready to review, then stop and wait. If they reply in chat instead, treat it as feedback."
+    "ready to review, then stop and wait. If they reply in chat instead, treat it as feedback; "
+    "if you then propose again, tell them the earlier card is out of date and not to click it."
 )
 _REVIEW_SHOWN_DUPLICATE = (
     "The user is looking at this draft in a review card, and the card says a similar node "
@@ -369,9 +371,11 @@ _REVIEW_SHOWN_DUPLICATE = (
 )
 _REVIEW_SHOWN_WITH_ERRORS = (
     "The draft has problems, listed in `errors` and shown on the card, so Save is disabled. "
-    "Nothing has been written. The card cannot fix type, subtype or relation problems: correct "
-    "the fields yourself (ask the user only if the fix needs their intent) and call "
-    "propose_save once more with the corrected draft."
+    "Nothing has been written. The card cannot fix type, subtype, relation, uid or has_asset "
+    "problems (only an empty title, summary, tags or body): correct the fields yourself and call "
+    "propose_save once more. Retry at most once: if errors remain, show them to the user in chat "
+    "and ask what to change; never invent a value for a required field. If you propose again, "
+    "tell the user the earlier card is out of date and not to click it."
 )
 _REVIEW_UNSUPPORTED = (
     "This client cannot show the review card. Nothing has been written. Show the draft to the "
@@ -381,7 +385,7 @@ _REVIEW_UNSUPPORTED = (
 )
 
 
-@mcp.tool(meta={"ui": {"resourceUri": NODE_VIEW_URI}})
+@mcp.tool(meta={"ui": {"resourceUri": NODE_VIEW_URI}}, annotations=ToolAnnotations(readOnlyHint=True))
 @requires_vault
 def propose_save(
     type: str,
@@ -408,9 +412,10 @@ def propose_save(
 
     Returns {review: "shown" | "unsupported", message, draft, relations,
     duplicate, errors, warnings, tag_warnings?}. `message` says what to do next.
-    `errors` are what write_vault would refuse the draft for; `duplicate` is the
-    existing node it would collide with. The check is advisory: write_vault runs
-    the same gates when the user clicks Save.
+    `errors` are problems to fix before saving (everything write_vault would
+    refuse, plus a blank title); `duplicate` is the existing node it would
+    collide with; `warnings` includes relation targets that are not in the
+    vault. The check is advisory: write_vault runs its own gates on Save.
     """
     out = vault.propose_save(
         type=type, title=title, body=body, tags=tags, domains=domains, summary=summary,
