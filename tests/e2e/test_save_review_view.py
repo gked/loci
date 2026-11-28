@@ -20,7 +20,6 @@ so a view that quietly depends on the network fails here as it would there.
 import asyncio
 import concurrent.futures
 import json
-import time
 
 import pytest
 from playwright.sync_api import expect
