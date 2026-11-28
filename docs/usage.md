@@ -104,8 +104,8 @@ Save stays off. A save is a recorded change in [vault history](#vault-history),
 so it can be undone like any other.
 
 Other agents, and any client that does not render MCP Apps, get the draft as
-text and the confirmation happens in chat, as before. The card is view-only
-chrome over `write_vault`: it runs the same checks as a save through chat. If the
+text and the confirmation happens in chat, as before. The card is a thin
+layer over `write_vault`: it runs the same checks as a save through chat. If the
 assistant does not react after you click Save, tell it in the chat that you saved.
 
 ### Querying

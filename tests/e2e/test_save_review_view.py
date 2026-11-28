@@ -844,7 +844,7 @@ def test_a_late_answer_is_for_the_card_that_asked_not_the_one_on_screen_now(card
     expect(view.locator("[data-testid=nv-saved]")).to_have_count(0)                       # not this card's save
     expect(view.locator("[data-testid=node-view]")).to_have_attribute("data-status", "draft")
     text = _messages(page)[0]["content"]["text"]                                          # but the assistant is told
-    assert "earlier review card" in text and DRAFT["title"] in text
+    assert "went through after all" in text and DRAFT["title"] in text
     assert _nodes(tmp_vault, "Totally different note") == []
 
 
@@ -876,8 +876,10 @@ def test_a_late_answer_after_a_save_that_worked_changes_nothing(card, page):
     view.locator("[data-testid=nv-save]").click()
     expect(view.locator("[data-testid=nv-saved]")).to_contain_text("bbbbbbb2")
     _replied(page, "write_vault", 2)
-    expect(view.locator("[data-testid=nv-saved]")).to_contain_text("bbbbbbb2")
-    assert len(page.evaluate("window.messages")) == 1
+    expect(view.locator("[data-testid=nv-saved]")).to_contain_text("bbbbbbb2")       # the card shows its own save...
+    page.wait_for_function("window.messages.length === 2")
+    first, second = (m["content"]["text"] for m in page.evaluate("window.messages"))
+    assert "bbbbbbb2" in first and "went through after all" in second and "aaaaaaa1" in second     # ...and the assistant hears of both
 
 
 def test_a_handoff_in_flight_locks_the_card(card, tmp_vault, page):
@@ -1002,3 +1004,162 @@ def test_a_check_that_answers_after_the_save_does_not_undo_it(card, tmp_vault, p
     _replied(page, "propose_save")
     expect(view.locator("[data-testid=nv-errors]")).to_have_count(0)
     expect(view.locator("[data-testid=nv-saved]")).to_be_visible()
+
+
+# ---------------------------------------------------------------------------
+# fourth review round
+# ---------------------------------------------------------------------------
+
+_DUP_ANSWER = """{structuredContent: {duplicate: true, uid: "hub00001", path: "x.md", name: "Central Hub Topic"}}"""
+
+
+def test_a_late_refusal_is_not_reported_as_a_save(card, tmp_vault, page):
+    """A duplicate refusal carries the existing node's uid; nothing was written."""
+    view = card()
+    _shorten_timeout(page)
+    page.evaluate("""window.override.write_vault = async () => {
+        await new Promise((r) => setTimeout(r, 700)); return %s; }""" % _DUP_ANSWER)
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-problem]")).to_be_visible(timeout=5000)
+    view.locator("[data-testid=nv-edit]").click()
+    view.locator("[data-testid=nv-body-input]").fill("changed")
+    view.locator("[data-testid=nv-reset]").click()                  # a different card generation now
+    _replied(page, "write_vault")
+    assert page.evaluate("window.messages") == []
+    expect(view.locator("[data-testid=nv-duplicate]")).to_have_count(0)
+
+
+def test_a_late_refusal_does_not_undo_save_anyway(card, page):
+    view = card(title="Central Hub Topic")
+    view.locator("[data-testid=nv-dup-new]").click()
+    _shorten_timeout(page)
+    page.evaluate("""window.override.write_vault = async () => {
+        await new Promise((r) => setTimeout(r, 700)); return %s; }""" % _DUP_ANSWER)
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-problem]")).to_be_visible(timeout=5000)
+    _replied(page, "write_vault")
+    expect(view.locator("[data-testid=nv-save]")).to_have_text("Save anyway")
+    expect(view.locator("[data-testid=nv-duplicate]")).to_have_count(0)
+
+
+def test_a_late_save_shows_what_was_written_not_what_was_typed_since(card, tmp_vault, page):
+    view = card()
+    _shorten_timeout(page)
+    page.evaluate(_SLOW_FIRST_WRITE % {"late": 1000})
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-problem]")).to_be_visible(timeout=5000)
+    view.locator("[data-testid=nv-edit]").click()
+    view.locator("[data-testid=nv-title-input]").fill("EDITED AFTER TIMEOUT")
+    _replied(page, "write_vault")
+    expect(view.locator("[data-testid=nv-saved]")).to_be_visible()
+    expect(view.locator("[data-testid=nv-title]")).to_have_text(DRAFT["title"])
+    assert len(_nodes(tmp_vault, DRAFT["title"])) == 1 and _nodes(tmp_vault, "EDITED AFTER TIMEOUT") == []
+    assert DRAFT["title"] in _messages(page)[0]["content"]["text"]
+
+
+def test_a_node_written_by_an_earlier_save_is_reported_when_a_second_save_wins(card, page):
+    view = card()
+    _shorten_timeout(page)
+    page.evaluate("""(() => { window.n = 0; window.override.write_vault = async () => {
+        const mine = ++window.n;
+        if (mine === 1) { await new Promise((x) => setTimeout(x, 1500)); return {structuredContent: {uid: "aaaaaaa1", path: "a.md"}}; }
+        return {structuredContent: {uid: "bbbbbbb2", path: "b.md"}}; }; })()""")
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-problem]")).to_be_visible(timeout=5000)
+    view.locator("[data-testid=nv-edit]").click()
+    view.locator("[data-testid=nv-title-input]").fill("Second title")
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-saved]")).to_contain_text("bbbbbbb2")
+    _replied(page, "write_vault", 2)
+    page.wait_for_function("window.messages.length === 2")
+    assert any("aaaaaaa1" in m["content"]["text"] and "went through after all" in m["content"]["text"] for m in page.evaluate("window.messages"))
+
+
+def test_a_parked_answer_is_reported_when_the_second_save_succeeds(card, page):
+    view = card()
+    _shorten_timeout(page)
+    page.evaluate("""(() => { window.n = 0; window.override.write_vault = async () => {
+        const mine = ++window.n;
+        if (mine === 1) { await new Promise((x) => setTimeout(x, 900)); return {structuredContent: {uid: "aaaaaaa1", path: "a.md"}}; }
+        await new Promise((x) => setTimeout(x, 1500)); return {structuredContent: {uid: "bbbbbbb2", path: "b.md"}}; }; })()""")
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-problem]")).to_be_visible(timeout=5000)
+    _shorten_timeout(page, 5000)
+    view.locator("[data-testid=nv-save]").click()
+    expect(view.locator("[data-testid=nv-saved]")).to_contain_text("bbbbbbb2", timeout=8000)
+    page.wait_for_function("window.messages.length === 2")
+    assert any("aaaaaaa1" in m["content"]["text"] for m in page.evaluate("window.messages"))
+
+
+def test_a_hand_off_in_flight_cannot_be_reset_or_replaced(card, page):
+    view = card(title="Central Hub Topic")
+    view.locator("[data-testid=nv-edit]").click()
+    view.locator("[data-testid=nv-body-input]").fill("edited")
+    page.evaluate("window.messageDelay = 1500")
+    view.locator("[data-testid=nv-dup-update]").click()
+    expect(view.locator("[data-testid=node-view]")).to_have_attribute("inert", "")
+    other = page.evaluate("window.lastResult")
+    other = {**other, "structuredContent": {**other["structuredContent"],
+             "draft": {**other["structuredContent"]["draft"], "title": "Not now"}}}
+    page.evaluate("(r) => window.deliver(r)", other)
+    _settled(page)
+    expect(view.locator("[data-testid=nv-title-input]")).to_have_value("Central Hub Topic")
+    expect(view.locator("[data-testid=nv-handoff]")).to_be_visible(timeout=5000)
+    expect(view.locator("[data-testid=node-view]")).not_to_have_attribute("inert", "")
+
+
+def test_a_late_save_during_a_hand_off_is_reported_not_adopted(card, tmp_vault, page):
+    view = card(title="Central Hub Topic")
+    _shorten_timeout(page)
+    page.evaluate("""(() => { window.n = 0; window.override.write_vault = async () => {
+        if (++window.n === 1) { await new Promise((x) => setTimeout(x, 1800)); return {structuredContent: {uid: "aaaaaaa1", path: "a.md"}}; }
+        return %s; }; })()""" % _DUP_ANSWER)
+    view.locator("[data-testid=nv-dup-new]").click()
+    view.locator("[data-testid=nv-save]").click()                   # times out: unknown
+    expect(view.locator("[data-testid=nv-problem]")).to_be_visible(timeout=5000)
+    view.locator("[data-testid=nv-save]").click()                   # refused as a duplicate: the banner is back
+    expect(view.locator("[data-testid=nv-duplicate]")).to_be_visible(timeout=5000)
+    page.evaluate("window.messageDelay = 1200")
+    view.locator("[data-testid=nv-dup-update]").click()
+    _replied(page, "write_vault", 2)
+    page.wait_for_function("window.messages.length === 2", timeout=8000)
+    expect(view.locator("[data-testid=node-view]")).to_have_attribute("data-status", "handoff")
+    assert "went through after all" in "".join(m["content"]["text"] for m in page.evaluate("window.messages"))
+
+
+def test_a_hand_off_the_host_has_not_confirmed_says_so(card, page):
+    view = card(title="Central Hub Topic")
+    _shorten_timeout(page)
+    page.evaluate("window.messageDelay = 800")
+    view.locator("[data-testid=nv-dup-update]").click()
+    expect(view.locator("[data-testid=nv-handoff]")).to_contain_text("did not confirm", timeout=5000)
+
+
+def test_blanking_the_title_again_brings_the_error_back(card):
+    view = card(title="")
+    view.locator("[data-testid=nv-edit]").click()
+    title = view.locator("[data-testid=nv-title-input]")
+    title.fill("A")
+    expect(view.locator("[data-testid=nv-errors]")).to_have_count(0)
+    title.fill("")
+    expect(view.locator("[data-testid=nv-errors]")).to_contain_text("title")
+    expect(view.locator("[data-testid=nv-save]")).to_be_disabled()
+
+
+def test_the_same_proposal_with_its_keys_in_another_order_is_not_a_new_one(card, page):
+    view = card(title="Central Hub Topic")
+    view.locator("[data-testid=nv-dup-new]").click()
+    reordered = page.evaluate("""() => { const sc = window.lastResult.structuredContent;
+        return {...window.lastResult, structuredContent: Object.fromEntries(Object.entries(sc).reverse())}; }""")
+    page.evaluate("(r) => window.deliver(r)", reordered)
+    _settled(page)
+    expect(view.locator("[data-testid=nv-save]")).to_have_text("Save anyway")
+
+
+def test_long_lists_in_the_messages_are_counted(card, page):
+    card()
+    text = _view_frame(page).evaluate("""() => savedMessage(
+        {uid: "x", tag_warnings: Array.from({length: 20}, (_, i) => "w" + i)},
+        {draft: {type: "t", title: "T", tags: [], relations: Array.from({length: 100}, (_, i) => ({type: "about", uid: "u" + i}))},
+         off: new Set(), original: {draft: {title: "T"}}, edited: true})""")
+    assert "(+70 more)" in text and "(+15 more)" in text

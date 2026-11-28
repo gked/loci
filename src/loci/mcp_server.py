@@ -372,8 +372,9 @@ _REVIEW_SHOWN_DUPLICATE = (
 )
 _REVIEW_SHOWN_WITH_ERRORS = (
     "The draft has problems, listed in `errors` and shown on the card, so Save is disabled. "
-    "Nothing has been written. Do not call write_vault. The card can fix only an empty title; "
-    "for type, subtype, relation, uid or has_asset problems correct the fields yourself and call "
+    "Nothing has been written. Do not call write_vault. On the card the user can fix an empty "
+    "title or remove a relation with its x; if the title is empty, supply one. For anything else "
+    "(type, subtype, a relation's type, uid, has_asset) correct the fields yourself and call "
     "propose_save once more. Retry at most once: if errors remain, show them to the user in chat "
     "and ask what to change; never invent a value for a required field. If you propose again, "
     "tell the user the earlier card is out of date and not to click it."
@@ -383,7 +384,7 @@ _REVIEW_UNSUPPORTED = (
     "user in chat (title, type, summary, tags, relations, body), ask them to confirm, then call "
     "write_vault with the fields in `draft` (allow_duplicate=true only if they chose to save a "
     "duplicate). If `errors` is not empty, fix them once first; if any remain, show them to the "
-    "user and ask what to change."
+    "user and ask what to change. Mention any `warnings` too."
 )
 
 

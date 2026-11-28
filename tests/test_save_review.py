@@ -467,7 +467,7 @@ def test_the_messages_tell_the_model_what_to_say_about_a_stale_card_and_how_ofte
 def test_the_save_skill_tells_the_model_to_stop_at_the_card_and_what_to_do_after():
     text = api.read_skill("loci-save")
     step = text[text.index("loci__propose_save"):]
-    for phrase in ('review: "shown"', "stop", "Never call `loci__write_vault` yourself", "read_vault", "feedback", "once more", "unsupported", "once;", "out of date"):
+    for phrase in ('review: "shown"', "stop", "Never call `loci__write_vault` yourself", "read_vault", "feedback", "again", "unsupported", "once;", "out of date and not to click it", "went through after all"):
         assert phrase in step, phrase
 
 
@@ -483,3 +483,17 @@ def test_a_draft_that_is_a_duplicate_and_invalid_gets_the_errors_message(tmp_vau
     out = _call("propose_save", {**GOOD, "title": "Central Hub Topic", "extra_fields": {}}).structuredContent
     assert out["message"] == server._REVIEW_SHOWN_WITH_ERRORS
     assert out["duplicate"]["uid"] == "hub00001" and "message" not in out["duplicate"]
+
+
+def test_the_russian_skill_says_the_same_about_retries_stale_cards_and_late_saves():
+    from pathlib import Path
+    import loci
+    ru = (Path(loci.__file__).parent / "skills" / "loci-save" / "SKILL.ru-RU.md").read_text(encoding="utf-8")
+    for phrase in ("один раз", "устарела и нажимать её не нужно", "всё же прошло", "loci__propose_save"):
+        assert phrase in ru, phrase
+
+
+def test_the_errors_message_tells_the_model_what_the_card_can_and_cannot_fix():
+    text = server._REVIEW_SHOWN_WITH_ERRORS
+    assert "empty title" in text and "remove a relation" in text and "supply one" in text
+    assert "Mention any `warnings`" in server._REVIEW_UNSUPPORTED

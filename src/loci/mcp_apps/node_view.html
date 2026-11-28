@@ -151,7 +151,7 @@ window.addEventListener("message", (e) => {
     if (p) { pending.delete(d.id); d.error ? p.reject(new Error(d.error.message || "request failed")) : p.resolve(d.result); }
     return;
   }
-  if (d.method === "ui/notifications/tool-result") { const p = dataOf(d.params); if (p && p.draft && (!S.draft || (S.status === "draft" && !edited() && JSON.stringify(p) !== JSON.stringify(S.original)))) load(p); }
+  if (d.method === "ui/notifications/tool-result") { const p = dataOf(d.params); if (p && p.draft && (!S.draft || (S.status === "draft" && !S.sending && !edited() && canon(p) !== canon(S.original)))) load(p); }
   else if ((d.method === "ui/resource-teardown" || d.method === "ping") && d.id != null) send({ id: d.id, result: {} });
 });
 
@@ -165,13 +165,17 @@ const S = {
   notified: null,         // whether the host took the "saved" message; null until known
   sending: false, handoffHow: null, vtimer: null,
   gen: 0,                 // which proposal is on the card; an answer for an earlier one is not this card's
-  lateSave: null,         // a late write_vault answer that arrived while a second save was in flight
+  lateSaves: [],          // late write_vault answers that arrived while a second save was in flight
   vticket: 0,             // the newest revalidation; an older answer must not overwrite it
 };
 const clone = (x) => JSON.parse(JSON.stringify(x));
+// Key order is not meaning: a host may re-serialise the same proposal.
+const canon = (x) => JSON.stringify(x, (k, v) => (v && typeof v === "object" && !Array.isArray(v)) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1))) : v);
 
 function load(p) {
-  S.vticket++; S.gen++; S.lateSave = null; S.sending = false; clearTimeout(S.vtimer);
+  S.vticket++; S.gen++; S.sending = false; clearTimeout(S.vtimer);
+  const parked = S.lateSaves; S.lateSaves = [];                      // written nodes the new card will not show
+  for (const l of parked) reportLate(l.r, l.snap);
   S.original = clone(p);
   S.draft = clone(p.draft);
   S.relations = clone(p.relations || []);
@@ -340,7 +344,7 @@ function banners() {
   if (S.errors.length) {
     out.push(el("div", { class: "banner error", testid: "nv-errors", role: "alert" },
       [el("strong", {}, "This draft cannot be saved yet"), el("ul", {}, S.errors.map((e) => el("li", {}, e))),
-       el("div", { class: "hint" }, "Only an empty title can be fixed here. For anything else, ask the assistant for a corrected draft.")]));
+       el("div", { class: "hint" }, "An empty title can be fixed here, and a relation can be removed with its ×. For anything else, ask the assistant for a corrected draft.")]));
   }
   if (S.problem && S.status === "draft") out.push(el("div", { class: "banner error", testid: "nv-problem", role: "alert" }, S.problem));
   if (S.duplicate && S.status === "draft") {
@@ -383,7 +387,9 @@ function form() {
   const title = el("input", { class: "t", type: "text", value: d.title, testid: "nv-title-input", "aria-label": "Title",
     oninput: (e) => {
       d.title = e.target.value;
-      if (d.title.trim() && S.errors.some((x) => /title is empty/i.test(x))) { S.errors = S.errors.filter((x) => !/title is empty/i.test(x)); drawBanners(); }
+      const had = S.errors.some((x) => /title is empty/i.test(x));
+      if (d.title.trim() && had) { S.errors = S.errors.filter((x) => !/title is empty/i.test(x)); drawBanners(); }
+      else if (!d.title.trim() && !had) { S.errors = [...S.errors, "The title is empty."]; drawBanners(); }
       saveBtnSync();
     },
     // A new title may or may not collide; write_vault decides on the click. Only the banners are
@@ -412,6 +418,7 @@ function saveBtnSync() {
 
 function render() {
   card.setAttribute("data-status", S.status);
+  card.toggleAttribute("inert", !!S.sending);          // a hand-off is out: nothing on the card may change under it
   card.replaceChildren();
   if (!S.draft) return;
   const d = S.draft, editing = S.mode === "edit" && S.status === "draft";
@@ -513,16 +520,22 @@ async function finishSave(r, snap) {
   drawBanners();
   return true;
 }
-// The host answered write_vault after the timeout. The node exists, so the answer is adopted, but only
-// by the card that sent it, and never over a save that already succeeded.
+// The host answered write_vault after the timeout. Only an answer that says a node was written counts:
+// a late duplicate refusal or error wrote nothing, and its uid is someone else's.
+const wasWritten = (r) => !!(r && r.uid && !r.duplicate && !(r.errors && r.errors.length) && !r.error);
+function reportLate(r, snap) {
+  if (!wasWritten(r)) return;
+  tellAssistant("A save I started on a review card went through after all: " + line(snap.draft.title) + " was written as " + line(r.uid, 60) +
+    ". Report it to the user and do the wrap-up for it; the card now on screen may show it as a similar node.");
+}
+// Adopted by the card that asked, when that card is idle and still the same one, showing what was
+// written. In any other state it is reported to the assistant instead, so a written node is never silent.
+function adopt(r, snap) { S.draft = clone(snap.draft); S.off = new Set(snap.off); S.original = snap.original; return finishSave(r, snap); }
 function lateSave(r, snap) {
-  if (snap.gen !== S.gen) {          // the user has moved on: say what was written, show nothing here
-    if (r.uid) tellAssistant("An earlier review card's save went through after all: " + line(snap.draft.title) + " was written as " + line(r.uid, 60) + ". The card on screen now is a different draft.");
-    return;
-  }
-  if (S.status === "saved") return;
-  if (S.status === "saving") { S.lateSave = { r, snap }; return; }       // settled when the save in flight does
-  if (r.uid) finishSave(r, snap);
+  if (!wasWritten(r)) return;
+  if (snap.gen === S.gen && S.status === "saving") { S.lateSaves.push({ r, snap }); return; }       // settled when the save in flight does
+  if (snap.gen === S.gen && S.status === "draft" && !S.sending) { adopt(r, snap); return; }
+  reportLate(r, snap);
 }
 async function save() {
   if (!canSave()) return;
@@ -539,8 +552,12 @@ async function save() {
     S.status = "draft";
     render();
   }
-  const late = S.lateSave; S.lateSave = null;
-  if (late && late.snap.gen === S.gen && S.status === "draft" && late.r.uid) await finishSave(late.r, late.snap);
+  const parked = S.lateSaves; S.lateSaves = [];
+  let adopted = false;
+  for (const l of parked) {
+    if (!adopted && l.snap.gen === S.gen && S.status === "draft" && !S.sending) { adopted = true; await adopt(l.r, l.snap); }
+    else reportLate(l.r, l.snap);
+  }
 }
 
 // Re-run the draft check against what is on the card now, so errors, the similar-node warning and
