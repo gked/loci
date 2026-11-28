@@ -1092,9 +1092,7 @@ def test_a_parked_answer_is_reported_when_the_second_save_succeeds(card, page):
 
 
 def test_a_hand_off_in_flight_cannot_be_reset_or_replaced(card, page):
-    view = card(title="Central Hub Topic")
-    view.locator("[data-testid=nv-edit]").click()
-    view.locator("[data-testid=nv-body-input]").fill("edited")
+    view = card(title="Central Hub Topic")                         # untouched: only the hand-off protects it
     page.evaluate("window.messageDelay = 1500")
     view.locator("[data-testid=nv-dup-update]").click()
     expect(view.locator("[data-testid=node-view]")).to_have_attribute("inert", "")
@@ -1103,7 +1101,7 @@ def test_a_hand_off_in_flight_cannot_be_reset_or_replaced(card, page):
              "draft": {**other["structuredContent"]["draft"], "title": "Not now"}}}
     page.evaluate("(r) => window.deliver(r)", other)
     _settled(page)
-    expect(view.locator("[data-testid=nv-title-input]")).to_have_value("Central Hub Topic")
+    expect(view.locator("[data-testid=nv-title]")).to_have_text("Central Hub Topic")
     expect(view.locator("[data-testid=nv-handoff]")).to_be_visible(timeout=5000)
     expect(view.locator("[data-testid=node-view]")).not_to_have_attribute("inert", "")
 
@@ -1112,17 +1110,20 @@ def test_a_late_save_during_a_hand_off_is_reported_not_adopted(card, tmp_vault, 
     view = card(title="Central Hub Topic")
     _shorten_timeout(page)
     page.evaluate("""(() => { window.n = 0; window.override.write_vault = async () => {
-        if (++window.n === 1) { await new Promise((x) => setTimeout(x, 1800)); return {structuredContent: {uid: "aaaaaaa1", path: "a.md"}}; }
+        if (++window.n === 1) { await new Promise((x) => setTimeout(x, 1500)); window.lateAt = performance.now(); return {structuredContent: {uid: "aaaaaaa1", path: "a.md"}}; }
         return %s; }; })()""" % _DUP_ANSWER)
     view.locator("[data-testid=nv-dup-new]").click()
     view.locator("[data-testid=nv-save]").click()                   # times out: unknown
     expect(view.locator("[data-testid=nv-problem]")).to_be_visible(timeout=5000)
     view.locator("[data-testid=nv-save]").click()                   # refused as a duplicate: the banner is back
     expect(view.locator("[data-testid=nv-duplicate]")).to_be_visible(timeout=5000)
-    page.evaluate("window.messageDelay = 1200")
+    page.evaluate("window.messageDelay = 3000")                      # still sending when the first answer lands
     view.locator("[data-testid=nv-dup-update]").click()
+    expect(view.locator("[data-testid=node-view]")).to_have_attribute("inert", "")
     _replied(page, "write_vault", 2)
-    page.wait_for_function("window.messages.length === 2", timeout=8000)
+    expect(view.locator("[data-testid=node-view]")).to_have_attribute("inert", "")      # and it still is: not adopted meanwhile
+    expect(view.locator("[data-testid=nv-saved]")).to_have_count(0)
+    page.wait_for_function("window.messages.length === 2", timeout=10000)
     expect(view.locator("[data-testid=node-view]")).to_have_attribute("data-status", "handoff")
     assert "went through after all" in "".join(m["content"]["text"] for m in page.evaluate("window.messages"))
 
